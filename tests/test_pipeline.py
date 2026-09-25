@@ -356,3 +356,10 @@ async def test_stages_share_one_trace_and_done_carries_it(make_deps, spans) -> N
         s.parent is not None and s.parent.span_id == root.context.span_id for s in stage_spans
     )
     assert done(events).trace_id == format(root.context.trace_id, "032x")
+
+
+async def test_spans_never_carry_the_question_or_the_visitor(make_deps, spans) -> None:
+    question = "Quelle expérience en MLOps chez Acme ?"
+    await run_pipeline(question, "fake:echo", "visiteur-3f2a", make_deps(), lambda e: None)
+    values = [str(v) for s in spans.get_finished_spans() for v in (s.attributes or {}).values()]
+    assert values and not any(question in v or "visiteur-3f2a" in v for v in values)
