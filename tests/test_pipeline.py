@@ -334,6 +334,17 @@ async def test_canary_never_leaves_the_server(make_deps) -> None:
     assert "Règles" not in serialized(events)
 
 
+async def test_ledger_write_failure_does_not_break_the_answer(make_deps) -> None:
+    class FlakyLedger(InMemoryLedger):
+        def record(self, provider_id: str, cost_usd: float, now: float) -> None:
+            raise RuntimeError("DynamoDB indisponible")
+
+    deps = make_deps(ledger=FlakyLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600))
+    events = await run(deps)
+    assert ends(events)[-1] == ("output_guard", "ok")
+    assert len(answers(events)) == 1
+
+
 async def test_stages_share_one_trace_and_done_carries_it(make_deps, spans) -> None:
     events = await run(make_deps())
     finished = spans.get_finished_spans()

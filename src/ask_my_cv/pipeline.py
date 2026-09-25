@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import logging
 import secrets
 import time
 from collections.abc import Callable
@@ -17,6 +18,8 @@ from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
 from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage, tracer
 from ask_my_cv.vectorstore import VectorStore
+
+logger = logging.getLogger(__name__)
 
 MAX_QUESTION_CHARS = 500
 
@@ -167,7 +170,10 @@ async def run_pipeline(
                         return
                     tokens_in, tokens_out = estimate_tokens(system + user), estimate_tokens(text)
                     cost = provider.pricing.cost(tokens_in, tokens_out)
-                    deps.ledger.record(provider.id, cost, now())
+                    try:
+                        deps.ledger.record(provider.id, cost, now())
+                    except Exception:
+                        logger.warning("registre des dépenses indisponible", exc_info=True)
                     usage.tokens_in += tokens_in
                     usage.tokens_out += tokens_out
                     usage.cost_usd += cost
