@@ -35,3 +35,20 @@ Sans Ollama, les requêtes basculent automatiquement sur le faux LLM (`fake:echo
 ```bash
 uv run pytest -q && uv run ruff check . && uv run pyright
 ```
+
+## Classifieur d'injection (MLOps)
+
+```bash
+uv sync --group ml
+uv run python -m ml.fetch                        # sources épinglées, vérifiées par sha256
+uv run python -m ml.train --version v0.0.0 --out dist
+```
+
+- La porte d'évaluation (`ml/gates.yaml`) fait échouer l'entraînement si un seuil n'est pas tenu :
+  rappel et faux positifs sur deepset, rappel hors distribution sur Gandalf, ensemble adverse écrit
+  à la main, et parité entre le modèle ONNX servi et scikit-learn.
+- L'entraînement est reproductible : même sha256 de modèle en local et en CI.
+- Les modèles publiés sont des releases `model-vX.Y.Z` signées par le workflow `train.yml`
+  (Sigstore keyless) ; la CI vérifie la signature avant de construire l'image.
+- `models/prod.json` désigne le modèle en production ; il ne change que par PR.
+- En local, pour utiliser le modèle promu : `gh release download model-<version> -p model.onnx -D models`.
