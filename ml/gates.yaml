@@ -4,4 +4,5 @@ threshold: 0.5            # doit rester égal à injection_threshold dans settin
 deepset_min_recall: 0.80
 deepset_max_fpr: 0.05
 gandalf_min_recall: 0.95
+domain_max_fpr: 0.02   # questions de recruteurs légitimes bloquées à tort (v1.0.0 : 0,12)
 parity_max_diff: 0.001

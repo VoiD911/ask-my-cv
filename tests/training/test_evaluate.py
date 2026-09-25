@@ -48,6 +48,7 @@ def tiny_datasets(adversarial: list[AdversarialCase]) -> Datasets:
         eval_deepset=ev,
         eval_gandalf=[Example(t, 1, "g") for t in ATTACKS[3:]],
         adversarial=adversarial,
+        eval_domain=[Example(t, 0, "d") for t in BENIGN[3:]],
     )
 
 
@@ -66,6 +67,7 @@ def test_all_gates_pass_on_separable_data() -> None:
         "deepset_recall",
         "deepset_fpr",
         "gandalf_recall",
+        "domain_fpr",
         "adversarial_pass_rate",
         "onnx_parity_max_diff",
     ]
@@ -118,3 +120,20 @@ def test_repository_gates_match_api_threshold() -> None:
     settings = yaml.safe_load(Path("settings.yaml").read_text(encoding="utf-8"))
     assert gates.threshold == settings["injection_threshold"]
     assert (gates.deepset_min_recall, gates.gandalf_min_recall) == (0.80, 0.95)
+    assert gates.domain_max_fpr == 0.02
+
+
+def test_domain_false_positive_fails_the_gate() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ds = tiny_datasets([])
+    ds.eval_domain = [Example(ATTACKS[0], 0, "d")]  # une « question légitime » que le modèle bloque
+    report = evaluate(pipe, onnx_bytes, ds, Gates())
+    assert [c.name for c in report.checks if not c.passed] == ["domain_fpr"]
+
+
+def test_empty_domain_set_fails_the_gate() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ds = tiny_datasets([])
+    ds.eval_domain = []
+    report = evaluate(pipe, onnx_bytes, ds, Gates())
+    assert "domain_fpr" in [c.name for c in report.checks if not c.passed]

@@ -17,6 +17,7 @@ from ask_my_cv.text import normalize_text
 from ml.dataset import (
     ADVERSARIAL_PATH,
     HANDWRITTEN_PATH,
+    RECRUITER_EVAL_PATH,
     Datasets,
     Example,
     build_datasets,
@@ -104,6 +105,8 @@ et régression logistique, exporté en ONNX (aucun pickle).
 - `handwritten` — questions de recruteurs et attaques écrites à la main (FR/EN), dans le dépôt.
 - Ensemble adverse (`ml/data/adversarial.jsonl`) : évaluation uniquement, jamais vu à \
 l'entraînement.
+- Jeu du domaine (`ml/data/recruiter_eval.jsonl`) : 50 questions de recruteurs légitimes \
+(tutoiement, vouvoiement, 3ᵉ personne, FR/EN), évaluation uniquement.
 
 ## Limites connues
 
@@ -111,6 +114,8 @@ l'entraînement.
   de sortie reste la seconde ligne de défense.
 - Entraîné surtout sur de l'anglais ; le français repose sur les exemples écrits à la main.
 - Seuil de décision 0,5, identique à `injection_threshold` dans `settings.yaml`.
+- Depuis v1.1.0, le rappel deepset (≈ 0,82) est proche de son seuil (0,80) : compromis choisi pour \
+ne pas bloquer les questions légitimes au tutoiement.
 """
 
 
@@ -148,7 +153,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("la version doit ressembler à v1.2.3")
 
     sources = load_sources()
-    ds = build_datasets(sources, CACHE_DIR, HANDWRITTEN_PATH, ADVERSARIAL_PATH)
+    ds = build_datasets(sources, CACHE_DIR, HANDWRITTEN_PATH, ADVERSARIAL_PATH, RECRUITER_EVAL_PATH)
     report = run_training(ds, args.version, args.out, load_gates(), sources)
     for check in report.checks:
         status = "OK" if check.passed else "KO"

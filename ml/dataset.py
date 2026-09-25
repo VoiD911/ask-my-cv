@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -12,6 +12,7 @@ from ml.fetch import Source
 
 HANDWRITTEN_PATH = Path("ml/data/handwritten.jsonl")
 ADVERSARIAL_PATH = Path("ml/data/adversarial.jsonl")
+RECRUITER_EVAL_PATH = Path("ml/data/recruiter_eval.jsonl")
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class Datasets:
     eval_deepset: list[Example]
     eval_gandalf: list[Example]
     adversarial: list[AdversarialCase]
+    eval_domain: list[Example] = field(default_factory=list)
 
 
 def read_parquet(path: Path, source: Source) -> list[Example]:
@@ -69,7 +71,7 @@ def load_adversarial(path: Path) -> list[AdversarialCase]:
 
 
 def build_datasets(
-    sources: list[Source], cache_dir: Path, handwritten: Path, adversarial: Path
+    sources: list[Source], cache_dir: Path, handwritten: Path, adversarial: Path, domain: Path
 ) -> Datasets:
     by_role: dict[str, list[Example]] = {"train": [], "eval_deepset": [], "eval_gandalf": []}
     for source in sources:
@@ -79,7 +81,13 @@ def build_datasets(
     leaked = {c.text for c in cases} & {e.text for e in train}
     if leaked:
         raise ValueError(f"cas adverses présents dans l'entraînement : {sorted(leaked)}")
-    return Datasets(train, by_role["eval_deepset"], by_role["eval_gandalf"], cases)
+    domain_examples = read_jsonl(domain, "recruiter_eval")
+    domain_leaked = {e.text for e in domain_examples} & {e.text for e in train}
+    if domain_leaked:
+        raise ValueError(
+            f"questions du domaine présentes dans l'entraînement : {sorted(domain_leaked)}"
+        )
+    return Datasets(train, by_role["eval_deepset"], by_role["eval_gandalf"], cases, domain_examples)
 
 
 def fingerprint(examples: list[Example]) -> str:
