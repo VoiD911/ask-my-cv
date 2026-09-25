@@ -12,6 +12,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExport
 
 from ask_my_cv.settings import ConfigError, Settings
 
+# délai par envoi : 10 s par défaut, et force_flush ignore son propre délai (SDK 1.45)
+EXPORT_TIMEOUT_S = 2.0
+
 
 def exporter_for(name: str, settings: Settings) -> SpanExporter:
     if name == "console":
@@ -22,6 +25,7 @@ def exporter_for(name: str, settings: Settings) -> SpanExporter:
         return OTLPSpanExporter(
             endpoint=f"https://xray.{settings.aws_region}.amazonaws.com/v1/traces",
             session=SigV4Session(settings.aws_region, "xray"),
+            timeout=EXPORT_TIMEOUT_S,
         )
     if name == "langfuse":
         public, secret = (
@@ -36,6 +40,7 @@ def exporter_for(name: str, settings: Settings) -> SpanExporter:
         return OTLPSpanExporter(
             endpoint=settings.langfuse_endpoint,
             headers={"Authorization": f"Basic {token}", "x-langfuse-ingestion-version": "4"},
+            timeout=EXPORT_TIMEOUT_S,
         )
     raise ConfigError(f"exportateur de traces inconnu : {name}")
 

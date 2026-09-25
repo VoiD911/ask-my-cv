@@ -12,16 +12,24 @@ from ask_my_cv.prompting import load_template
 from ask_my_cv.settings import ModelConfig, Settings
 from ask_my_cv.vectorstore import InMemoryVectorStore, VectorStore
 
+# (connexion, lecture) en secondes, par service. DynamoDB doit échouer vite (appelé de façon
+# synchrone sur le chemin de la requête) ; Bedrock lit un flux, la lecture borne l'écart maximal
+# entre deux morceaux plutôt que la durée totale.
+_TIMEOUTS = {"dynamodb": (2, 3), "bedrock-runtime": (3, 30)}
+
 
 def aws_client(service: str, settings: Settings) -> Any:
     import boto3
     from botocore.config import Config
 
+    connect, read = _TIMEOUTS.get(service, (3, 30))
     return boto3.client(
         service,
         region_name=settings.aws_region,
         config=Config(
-            retries={"mode": "standard", "max_attempts": 3}, connect_timeout=3, read_timeout=30
+            retries={"mode": "standard", "max_attempts": 3},
+            connect_timeout=connect,
+            read_timeout=read,
         ),
     )
 

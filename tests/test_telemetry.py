@@ -80,3 +80,12 @@ def test_cloudwatch_exporter_targets_the_regional_xray_endpoint() -> None:
     transport = exporter._client._transport
     assert isinstance(transport, RequestsHTTPTransport)
     assert isinstance(transport._session, SigV4Session)
+
+
+def test_exporters_have_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    for name in ("cloudwatch", "langfuse"):
+        exporter = exporter_for(name, settings(tracing=[name]))
+        assert isinstance(exporter, OTLPSpanExporter)
+        assert exporter._client._timeout <= 2.0
