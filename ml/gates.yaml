@@ -1,0 +1,7 @@
+# Seuils fixés à partir de la mesure du 2026-09-25 (rappel 0,85 / FPR 0,00 / Gandalf 0,99).
+# Ne jamais les relâcher pour faire passer un modèle : corriger les données.
+threshold: 0.5            # doit rester égal à injection_threshold dans settings.yaml
+deepset_min_recall: 0.80
+deepset_max_fpr: 0.05
+gandalf_min_recall: 0.95
+parity_max_diff: 0.001
