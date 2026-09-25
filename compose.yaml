@@ -1,0 +1,15 @@
+services:
+  api:
+    build: .
+    ports: ["8000:8000"]
+    environment:
+      OLLAMA_URL: http://ollama:11434
+      VISITOR_SALT: ${VISITOR_SALT:-dev-salt}
+
+  ollama:
+    image: ollama/ollama:latest
+    profiles: ["llm"]
+    volumes: ["ollama:/root/.ollama"]
+
+volumes:
+  ollama: {}
