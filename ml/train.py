@@ -12,6 +12,7 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 
+from ask_my_cv.text import normalize_text
 from ml.dataset import (
     ADVERSARIAL_PATH,
     HANDWRITTEN_PATH,
@@ -26,7 +27,7 @@ from ml.fetch import CACHE_DIR, Source, load_sources
 HYPERPARAMS = {
     "analyzer": "char",
     "ngram_range": [2, 5],
-    "sublinear_tf": True,
+    "sublinear_tf": False,
     "min_df": 2,
     "C": 10.0,
     "class_weight": "balanced",
@@ -40,7 +41,7 @@ def build_pipeline() -> Pipeline:
             analyzer="char",
             ngram_range=(2, 5),
             lowercase=True,
-            sublinear_tf=True,
+            sublinear_tf=False,
             min_df=2,
         ),
         LogisticRegression(C=10.0, max_iter=3000, class_weight="balanced"),
@@ -49,7 +50,7 @@ def build_pipeline() -> Pipeline:
 
 def fit(examples: list[Example]) -> Pipeline:
     pipe = build_pipeline()
-    pipe.fit([e.text for e in examples], [e.label for e in examples])
+    pipe.fit([normalize_text(e.text) for e in examples], [e.label for e in examples])
     return pipe
 
 

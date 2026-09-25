@@ -9,6 +9,7 @@ import onnxruntime as ort
 import yaml
 from sklearn.pipeline import Pipeline
 
+from ask_my_cv.text import normalize_text
 from ml.dataset import Datasets
 
 GATES_PATH = Path("ml/gates.yaml")
@@ -79,9 +80,10 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
     gandalf = [e.text for e in ds.eval_gandalf]
     adversarial = [c.text for c in ds.adversarial]
     texts = deepset + gandalf + adversarial
+    normalized = [normalize_text(t) for t in texts]
 
-    served = onnx_scores(onnx_bytes, texts)
-    reference = pipe.predict_proba(texts)[:, 1] if texts else np.zeros(0)
+    served = onnx_scores(onnx_bytes, normalized)
+    reference = pipe.predict_proba(normalized)[:, 1] if normalized else np.zeros(0)
     parity = float(np.max(np.abs(served - reference))) if texts else 0.0
     same_decisions = bool(np.array_equal(served >= gates.threshold, reference >= gates.threshold))
 
