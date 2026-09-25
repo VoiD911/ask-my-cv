@@ -143,3 +143,22 @@ def test_cors_allows_https_and_localhost() -> None:
         )
     )
     assert len(s.cors_origins) == 3
+
+
+def test_config_error_never_reveals_the_salt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ask_my_cv.settings import ConfigError
+
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML + "cors_origins: ['*']\n", encoding="utf-8")
+    secret = "S3CR3T-" + "q" * 40
+    monkeypatch.setenv("ASK_ENVIRONMENT", "prod")
+    monkeypatch.setenv("VISITOR_SALT", secret)
+    with pytest.raises(ConfigError) as info:
+        load_settings(path)
+    assert "S3CR3T" not in str(info.value) and "qqqq" not in str(info.value)
+    monkeypatch.setenv("VISITOR_SALT", "S3CR3T-court")
+    with pytest.raises(ConfigError) as info:
+        load_settings(path)
+    assert "S3CR3T" not in str(info.value)

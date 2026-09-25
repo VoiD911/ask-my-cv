@@ -6,9 +6,13 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, ValidationError, model_validator
 
 from ask_my_cv.visitor import TrustedProxy
+
+
+class ConfigError(ValueError):
+    """Configuration invalide (message sans les valeurs saisies)."""
 
 
 class ModelConfig(BaseModel):
@@ -108,4 +112,11 @@ def load_settings(path: Path | None = None) -> Settings:
     for env_name, field in _ENV_OVERRIDES.items():
         if value := os.environ.get(env_name):
             data[field] = value
-    return Settings.model_validate(data)
+    try:
+        return Settings.model_validate(data)
+    except ValidationError as exc:
+        details = "; ".join(
+            f"{'.'.join(str(p) for p in e['loc']) or 'settings'}: {e['msg']}"
+            for e in exc.errors(include_input=False, include_url=False, include_context=False)
+        )
+        raise ConfigError(f"configuration invalide : {details}") from None
