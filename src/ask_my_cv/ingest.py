@@ -49,9 +49,13 @@ def chunk_markdown(markdown: str, max_chars: int = 800) -> list[Chunk]:
     return chunks
 
 
+async def embed_chunks(chunks: list[Chunk], embedder: EmbeddingProvider) -> list[list[float]]:
+    return await embedder.embed([f"{c.section}\n{c.text}" for c in chunks])
+
+
 async def build_index(markdown: str, embedder: EmbeddingProvider) -> InMemoryVectorStore:
     chunks = chunk_markdown(markdown)
-    vectors = await embedder.embed([f"{c.section}\n{c.text}" for c in chunks])
+    vectors = await embed_chunks(chunks, embedder)
     return InMemoryVectorStore(chunks, vectors)
 
 
@@ -60,8 +64,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Construit l'index vectoriel du CV.")
     parser.add_argument("--cv", type=Path, default=settings.cv_path)
     parser.add_argument("--out", type=Path, default=settings.index_path)
+    parser.add_argument("--target", choices=["file", "dynamodb"], default="file")
     args = parser.parse_args(argv)
     markdown = args.cv.read_text(encoding="utf-8")
+    if args.target == "dynamodb":
+        from ask_my_cv.aws.dynamo import DynamoVectorStore
+        from ask_my_cv.container import aws_client
+
+        chunks = chunk_markdown(markdown)
+        vectors = asyncio.run(embed_chunks(chunks, build_embedder(settings)))
+        DynamoVectorStore(settings.chunks_table, aws_client("dynamodb", settings)).write(
+            chunks, vectors
+        )
+        print(f"{len(chunks)} passages écrits -> dynamodb:{settings.chunks_table}")
+        return
     store = asyncio.run(build_index(markdown, build_embedder(settings)))
     store.save(args.out)
     print(f"{len(store)} passages indexés -> {args.out}")

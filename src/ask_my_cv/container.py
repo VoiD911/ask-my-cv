@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from ask_my_cv.budget import InMemoryLedger
 from ask_my_cv.embeddings import EmbeddingProvider, HashEmbedder
 from ask_my_cv.input_guard import HeuristicDetector, InjectionDetector
@@ -9,6 +11,19 @@ from ask_my_cv.pipeline import Deps
 from ask_my_cv.prompting import load_template
 from ask_my_cv.settings import ModelConfig, Settings
 from ask_my_cv.vectorstore import InMemoryVectorStore
+
+
+def aws_client(service: str, settings: Settings) -> Any:
+    import boto3
+    from botocore.config import Config
+
+    return boto3.client(
+        service,
+        region_name=settings.aws_region,
+        config=Config(
+            retries={"mode": "standard", "max_attempts": 3}, connect_timeout=3, read_timeout=30
+        ),
+    )
 
 
 def build_embedder(settings: Settings) -> EmbeddingProvider:

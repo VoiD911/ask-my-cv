@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from ask_my_cv.aws.dynamo import DynamoVectorStore
 from ask_my_cv.embeddings import HashEmbedder
 from ask_my_cv.ingest import build_index, chunk_markdown, main
 from ask_my_cv.vectorstore import InMemoryVectorStore
@@ -54,3 +55,24 @@ def test_cli_writes_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setenv("ASK_SETTINGS", str(settings))
     main(["--cv", str(cv), "--out", str(out)])
     assert len(InMemoryVectorStore.load(out)) == 3
+
+
+def test_cli_writes_to_dynamodb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cv = tmp_path / "cv.md"
+    cv.write_text(SAMPLE, encoding="utf-8")
+    settings = tmp_path / "settings.yaml"
+    settings.write_text(
+        "default_model: fake:echo\nfallback_chain: [fake:echo]\n"
+        "models: [{id: fake:echo, provider: fake}]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ASK_SETTINGS", str(settings))
+    written: list[list] = []
+
+    def fake_write(self, chunks, vectors):
+        written.append(list(chunks))
+
+    monkeypatch.setattr(DynamoVectorStore, "write", fake_write)
+    main(["--cv", str(cv), "--target", "dynamodb"])
+    assert len(written) == 1
+    assert len(written[0]) == 3
