@@ -1,5 +1,6 @@
 environment: dev          # "prod" exige un VISITOR_SALT secret (variable d'environnement)
 trusted_proxy: none       # "cloudfront" uniquement si l'API n'est joignable que par CloudFront
+cors_origins: []   # origine du site en production (plan 1e)
 
 cv_path: data/cv.md
 index_path: data/index.json

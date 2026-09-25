@@ -8,7 +8,7 @@ OpenTelemetry diffusé en direct au navigateur (SSE).
 ```bash
 uv sync
 uv run python -m ask_my_cv.ingest        # construit data/index.json à partir de data/cv.md
-uv run uvicorn ask_my_cv.app:app --port 8000
+uv run uvicorn --factory ask_my_cv.app:create_app --port 8000 --no-access-log
 ```
 
 Avec un modèle local (optionnel) :
@@ -29,6 +29,8 @@ Sans Ollama, les requêtes basculent automatiquement sur le faux LLM (`fake:echo
 | POST | `/ask` | `{"question": "...", "model": "..."}` → flux `text/event-stream` |
 
 Événements : `stage.start`, `stage.end`, `token`, `done` (voir `src/ask_my_cv/events.py`).
+
+Les journaux d'accès sont désactivés : ils contiendraient les IP des visiteurs.
 
 ## Tests
 

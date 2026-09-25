@@ -42,6 +42,7 @@ class Settings(BaseModel):
     visitor_salt: str = "change-me"
     environment: Literal["dev", "prod"] = "dev"
     trusted_proxy: TrustedProxy = "none"
+    cors_origins: list[str] = []
 
     @model_validator(mode="after")
     def _known_models(self) -> Settings:

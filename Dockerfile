@@ -20,4 +20,4 @@ USER app
 
 EXPOSE 8000
 HEALTHCHECK CMD .venv/bin/python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
-CMD [".venv/bin/uvicorn", "ask_my_cv.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD [".venv/bin/uvicorn", "--factory", "ask_my_cv.app:create_app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
