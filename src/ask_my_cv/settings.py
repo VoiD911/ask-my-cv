@@ -28,6 +28,8 @@ class Settings(BaseModel):
     ollama_url: str = "http://localhost:11434"
     top_k: int = 5
     injection_threshold: float = 0.5
+    detector: Literal["heuristic", "onnx"] = "heuristic"
+    model_manifest: Path = Path("models/prod.json")
     daily_cap_usd: float = 0.5
     per_visitor_limit: int = 10
     visitor_window_s: float = 3600.0

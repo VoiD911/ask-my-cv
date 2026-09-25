@@ -16,6 +16,8 @@ models:
 
 top_k: 5
 injection_threshold: 0.5
+detector: heuristic   # passe à "onnx" dans la PR de promotion du premier modèle
+model_manifest: models/prod.json
 daily_cap_usd: 0.5
 per_visitor_limit: 10
 visitor_window_s: 3600
