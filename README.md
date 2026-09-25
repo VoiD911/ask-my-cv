@@ -7,6 +7,7 @@ OpenTelemetry diffusé en direct au navigateur (SSE).
 
 ```bash
 uv sync
+gh release download model-v1.0.0 -p model.onnx -D models   # settings.yaml utilise le détecteur ONNX
 uv run python -m ask_my_cv.ingest        # construit data/index.json à partir de data/cv.md
 uv run uvicorn --factory ask_my_cv.app:create_app --port 8000 --no-access-log --no-proxy-headers
 ```
@@ -20,6 +21,16 @@ docker compose exec ollama ollama pull gemma3:1b
 
 Sans Ollama, les requêtes basculent automatiquement sur le faux LLM (`fake:echo`).
 
+L'image Docker (`docker build` / `docker run`) démarre en production par défaut
+(`ASK_ENVIRONMENT=prod`) et refuse de démarrer sans un secret dédié :
+
+```bash
+docker build -t ask-my-cv .
+docker run --rm -p 8000:8000 -e VISITOR_SALT=<secret d'au moins 32 caractères> ask-my-cv
+```
+
+`docker compose up` reste en mode développement (`ASK_ENVIRONMENT=dev`, voir `compose.yaml`).
+
 ## Endpoints
 
 | Méthode | Chemin | Rôle |
@@ -28,7 +39,7 @@ Sans Ollama, les requêtes basculent automatiquement sur le faux LLM (`fake:echo
 | GET | `/models` | Modèles publics et modèle par défaut |
 | POST | `/ask` | `{"question": "...", "model": "..."}` → flux `text/event-stream` |
 
-Événements : `stage.start`, `stage.end`, `token`, `done` (voir `src/ask_my_cv/events.py`).
+Événements : `stage.start`, `stage.end`, `llm.progress`, `answer`, `done` (voir `src/ask_my_cv/events.py`).
 
 Les journaux d'accès sont désactivés : ils contiendraient les IP des visiteurs.
 
