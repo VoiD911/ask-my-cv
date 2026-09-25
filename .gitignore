@@ -5,3 +5,7 @@ __pycache__/
 .ruff_cache/
 data/index.json
 .env
+ml/.cache/
+dist/
+models/*.onnx
+models/*.sigstore.json
