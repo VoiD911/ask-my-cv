@@ -44,9 +44,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
         settings = get_deps().settings
         return {
             "default": settings.default_model,
-            "models": [
-                {"id": m.id, "provider": m.provider} for m in settings.models if m.public
-            ],
+            "models": [{"id": m.id, "provider": m.provider} for m in settings.models if m.public],
         }
 
     @app.post("/ask")

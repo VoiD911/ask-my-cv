@@ -17,7 +17,9 @@ class OutputVerdict:
 
 def _phones(text: str) -> list[str]:
     return [
-        m for m in _PHONE_CANDIDATE.findall(text) if sum(c.isdigit() for c in m) >= _MIN_PHONE_DIGITS
+        m
+        for m in _PHONE_CANDIDATE.findall(text)
+        if sum(c.isdigit() for c in m) >= _MIN_PHONE_DIGITS
     ]
 
 

@@ -6,12 +6,25 @@ from ask_my_cv.events import Done, Event, StageEnd, Token
 from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing
 from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, Deps, run_pipeline
 
-STAGES = ["reception", "quota", "injection", "embedding", "retrieval", "prompt", "llm", "output_guard"]
+STAGES = [
+    "reception",
+    "quota",
+    "injection",
+    "embedding",
+    "retrieval",
+    "prompt",
+    "llm",
+    "output_guard",
+]
 
 
-async def run(deps: Deps, question: str = "Quelle expérience en MLOps ?", model: str | None = None) -> list[Event]:
+async def run(
+    deps: Deps, question: str = "Quelle expérience en MLOps ?", model: str | None = None
+) -> list[Event]:
     events: list[Event] = []
-    await run_pipeline(question, model or deps.settings.default_model, "visitor", deps, events.append)
+    await run_pipeline(
+        question, model or deps.settings.default_model, "visitor", deps, events.append
+    )
     return events
 
 
@@ -46,9 +59,7 @@ async def test_injection_is_blocked_before_llm(make_deps) -> None:
 
 
 async def test_fallback_to_next_provider(make_deps) -> None:
-    deps = make_deps(
-        providers={"bad": FakeLLM(id="bad", fail=True), "good": FakeLLM(id="good")}
-    )
+    deps = make_deps(providers={"bad": FakeLLM(id="bad", fail=True), "good": FakeLLM(id="good")})
     events = await run(deps)
     llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
     assert llm_end.status == "fallback"

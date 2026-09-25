@@ -31,8 +31,7 @@ async def test_fake_llm_failure() -> None:
 
 async def test_ollama_streams_ndjson() -> None:
     body = (
-        b'{"message":{"content":"Bon"},"done":false}\n'
-        b'{"message":{"content":"jour"},"done":true}\n'
+        b'{"message":{"content":"Bon"},"done":false}\n{"message":{"content":"jour"},"done":true}\n'
     )
 
     def handler(request: httpx.Request) -> httpx.Response:

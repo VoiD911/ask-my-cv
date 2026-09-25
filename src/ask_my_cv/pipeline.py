@@ -24,7 +24,9 @@ BLOCK_MESSAGES = {
     "unknown_model": "Ce modèle n'est pas disponible.",
     "rate_limited": "Trop de questions d'affilée : réessaie dans un moment.",
     "budget_exceeded": "Le budget du jour est atteint : la démo passe en mode rediffusion.",
-    "injection_detected": "Requête bloquée par le détecteur d'injection. Rien n'a été envoyé au LLM.",
+    "injection_detected": (
+        "Requête bloquée par le détecteur d'injection. Rien n'a été envoyé au LLM."
+    ),
     "prompt_leak": "Réponse retirée : elle exposait des instructions internes.",
     "pii": "Réponse retirée : elle contenait des données personnelles.",
     "ungrounded": "Réponse retirée : elle ne s'appuyait pas sur le CV.",
@@ -66,7 +68,8 @@ async def _stream_llm(
                     emit(Token(text=piece))
         except (LLMError, TimeoutError):
             if parts:
-                raise  # des tokens sont déjà partis : impossible de changer de modèle en cours de réponse
+                # des tokens sont déjà partis : impossible de changer de modèle en cours de réponse
+                raise
             failed.append(provider.id)
             continue
         recorder.set(provider=provider.id)

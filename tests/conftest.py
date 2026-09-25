@@ -69,7 +69,8 @@ def make_deps(store: InMemoryVectorStore) -> Callable[..., Deps]:
             embedder=HashEmbedder(dim=64),
             store=store,
             detector=detector or HeuristicDetector(),
-            ledger=ledger or InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=100, window_s=3600),
+            ledger=ledger
+            or InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=100, window_s=3600),
             template=PromptTemplate(name="answer", version="v1", system="Règles {canary}"),
             providers=providers,
             settings=settings,

@@ -29,7 +29,11 @@ def test_load_template_reads_version_from_filename(tmp_path: Path) -> None:
     path = tmp_path / "answer@v7.md"
     path.write_text("Système {canary}\n", encoding="utf-8")
     template = load_template(path)
-    assert (template.name, template.version, template.system) == ("answer", "v7", "Système {canary}")
+    assert (template.name, template.version, template.system) == (
+        "answer",
+        "v7",
+        "Système {canary}",
+    )
 
 
 def test_load_template_requires_version(tmp_path: Path) -> None:

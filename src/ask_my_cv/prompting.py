@@ -26,4 +26,6 @@ def load_template(path: Path) -> PromptTemplate:
     name, _, version = path.stem.partition("@")
     if not version:
         raise ValueError(f"nom de template sans version : {path.name}")
-    return PromptTemplate(name=name, version=version, system=path.read_text(encoding="utf-8").strip())
+    return PromptTemplate(
+        name=name, version=version, system=path.read_text(encoding="utf-8").strip()
+    )

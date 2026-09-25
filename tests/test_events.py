@@ -17,6 +17,8 @@ def test_events_serialize_with_type() -> None:
 
 
 def test_done_has_no_override_by_default() -> None:
-    done = Done(tokens_in=10, tokens_out=5, cost_usd=0.0, latency_ms=3.0, sources=["[1] Expérience"])
+    done = Done(
+        tokens_in=10, tokens_out=5, cost_usd=0.0, latency_ms=3.0, sources=["[1] Expérience"]
+    )
     assert done.answer_override is None
     assert done.type == "done"

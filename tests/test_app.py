@@ -29,7 +29,10 @@ async def test_healthz(make_deps) -> None:
 async def test_models_lists_public_models(make_deps) -> None:
     async with client_for(create_app(make_deps())) as client:
         response = await client.get("/models")
-    assert response.json() == {"default": "fake:echo", "models": [{"id": "fake:echo", "provider": "fake"}]}
+    assert response.json() == {
+        "default": "fake:echo",
+        "models": [{"id": "fake:echo", "provider": "fake"}],
+    }
 
 
 async def test_ask_streams_stage_events_then_done(make_deps) -> None:
