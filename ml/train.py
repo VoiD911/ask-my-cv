@@ -60,6 +60,11 @@ def to_onnx_bytes(pipe: Pipeline) -> bytes:
         initial_types=[("text", StringTensorType([None, 1]))],  # pyright: ignore[reportArgumentType]
         options={id(pipe.steps[-1][1]): {"zipmap": False}},
     )
+    # skl2onnx accumule les opsets dans une structure dont l'ordre d'itération dépend de
+    # PYTHONHASHSEED : on trie pour obtenir un export déterministe d'un process à l'autre.
+    ops = sorted(model.opset_import, key=lambda o: o.domain)  # pyright: ignore[reportAttributeAccessIssue]
+    del model.opset_import[:]  # pyright: ignore[reportAttributeAccessIssue]
+    model.opset_import.extend(ops)  # pyright: ignore[reportAttributeAccessIssue]
     return model.SerializeToString()  # pyright: ignore[reportAttributeAccessIssue]
 
 
