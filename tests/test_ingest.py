@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from ask_my_cv.aws.bedrock import BedrockEmbedder
 from ask_my_cv.aws.dynamo import DynamoVectorStore
 from ask_my_cv.embeddings import HashEmbedder
 from ask_my_cv.ingest import build_index, chunk_markdown, main
@@ -63,7 +64,8 @@ def test_cli_writes_to_dynamodb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     settings = tmp_path / "settings.yaml"
     settings.write_text(
         "default_model: fake:echo\nfallback_chain: [fake:echo]\n"
-        "models: [{id: fake:echo, provider: fake}]\n",
+        "models: [{id: fake:echo, provider: fake}]\n"
+        "embedder: bedrock\nembed_dim: 1024\n",
         encoding="utf-8",
     )
     monkeypatch.setenv("ASK_SETTINGS", str(settings))
@@ -72,7 +74,27 @@ def test_cli_writes_to_dynamodb(tmp_path: Path, monkeypatch: pytest.MonkeyPatch)
     def fake_write(self, chunks, vectors):
         written.append(list(chunks))
 
+    async def fake_embed(self, texts: list[str]) -> list[list[float]]:
+        return [[0.0] * 1024 for _ in texts]
+
     monkeypatch.setattr(DynamoVectorStore, "write", fake_write)
+    monkeypatch.setattr(BedrockEmbedder, "embed", fake_embed)
     main(["--cv", str(cv), "--target", "dynamodb"])
     assert len(written) == 1
     assert len(written[0]) == 3
+
+
+def test_cli_dynamodb_target_requires_the_bedrock_embedder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cv = tmp_path / "cv.md"
+    cv.write_text(SAMPLE, encoding="utf-8")
+    settings = tmp_path / "settings.yaml"
+    settings.write_text(
+        "default_model: fake:echo\nfallback_chain: [fake:echo]\n"
+        "models: [{id: fake:echo, provider: fake}]\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ASK_SETTINGS", str(settings))
+    with pytest.raises(SystemExit):
+        main(["--cv", str(cv), "--target", "dynamodb"])

@@ -20,7 +20,12 @@ def exporter_for(name: str, settings: Settings) -> SpanExporter:
     if name == "console":
         return ConsoleSpanExporter()
     if name == "cloudwatch":
+        import botocore.session
+
         from ask_my_cv.aws.sigv4 import SigV4Session
+
+        if botocore.session.Session().get_credentials() is None:
+            raise ConfigError("tracing cloudwatch : aucun identifiant AWS")
 
         return OTLPSpanExporter(
             endpoint=f"https://xray.{settings.aws_region}.amazonaws.com/v1/traces",

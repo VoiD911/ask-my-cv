@@ -20,8 +20,8 @@ class ModelConfig(BaseModel):
     provider: Literal["fake", "ollama", "bedrock"]
     model: str = ""
     public: bool = True
-    input_per_mtok: float = 0.0
-    output_per_mtok: float = 0.0
+    input_per_mtok: float = Field(default=0.0, ge=0, allow_inf_nan=False)
+    output_per_mtok: float = Field(default=0.0, ge=0, allow_inf_nan=False)
 
     @model_validator(mode="after")
     def _ollama_needs_model(self) -> ModelConfig:

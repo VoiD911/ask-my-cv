@@ -117,6 +117,18 @@ def test_bedrock_model_requires_a_model_id() -> None:
         Settings.model_validate(data)
 
 
+@pytest.mark.parametrize("field", ["input_per_mtok", "output_per_mtok"])
+def test_model_price_rejects_negative_values(field: str) -> None:
+    with pytest.raises(ValidationError):
+        ModelConfig.model_validate({"id": "fake:echo", "provider": "fake", field: -0.01})
+
+
+@pytest.mark.parametrize("field", ["input_per_mtok", "output_per_mtok"])
+def test_model_price_rejects_nan(field: str) -> None:
+    with pytest.raises(ValidationError):
+        ModelConfig.model_validate({"id": "fake:echo", "provider": "fake", field: float("nan")})
+
+
 @pytest.mark.parametrize("dim", [0, 300, 2048])
 def test_bedrock_embedder_needs_a_titan_dimension(dim: int) -> None:
     with pytest.raises(ValidationError):

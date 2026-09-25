@@ -89,3 +89,11 @@ def test_exporters_have_a_short_timeout(monkeypatch: pytest.MonkeyPatch) -> None
         exporter = exporter_for(name, settings(tracing=[name]))
         assert isinstance(exporter, OTLPSpanExporter)
         assert exporter._client._timeout <= 2.0
+
+
+def test_cloudwatch_without_aws_credentials_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    import botocore.session
+
+    monkeypatch.setattr(botocore.session.Session, "get_credentials", lambda self: None)
+    with pytest.raises(ConfigError):
+        exporter_for("cloudwatch", settings(tracing=["cloudwatch"]))

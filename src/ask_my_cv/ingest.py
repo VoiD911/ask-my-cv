@@ -66,6 +66,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--out", type=Path, default=settings.index_path)
     parser.add_argument("--target", choices=["file", "dynamodb"], default="file")
     args = parser.parse_args(argv)
+    if args.target == "dynamodb" and settings.embedder != "bedrock":
+        parser.error("--target dynamodb nécessite embedder: bedrock (Titan V2)")
     markdown = args.cv.read_text(encoding="utf-8")
     if args.target == "dynamodb":
         from ask_my_cv.aws.dynamo import DynamoVectorStore
