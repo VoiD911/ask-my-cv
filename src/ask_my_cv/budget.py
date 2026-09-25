@@ -20,6 +20,8 @@ class BudgetLedger(Protocol):
 
     def spent_today(self, now: float) -> float: ...
 
+    def spent_by_provider(self, now: float) -> dict[str, float]: ...
+
 
 def _day(now: float) -> str:
     return time.strftime("%Y-%m-%d", time.gmtime(now))

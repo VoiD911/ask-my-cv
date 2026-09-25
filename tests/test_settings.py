@@ -74,3 +74,59 @@ def test_environment_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setenv("ASK_ENVIRONMENT", "prod")
     monkeypatch.setenv("VISITOR_SALT", "s" * 32)
     assert load_settings(path).environment == "prod"
+
+
+def minimal(**extra: object) -> dict:
+    return {
+        "models": [{"id": "fake:echo", "provider": "fake"}],
+        "default_model": "fake:echo",
+        "fallback_chain": ["fake:echo"],
+        **extra,
+    }
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        {"top_k": 0},
+        {"top_k": 21},
+        {"injection_threshold": 0.0},
+        {"injection_threshold": 1.0},
+        {"per_visitor_limit": 0},
+        {"daily_cap_usd": -1},
+        {"stage_timeout_s": 0},
+        {"first_token_timeout_s": 0},
+    ],
+)
+def test_out_of_range_settings_are_rejected(extra: dict) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(**extra))
+
+
+def test_ollama_model_requires_a_model_name() -> None:
+    data = minimal()
+    data["models"].append({"id": "ollama:x", "provider": "ollama"})
+    with pytest.raises(ValidationError):
+        Settings.model_validate(data)
+
+
+def test_ledger_protocol_exposes_spend_by_provider() -> None:
+    from ask_my_cv.budget import BudgetLedger
+
+    assert "spent_by_provider" in dir(BudgetLedger)
+
+
+@pytest.mark.parametrize(
+    "origins",
+    [["*"], ["http://portfolio.example"], ["https://ok.example", "*"]],
+)
+def test_cors_origins_are_restricted(origins: list[str]) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(cors_origins=origins))
+
+
+def test_cors_allows_https_and_localhost() -> None:
+    s = Settings.model_validate(
+        minimal(cors_origins=["https://portfolio.example", "http://localhost:3000"])
+    )
+    assert len(s.cors_origins) == 2

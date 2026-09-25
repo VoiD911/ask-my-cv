@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 from ask_my_cv.visitor import TrustedProxy
 
@@ -18,6 +18,12 @@ class ModelConfig(BaseModel):
     input_per_mtok: float = 0.0
     output_per_mtok: float = 0.0
 
+    @model_validator(mode="after")
+    def _ollama_needs_model(self) -> ModelConfig:
+        if self.provider == "ollama" and not self.model:
+            raise ValueError(f"{self.id} : 'model' est obligatoire pour Ollama")
+        return self
+
 
 class Settings(BaseModel):
     cv_path: Path = Path("data/cv.md")
@@ -28,16 +34,16 @@ class Settings(BaseModel):
     default_model: str
     fallback_chain: list[str]
     ollama_url: str = "http://localhost:11434"
-    top_k: int = 5
-    injection_threshold: float = 0.5
+    top_k: int = Field(default=5, ge=1, le=20)
+    injection_threshold: float = Field(default=0.5, gt=0.0, lt=1.0)
     detector: Literal["heuristic", "onnx"] = "heuristic"
     model_manifest: Path = Path("models/prod.json")
-    daily_cap_usd: float = 0.5
-    per_visitor_limit: int = 10
-    visitor_window_s: float = 3600.0
-    stage_timeout_s: float = 20.0
-    first_token_timeout_s: float = 8.0
-    llm_deadline_s: float = 30.0
+    daily_cap_usd: float = Field(default=0.5, ge=0.0)
+    per_visitor_limit: int = Field(default=10, ge=1)
+    visitor_window_s: float = Field(default=3600.0, gt=0.0)
+    stage_timeout_s: float = Field(default=20.0, gt=0.0)
+    first_token_timeout_s: float = Field(default=8.0, gt=0.0)
+    llm_deadline_s: float = Field(default=30.0, gt=0.0)
     allowed_contacts: list[str] = []
     visitor_salt: str = "change-me"
     environment: Literal["dev", "prod"] = "dev"
@@ -60,6 +66,20 @@ class Settings(BaseModel):
             raise ValueError(
                 "en production, VISITOR_SALT doit être un secret d'au moins 32 caractères"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _cors_origins_are_restricted(self) -> Settings:
+        for origin in self.cors_origins:
+            if origin == "*":
+                raise ValueError("cors_origins ne doit pas contenir '*'")
+            if origin.startswith(("http://localhost", "http://127.0.0.1")):
+                continue
+            if not origin.startswith("https://"):
+                raise ValueError(
+                    f"origine CORS invalide : {origin!r} doit commencer par 'https://' "
+                    "(sauf localhost/127.0.0.1 en développement)"
+                )
         return self
 
     def public_model_ids(self) -> set[str]:
