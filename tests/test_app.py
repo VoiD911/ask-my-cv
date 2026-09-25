@@ -1,0 +1,49 @@
+import json
+
+import httpx
+
+from ask_my_cv.app import create_app
+
+
+def parse_sse(body: str) -> list[dict]:
+    events = []
+    for block in body.strip().split("\n\n"):
+        fields: dict[str, str] = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(": ")
+            fields[key] = value
+        events.append(json.loads(fields["data"]))
+    return events
+
+
+def client_for(app) -> httpx.AsyncClient:
+    return httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test")
+
+
+async def test_healthz(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        response = await client.get("/healthz")
+    assert response.json() == {"status": "ok"}
+
+
+async def test_models_lists_public_models(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        response = await client.get("/models")
+    assert response.json() == {"default": "fake:echo", "models": [{"id": "fake:echo", "provider": "fake"}]}
+
+
+async def test_ask_streams_stage_events_then_done(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        response = await client.post("/ask", json={"question": "Quelle expérience en MLOps ?"})
+    assert response.headers["content-type"].startswith("text/event-stream")
+    events = parse_sse(response.text)
+    assert (events[0]["type"], events[0]["name"]) == ("stage.start", "reception")
+    assert events[-1]["type"] == "done"
+    assert events[-1]["answer_override"] is None
+    assert any(e["type"] == "token" for e in events)
+
+
+async def test_ask_rejects_oversized_payload(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        response = await client.post("/ask", json={"question": "x" * 2001})
+    assert response.status_code == 422
