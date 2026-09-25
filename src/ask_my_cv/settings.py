@@ -7,6 +7,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, model_validator
 
+from ask_my_cv.visitor import TrustedProxy
+
 
 class ModelConfig(BaseModel):
     id: str
@@ -38,6 +40,8 @@ class Settings(BaseModel):
     llm_deadline_s: float = 30.0
     allowed_contacts: list[str] = []
     visitor_salt: str = "change-me"
+    environment: Literal["dev", "prod"] = "dev"
+    trusted_proxy: TrustedProxy = "none"
 
     @model_validator(mode="after")
     def _known_models(self) -> Settings:
@@ -47,11 +51,25 @@ class Settings(BaseModel):
             raise ValueError(f"modèles inconnus dans la config : {sorted(unknown)}")
         return self
 
+    @model_validator(mode="after")
+    def _production_secret(self) -> Settings:
+        if self.environment == "prod" and (
+            self.visitor_salt == "change-me" or len(self.visitor_salt) < 32
+        ):
+            raise ValueError(
+                "en production, VISITOR_SALT doit être un secret d'au moins 32 caractères"
+            )
+        return self
+
     def public_model_ids(self) -> set[str]:
         return {m.id for m in self.models if m.public}
 
 
-_ENV_OVERRIDES = {"OLLAMA_URL": "ollama_url", "VISITOR_SALT": "visitor_salt"}
+_ENV_OVERRIDES = {
+    "OLLAMA_URL": "ollama_url",
+    "VISITOR_SALT": "visitor_salt",
+    "ASK_ENVIRONMENT": "environment",
+}
 
 
 def load_settings(path: Path | None = None) -> Settings:

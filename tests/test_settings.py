@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -51,3 +52,25 @@ def test_unknown_fallback_model_rejected() -> None:
             default_model="fake:echo",
             fallback_chain=["fake:echo", "ghost"],
         )
+
+
+def test_production_refuses_default_or_short_salt() -> None:
+    base: dict[str, Any] = dict(
+        models=[ModelConfig(id="fake:echo", provider="fake")],
+        default_model="fake:echo",
+        fallback_chain=["fake:echo"],
+        environment="prod",
+    )
+    with pytest.raises(ValidationError):
+        Settings(**base)
+    with pytest.raises(ValidationError):
+        Settings(**base, visitor_salt="court")
+    assert Settings(**base, visitor_salt="s" * 32).environment == "prod"
+
+
+def test_environment_override(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_ENVIRONMENT", "prod")
+    monkeypatch.setenv("VISITOR_SALT", "s" * 32)
+    assert load_settings(path).environment == "prod"

@@ -94,3 +94,32 @@ async def test_ask_uses_requested_model(make_deps) -> None:
         e for e in parse_sse(response.text) if e["type"] == "stage.end" and e["name"] == "llm"
     )
     assert llm_end["attrs"]["provider"] == "b"
+
+
+async def test_rate_limit_follows_the_cloudfront_viewer(make_deps) -> None:
+    from ask_my_cv.budget import InMemoryLedger
+
+    deps = make_deps(
+        ledger=InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=1, window_s=3600),
+        trusted_proxy="cloudfront",
+    )
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(create_app(deps)) as client:
+        first = await client.post(
+            "/ask", json=body, headers={"CloudFront-Viewer-Address": "203.0.113.1:1"}
+        )
+        other = await client.post(
+            "/ask", json=body, headers={"CloudFront-Viewer-Address": "203.0.113.2:1"}
+        )
+        again = await client.post(
+            "/ask", json=body, headers={"CloudFront-Viewer-Address": "203.0.113.1:2"}
+        )
+
+    def quota(response: httpx.Response) -> str:
+        return next(
+            e["status"]
+            for e in parse_sse(response.text)
+            if e["type"] == "stage.end" and e["name"] == "quota"
+        )
+
+    assert (quota(first), quota(other), quota(again)) == ("ok", "ok", "blocked")

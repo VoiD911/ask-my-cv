@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import hashlib
 from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
@@ -11,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ask_my_cv.events import Event
 from ask_my_cv.limits import MAX_BODY_BYTES, BodySizeLimit
 from ask_my_cv.pipeline import Deps, run_pipeline
+from ask_my_cv.visitor import client_ip, visitor_id
 
 
 class AskRequest(BaseModel):
@@ -54,8 +54,12 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @app.post("/ask")
     async def ask(body: AskRequest, request: Request) -> StreamingResponse:
         current = get_deps()
-        ip = request.client.host if request.client else "unknown"
-        visitor = hashlib.sha256(f"{current.settings.visitor_salt}:{ip}".encode()).hexdigest()[:16]
+        ip = client_ip(
+            request.headers,
+            request.client.host if request.client else None,
+            current.settings.trusted_proxy,
+        )
+        visitor = visitor_id(ip, current.settings.visitor_salt)
         queue: asyncio.Queue[Event | None] = asyncio.Queue()
 
         async def produce() -> None:
