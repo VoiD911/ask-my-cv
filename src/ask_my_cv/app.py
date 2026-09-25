@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ from ask_my_cv.events import Event
 from ask_my_cv.limits import MAX_BODY_BYTES, BodySizeLimit
 from ask_my_cv.pipeline import MAX_QUESTION_CHARS, Deps, run_pipeline
 from ask_my_cv.visitor import client_ip, visitor_id
+
+logger = logging.getLogger(__name__)
 
 
 class AskRequest(BaseModel):
@@ -39,10 +42,14 @@ def create_app(deps: Deps | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         yield
-        for provider in current.providers.values():
+        for name, provider in current.providers.items():
             close = getattr(provider, "aclose", None)
-            if close is not None:
+            if close is None:
+                continue
+            try:
                 await close()
+            except Exception:
+                logger.warning("fermeture de %s échouée", name, exc_info=True)
 
     app = FastAPI(title="ask-my-cv", version="0.1.0", lifespan=lifespan)
     app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
@@ -56,8 +63,19 @@ def create_app(deps: Deps | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
-        # jamais l'entrée du visiteur dans la réponse
-        details = [{"loc": e["loc"], "msg": e["msg"], "type": e["type"]} for e in exc.errors()]
+        # jamais l'entrée du visiteur ni le nom d'un champ inattendu dans la réponse
+        details = [
+            {
+                "loc": [
+                    p
+                    for p in e["loc"]
+                    if not isinstance(p, str) or p == "body" or p in AskRequest.model_fields
+                ],
+                "msg": e["msg"],
+                "type": e["type"],
+            }
+            for e in exc.errors()
+        ]
         return JSONResponse(status_code=422, content={"detail": details})
 
     @app.get("/healthz")

@@ -185,3 +185,29 @@ def test_providers_are_closed_on_shutdown(make_deps) -> None:
     with TestClient(create_app(make_deps(providers={"c": Closable(id="c")}))):
         pass
     assert Closable.closed
+
+
+async def test_extra_field_name_is_not_echoed(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        r = await client.post("/ask", json={"question": "hi", "confidentiel_cle": 1})
+    assert r.status_code == 422 and "confidentiel" not in r.text
+
+
+def test_one_failing_close_does_not_block_the_others(make_deps) -> None:
+    from fastapi.testclient import TestClient
+
+    from ask_my_cv.llm import FakeLLM
+
+    closed: list[str] = []
+
+    class Bad(FakeLLM):
+        async def aclose(self) -> None:
+            raise RuntimeError("boom")
+
+    class Good(FakeLLM):
+        async def aclose(self) -> None:
+            closed.append(self.id)
+
+    with TestClient(create_app(make_deps(providers={"a": Bad(id="a"), "b": Good(id="b")}))):
+        pass
+    assert closed == ["b"]
