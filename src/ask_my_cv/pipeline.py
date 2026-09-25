@@ -14,7 +14,7 @@ from ask_my_cv.llm import LLMError, LLMProvider, estimate_tokens
 from ask_my_cv.output_guard import check_output
 from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
-from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage
+from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage, tracer
 from ask_my_cv.vectorstore import VectorStore
 
 MAX_QUESTION_CHARS = 500
@@ -94,77 +94,79 @@ async def run_pipeline(
     cost = 0.0
     sources: list[str] = []
     override: str | None = None
-    try:
-        async with stage("reception", emit) as st:
-            question = question.strip()
-            if not question or len(question) > MAX_QUESTION_CHARS:
-                raise StageBlocked("invalid_question", length=len(question))
-            if model_id not in settings.public_model_ids():
-                raise StageBlocked("unknown_model", model=model_id)
-            st.set(model=model_id)
+    with tracer.start_as_current_span("ask") as root:
+        try:
+            async with stage("reception", emit) as st:
+                question = question.strip()
+                if not question or len(question) > MAX_QUESTION_CHARS:
+                    raise StageBlocked("invalid_question", length=len(question))
+                if model_id not in settings.public_model_ids():
+                    raise StageBlocked("unknown_model", model=model_id)
+                st.set(model=model_id)
 
-        async with stage("quota", emit) as st:
-            try:
-                deps.ledger.check(visitor, now())
-            except RateLimited:
-                raise StageBlocked("rate_limited") from None
-            except BudgetExceeded:
-                raise StageBlocked("budget_exceeded") from None
-            st.set(spent_today_usd=round(deps.ledger.spent_today(now()), 4))
+            async with stage("quota", emit) as st:
+                try:
+                    deps.ledger.check(visitor, now())
+                except RateLimited:
+                    raise StageBlocked("rate_limited") from None
+                except BudgetExceeded:
+                    raise StageBlocked("budget_exceeded") from None
+                st.set(spent_today_usd=round(deps.ledger.spent_today(now()), 4))
 
-        async with stage("injection", emit) as st:
-            verdict = check_input(deps.detector, question, settings.injection_threshold)
-            st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
-            if verdict.blocked:
-                raise StageBlocked("injection_detected")
+            async with stage("injection", emit) as st:
+                verdict = check_input(deps.detector, question, settings.injection_threshold)
+                st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
+                if verdict.blocked:
+                    raise StageBlocked("injection_detected")
 
-        async with stage("embedding", emit) as st:
-            async with asyncio.timeout(settings.stage_timeout_s):
-                [query_vector] = await deps.embedder.embed([question])
-            st.set(dim=len(query_vector))
+            async with stage("embedding", emit) as st:
+                async with asyncio.timeout(settings.stage_timeout_s):
+                    [query_vector] = await deps.embedder.embed([question])
+                st.set(dim=len(query_vector))
 
-        async with stage("retrieval", emit) as st:
-            hits = await deps.store.search(query_vector, settings.top_k)
-            sources = [f"[{i}] {hit.chunk.section}" for i, hit in enumerate(hits, 1)]
-            st.set(hits=len(hits), top_score=round(hits[0].score, 3) if hits else 0.0)
+            async with stage("retrieval", emit) as st:
+                hits = await deps.store.search(query_vector, settings.top_k)
+                sources = [f"[{i}] {hit.chunk.section}" for i, hit in enumerate(hits, 1)]
+                st.set(hits=len(hits), top_score=round(hits[0].score, 3) if hits else 0.0)
 
-        async with stage("prompt", emit) as st:
-            canary = secrets.token_hex(8)
-            system, user = deps.template.render(question, hits, canary)
-            st.set(template=f"{deps.template.name}@{deps.template.version}")
+            async with stage("prompt", emit) as st:
+                canary = secrets.token_hex(8)
+                system, user = deps.template.render(question, hits, canary)
+                st.set(template=f"{deps.template.name}@{deps.template.version}")
 
-        async with stage("llm", emit) as st:
-            chain = _provider_chain(model_id, deps)
-            provider, answer = await _stream_llm(
-                chain, system, user, emit, settings.stage_timeout_s, st
+            async with stage("llm", emit) as st:
+                chain = _provider_chain(model_id, deps)
+                provider, answer = await _stream_llm(
+                    chain, system, user, emit, settings.stage_timeout_s, st
+                )
+                tokens_in = estimate_tokens(system + user)
+                tokens_out = estimate_tokens(answer)
+                cost = provider.pricing.cost(tokens_in, tokens_out)
+                deps.ledger.record(provider.id, cost, now())
+                st.set(tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=round(cost, 6))
+
+            async with stage("output_guard", emit):
+                checked = check_output(
+                    answer,
+                    canary=canary,
+                    allowed_contacts=set(settings.allowed_contacts),
+                    n_sources=len(hits),
+                )
+                if not checked.ok:
+                    raise StageBlocked(checked.reason or "blocked")
+        except StageBlocked as exc:
+            override = BLOCK_MESSAGES.get(exc.reason, ERROR_MESSAGE)
+        except Exception:
+            override = ERROR_MESSAGE
+        finally:
+            emit(
+                Done(
+                    tokens_in=tokens_in,
+                    tokens_out=tokens_out,
+                    cost_usd=round(cost, 6),
+                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                    sources=sources,
+                    answer_override=override,
+                    trace_id=format(root.get_span_context().trace_id, "032x"),
+                )
             )
-            tokens_in = estimate_tokens(system + user)
-            tokens_out = estimate_tokens(answer)
-            cost = provider.pricing.cost(tokens_in, tokens_out)
-            deps.ledger.record(provider.id, cost, now())
-            st.set(tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=round(cost, 6))
-
-        async with stage("output_guard", emit):
-            checked = check_output(
-                answer,
-                canary=canary,
-                allowed_contacts=set(settings.allowed_contacts),
-                n_sources=len(hits),
-            )
-            if not checked.ok:
-                raise StageBlocked(checked.reason or "blocked")
-    except StageBlocked as exc:
-        override = BLOCK_MESSAGES.get(exc.reason, ERROR_MESSAGE)
-    except Exception:
-        override = ERROR_MESSAGE
-    finally:
-        emit(
-            Done(
-                tokens_in=tokens_in,
-                tokens_out=tokens_out,
-                cost_usd=round(cost, 6),
-                latency_ms=round((time.perf_counter() - started) * 1000, 2),
-                sources=sources,
-                answer_override=override,
-            )
-        )

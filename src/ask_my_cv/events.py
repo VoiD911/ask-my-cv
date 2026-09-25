@@ -34,6 +34,7 @@ class Done(BaseModel):
     latency_ms: float
     sources: list[str]
     answer_override: str | None = None
+    trace_id: str | None = None
 
 
 Event = StageStart | StageEnd | Token | Done

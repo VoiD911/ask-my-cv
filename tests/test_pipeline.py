@@ -178,3 +178,16 @@ async def test_tokens_are_streamed_inside_llm_stage(make_deps) -> None:
     start, end = kinds.index(("StageStart", "llm")), kinds.index(("StageEnd", "llm"))
     idx = [i for i, e in enumerate(events) if isinstance(e, Token)]
     assert idx and start < min(idx) and max(idx) < end
+
+
+async def test_stages_share_one_trace_and_done_carries_it(make_deps, spans) -> None:
+    events = await run(make_deps())
+    finished = spans.get_finished_spans()
+    root = next(s for s in finished if s.name == "ask")
+    stage_spans = [s for s in finished if s.name != "ask"]
+    assert len(stage_spans) == 8
+    assert {s.context.trace_id for s in finished} == {root.context.trace_id}
+    assert all(
+        s.parent is not None and s.parent.span_id == root.context.span_id for s in stage_spans
+    )
+    assert done(events).trace_id == format(root.context.trace_id, "032x")
