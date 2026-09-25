@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 _PHONE_CANDIDATE = re.compile(r"\+?\d[\d .-]{7,}\d")
 _CITATION = re.compile(r"\[\d+\]")
 _MIN_PHONE_DIGITS = 9

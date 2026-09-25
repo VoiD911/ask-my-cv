@@ -24,6 +24,11 @@ def test_unknown_email_is_blocked_but_allowed_contact_passes() -> None:
     assert ok.ok
 
 
+def test_allowed_contact_at_end_of_sentence_passes() -> None:
+    verdict = check_output("Contact : alex.martin@example.com.", canary=C, allowed_contacts=ALLOWED, n_sources=0)
+    assert verdict.ok
+
+
 def test_phone_number_is_blocked_but_year_ranges_pass() -> None:
     phone = check_output("Appelle le +33 6 12 34 56 78 [1]", canary=C, allowed_contacts=ALLOWED, n_sources=1)
     assert (phone.ok, phone.reason) == (False, "pii")
