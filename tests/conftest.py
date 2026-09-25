@@ -23,6 +23,20 @@ _provider.add_span_processor(SimpleSpanProcessor(_exporter))
 trace.set_tracer_provider(_provider)
 
 
+@pytest.fixture(autouse=True)
+def isolated_aws(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Jamais de profil ni d'identifiants réels : aucun test ne peut joindre AWS."""
+    empty = tmp_path_factory.getbasetemp() / "aws-empty"
+    empty.mkdir(exist_ok=True)
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(empty / "config"))
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(empty / "credentials"))
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "testing")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
+    monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
+    monkeypatch.setenv("AWS_DEFAULT_REGION", "ca-central-1")
+
+
 @pytest.fixture
 def spans() -> InMemorySpanExporter:
     _exporter.clear()
