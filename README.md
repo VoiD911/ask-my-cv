@@ -8,7 +8,7 @@ OpenTelemetry diffusé en direct au navigateur (SSE).
 ```bash
 uv sync
 uv run python -m ask_my_cv.ingest        # construit data/index.json à partir de data/cv.md
-uv run uvicorn --factory ask_my_cv.app:create_app --port 8000 --no-access-log
+uv run uvicorn --factory ask_my_cv.app:create_app --port 8000 --no-access-log --no-proxy-headers
 ```
 
 Avec un modèle local (optionnel) :
