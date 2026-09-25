@@ -1,6 +1,6 @@
 import json
 
-from ask_my_cv.events import Done, StageEnd, StageStart, Token
+from ask_my_cv.events import Answer, Done, LLMProgress, StageEnd, StageStart
 
 
 def test_events_serialize_with_type() -> None:
@@ -13,7 +13,11 @@ def test_events_serialize_with_type() -> None:
         "duration_ms": 12.5,
         "attrs": {"provider": "fake:echo"},
     }
-    assert Token(text="Bon").type == "token"
+    assert json.loads(LLMProgress(tokens=3).model_dump_json()) == {
+        "type": "llm.progress",
+        "tokens": 3,
+    }
+    assert json.loads(Answer(text="Bon").model_dump_json()) == {"type": "answer", "text": "Bon"}
 
 
 def test_done_has_no_override_by_default() -> None:

@@ -21,8 +21,17 @@ class StageEnd(BaseModel):
     attrs: dict[str, Any] = Field(default_factory=dict)
 
 
-class Token(BaseModel):
-    type: Literal["token"] = "token"
+class LLMProgress(BaseModel):
+    """Progression de la génération : un compteur, jamais de texte."""
+
+    type: Literal["llm.progress"] = "llm.progress"
+    tokens: int
+
+
+class Answer(BaseModel):
+    """La réponse, émise uniquement après le garde-fou de sortie."""
+
+    type: Literal["answer"] = "answer"
     text: str
 
 
@@ -37,4 +46,4 @@ class Done(BaseModel):
     trace_id: str | None = None
 
 
-Event = StageStart | StageEnd | Token | Done
+Event = StageStart | StageEnd | LLMProgress | Answer | Done

@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
-from ask_my_cv.events import Done, Token
+from ask_my_cv.events import Answer, Done, LLMProgress
 from ask_my_cv.input_guard import InjectionDetector, check_input
 from ask_my_cv.llm import LLMError, LLMProvider, estimate_tokens
 from ask_my_cv.output_guard import check_output
@@ -61,11 +61,13 @@ async def _stream_llm(
     failed: list[str] = []
     for provider in chain:
         parts: list[str] = []
+        chars = 0
         try:
             async with asyncio.timeout(timeout_s):
                 async for piece in provider.stream(system, user):
                     parts.append(piece)
-                    emit(Token(text=piece))
+                    chars += len(piece)
+                    emit(LLMProgress(tokens=max(1, chars // 4)))
         except (LLMError, TimeoutError):
             if parts:
                 # des tokens sont déjà partis : impossible de changer de modèle en cours de réponse
@@ -154,6 +156,7 @@ async def run_pipeline(
                 )
                 if not checked.ok:
                     raise StageBlocked(checked.reason or "blocked")
+            emit(Answer(text=answer))
         except StageBlocked as exc:
             override = BLOCK_MESSAGES.get(exc.reason, ERROR_MESSAGE)
         except Exception:
