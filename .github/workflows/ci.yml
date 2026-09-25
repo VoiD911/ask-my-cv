@@ -38,3 +38,12 @@ jobs:
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/train.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
       - run: docker build -t ask-my-cv:ci .
+      - name: Test de fumée du conteneur
+        run: |
+          docker run -d --name smoke -p 8000:8000 -e VISITOR_SALT="$(openssl rand -hex 32)" ask-my-cv:ci
+          for i in $(seq 1 30); do
+            if curl -fsS localhost:8000/healthz; then echo; exit 0; fi
+            sleep 1
+          done
+          docker logs smoke
+          exit 1

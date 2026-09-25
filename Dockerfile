@@ -3,6 +3,12 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
 WORKDIR /app
 
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends locales \
+ && sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+ && locale-gen \
+ && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir "uv>=0.5"
 
 COPY pyproject.toml uv.lock ./
