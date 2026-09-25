@@ -7,9 +7,23 @@ def test_cloudfront_header_is_used_only_when_trusted() -> None:
     assert client_ip(headers, "10.0.0.1", "none") == "10.0.0.1"
 
 
-def test_ipv6_viewer_address_keeps_the_address() -> None:
-    headers = {"cloudfront-viewer-address": "2001:db8::1:443"}
-    assert client_ip(headers, None, "cloudfront") == "2001:db8::1"
+def test_ipv6_is_bucketed_by_64() -> None:
+    a = client_ip({"cloudfront-viewer-address": "2001:db8::1:443"}, None, "cloudfront")
+    b = client_ip({"cloudfront-viewer-address": "2001:db8::ffff:443"}, None, "cloudfront")
+    assert a == b == "2001:db8::/64"
+
+
+def test_viewer_address_without_port_or_garbage() -> None:
+    def h(value: str) -> dict[str, str]:
+        return {"cloudfront-viewer-address": value}
+
+    assert client_ip(h("203.0.113.7"), None, "cloudfront") == "203.0.113.7"
+    assert client_ip(h("::1"), None, "cloudfront") == "::/64"
+    assert client_ip(h("garbage"), "10.0.0.1", "cloudfront") == "10.0.0.1"
+
+
+def test_ipv6_peer_is_bucketed_too() -> None:
+    assert client_ip({}, "2001:db8::5", "none") == "2001:db8::/64"
 
 
 def test_missing_header_falls_back_to_peer_then_unknown() -> None:
