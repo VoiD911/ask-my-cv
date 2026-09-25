@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import secrets
 import time
 from collections.abc import Callable
@@ -71,10 +72,10 @@ async def _stream_llm(
 ) -> tuple[LLMProvider, str]:
     """Génère côté serveur. Aucun texte ne sort : on peut donc basculer à tout moment."""
     failed: list[str] = []
+    chars = 0
     async with asyncio.timeout(settings.llm_deadline_s):
         for provider in chain:
             parts: list[str] = []
-            chars = 0
             stream = provider.stream(system, user)
             try:
                 async with asyncio.timeout(settings.first_token_timeout_s):
@@ -96,7 +97,8 @@ async def _stream_llm(
                 recorder.set(failed=",".join(failed))
                 continue
             finally:
-                await stream.aclose()
+                with contextlib.suppress(Exception):  # ne masque pas CancelledError
+                    await stream.aclose()
             recorder.set(provider=provider.id)
             if failed:
                 recorder.fallback = True

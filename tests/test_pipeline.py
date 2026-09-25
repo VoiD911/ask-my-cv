@@ -230,6 +230,47 @@ async def test_unexpected_provider_exception_triggers_fallback(make_deps) -> Non
     assert (llm_end.status, llm_end.attrs["provider"]) == ("fallback", "ok")
 
 
+async def test_close_error_does_not_break_fallback(make_deps) -> None:
+    class BadClose:
+        def __init__(self, inner: AsyncGenerator[str, None]) -> None:
+            self._g = inner
+
+        def __aiter__(self) -> "BadClose":
+            return self
+
+        async def __anext__(self) -> str:
+            return await self._g.__anext__()
+
+        async def aclose(self) -> None:
+            raise RuntimeError("close failed")
+
+    first = Scripted("first", ["[1]"], fail_after=0)
+    original = first.stream
+    first.stream = lambda s, u: BadClose(original(s, u))  # pyright: ignore[reportAttributeAccessIssue]
+    events = await run(make_deps(providers={"first": first, "second": FakeLLM(id="second")}))
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert (llm_end.status, llm_end.attrs["provider"]) == ("fallback", "second")
+
+
+async def test_progress_never_decreases_across_fallback(make_deps) -> None:
+    first = Scripted("first", ["D'après", " [1]", " suite"], fail_after=2)
+    events = await run(make_deps(providers={"first": first, "second": FakeLLM(id="second")}))
+    counts = [e.tokens for e in events if isinstance(e, LLMProgress)]
+    assert counts == sorted(counts) and len(counts) > 2
+
+
+async def test_deadline_during_first_token_wait_is_an_error_not_a_fallback(make_deps) -> None:
+    slow = Scripted("slow", ["[1]"], delay_s=1.0)
+    other = FakeLLM(id="other")
+    deps = make_deps(
+        providers={"slow": slow, "other": other}, first_token_timeout_s=0.5, llm_deadline_s=0.1
+    )
+    events = await run(deps)
+    assert ends(events)[-1] == ("llm", "error")
+    assert other.calls == 0
+    assert slow.closed
+
+
 async def test_all_failures_are_listed_on_the_llm_span(make_deps) -> None:
     deps = make_deps(providers={"a": FakeLLM(id="a", fail=True), "b": FakeLLM(id="b", fail=True)})
     events = await run(deps)
