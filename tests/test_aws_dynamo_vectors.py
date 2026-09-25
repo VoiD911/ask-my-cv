@@ -50,8 +50,31 @@ def test_write_puts_chunks_with_their_embedding() -> None:
             },
         },
     )
+    stub.add_response(
+        "scan",
+        {"Items": [{"id": {"S": "c1"}}]},
+        {"TableName": "chunks", "ProjectionExpression": "id"},
+    )
     with stub:
         DynamoVectorStore("chunks", client).write(
             [Chunk("c1", "Expérience", "MLOps")], [[0.5, 1.0]]
         )
     stub.assert_no_pending_responses()
+
+
+def test_rewrite_removes_chunks_of_a_previous_cv() -> None:
+    from moto import mock_aws
+
+    with mock_aws():
+        client = boto3.client("dynamodb", region_name="ca-central-1")
+        client.create_table(
+            TableName="chunks",
+            BillingMode="PAY_PER_REQUEST",
+            KeySchema=[{"AttributeName": "id", "KeyType": "HASH"}],
+            AttributeDefinitions=[{"AttributeName": "id", "AttributeType": "S"}],
+        )
+        store = DynamoVectorStore("chunks", client)
+        store.write([Chunk("c1", "A", "x"), Chunk("c2", "B", "y")], [[0.1], [0.2]])
+        store.write([Chunk("c1", "A", "z")], [[0.3]])
+        items = client.scan(TableName="chunks")["Items"]
+        assert [(i["id"]["S"], i["text"]["S"]) for i in items] == [("c1", "z")]

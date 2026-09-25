@@ -52,6 +52,13 @@ class DynamoVectorStore:
                     "embedding": {"L": [_number(v) for v in vector]},
                 },
             )
+        keep = {chunk.id for chunk in chunks}
+        for page in self._client.get_paginator("scan").paginate(
+            TableName=self.table, ProjectionExpression="id"
+        ):
+            for found in page.get("Items", []):
+                if found["id"]["S"] not in keep:  # passage d'une version précédente du CV
+                    self._client.delete_item(TableName=self.table, Key={"id": found["id"]})
 
 
 def _day(now: float) -> str:
