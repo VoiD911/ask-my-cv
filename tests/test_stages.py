@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from opentelemetry.trace import StatusCode
 
 from ask_my_cv.events import Event, StageEnd
 from ask_my_cv.stages import StageBlocked, stage
@@ -61,3 +62,19 @@ async def test_stage_cancelled_is_recorded_as_error() -> None:
     assert isinstance(end, StageEnd)
     assert end.status == "error"
     assert end.attrs == {"error": "CancelledError"}
+
+
+async def test_blocked_stage_span_is_not_an_error(spans) -> None:
+    with pytest.raises(StageBlocked):
+        async with stage("injection", lambda e: None):
+            raise StageBlocked("injection_detected")
+    span = spans.get_finished_spans()[-1]
+    assert span.status.status_code is not StatusCode.ERROR
+    assert not span.events
+
+
+async def test_failed_stage_span_is_an_error(spans) -> None:
+    with pytest.raises(ValueError):
+        async with stage("retrieval", lambda e: None):
+            raise ValueError("boom")
+    assert spans.get_finished_spans()[-1].status.status_code is StatusCode.ERROR

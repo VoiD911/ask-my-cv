@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from opentelemetry import trace
+from opentelemetry.trace import Status, StatusCode
 
 from ask_my_cv.events import Event, StageEnd, StageStart, StageStatus
 
@@ -44,7 +45,9 @@ async def stage(name: str, emit: Emit) -> AsyncIterator[StageRecorder]:
     recorder = StageRecorder()
     started = time.perf_counter()
     emit(StageStart(name=name, ts=time.time()))
-    with tracer.start_as_current_span(name) as span:
+    with tracer.start_as_current_span(
+        name, record_exception=False, set_status_on_exception=False
+    ) as span:
         status: StageStatus = "ok"
         try:
             yield recorder
@@ -66,6 +69,8 @@ async def stage(name: str, emit: Emit) -> AsyncIterator[StageRecorder]:
             for key, value in recorder.attrs.items():
                 span.set_attribute(f"xops.{key}", _span_value(value))
             span.set_attribute("xops.status", status)
+            if status == "error":
+                span.set_status(Status(StatusCode.ERROR))
             emit(
                 StageEnd(
                     name=name,
