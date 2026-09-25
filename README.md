@@ -65,3 +65,23 @@ uv run python -m ml.train --version v0.0.0 --out dist
   (Sigstore keyless) ; la CI vérifie la signature avant de construire l'image.
 - `models/prod.json` désigne le modèle en production ; il ne change que par PR.
 - En local, pour utiliser le modèle promu : `gh release download model-<version> -p model.onnx -D models`.
+
+## Production (AWS, `ca-central-1`)
+
+La configuration de production est `settings.aws.yaml` (`ASK_SETTINGS=settings.aws.yaml`) :
+
+- **LLM** : Claude Haiku 4.5 via Bedrock (`ConverseStream`), profil d'inférence `us.` : les requêtes au LLM sont traitées aux États-Unis.
+- **Embeddings** : Titan Text Embeddings V2, en région `ca-central-1` : les embeddings restent au Canada.
+- **Recherche** : recherche vectorielle native DynamoDB (`SearchVectors`, index `embedding-index`, 1024 dimensions, `DOT_PRODUCT`).
+- **Quotas et budget** : table DynamoDB `ledger`, compteurs atomiques, TTL `expires_at`.
+- **Traces** : OpenTelemetry vers CloudWatch (OTLP signé SigV4) et Langfuse ; ni IP ni question dans les traces.
+
+Secrets, uniquement par variables d'environnement : `VISITOR_SALT` (au moins 32 caractères), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`.
+
+Indexer le CV dans DynamoDB (exige `embedder: bedrock`) :
+
+```bash
+ASK_SETTINGS=settings.aws.yaml uv run python -m ask_my_cv.ingest --target dynamodb
+```
+
+Les tests n'appellent jamais AWS : les clients sont simulés (`Stubber`, moto) et l'environnement AWS est isolé.
