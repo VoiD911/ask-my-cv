@@ -8,6 +8,13 @@ _PHONE_CANDIDATE = re.compile(r"\+?\d[\d .-]{7,}\d")
 _CITATION = re.compile(r"\[\d+\]")
 _MIN_PHONE_DIGITS = 9
 
+REFUSAL = "Je ne trouve pas cette information dans le CV."
+_DECORATION = re.compile(r"[«»\"“”\s]+")
+
+
+def _is_refusal(text: str) -> bool:
+    return _DECORATION.sub(" ", text).strip() == REFUSAL
+
 
 @dataclass(frozen=True)
 class OutputVerdict:
@@ -31,6 +38,6 @@ def check_output(
     for found in _EMAIL.findall(text) + _phones(text):
         if found.strip() not in allowed_contacts:
             return OutputVerdict(False, "pii")
-    if n_sources and not _CITATION.search(text):
+    if n_sources and not _CITATION.search(text) and not _is_refusal(text):
         return OutputVerdict(False, "ungrounded")
     return OutputVerdict(True)

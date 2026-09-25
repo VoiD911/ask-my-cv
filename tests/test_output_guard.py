@@ -1,4 +1,4 @@
-from ask_my_cv.output_guard import check_output
+from ask_my_cv.output_guard import REFUSAL, check_output
 
 ALLOWED = {"alex.martin@example.com"}
 
@@ -58,3 +58,15 @@ def test_no_sources_allows_uncited_answer() -> None:
         "Le CV ne le précise pas.", canary=C, allowed_contacts=ALLOWED, n_sources=0
     )
     assert verdict.ok
+
+
+def test_fixed_refusal_is_accepted_without_citation() -> None:
+    for text in (REFUSAL, f"« {REFUSAL} »", f"  {REFUSAL}\n"):
+        assert check_output(text, canary=C, allowed_contacts=ALLOWED, n_sources=5).ok
+
+
+def test_refusal_with_extra_text_still_needs_a_citation() -> None:
+    verdict = check_output(
+        f"{REFUSAL} Mais il est brillant.", canary=C, allowed_contacts=ALLOWED, n_sources=5
+    )
+    assert (verdict.ok, verdict.reason) == (False, "ungrounded")

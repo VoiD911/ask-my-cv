@@ -41,3 +41,11 @@ def test_load_template_requires_version(tmp_path: Path) -> None:
     path.write_text("x", encoding="utf-8")
     with pytest.raises(ValueError):
         load_template(path)
+
+
+def test_prompt_v2_asks_for_the_exact_refusal() -> None:
+    from ask_my_cv.output_guard import REFUSAL
+
+    template = load_template(Path("prompts/answer@v2.md"))
+    assert template.version == "v2"
+    assert REFUSAL in template.system and "{canary}" in template.system

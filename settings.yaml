@@ -1,6 +1,6 @@
 cv_path: data/cv.md
 index_path: data/index.json
-prompt_path: prompts/answer@v1.md
+prompt_path: prompts/answer@v2.md
 embed_dim: 256
 
 default_model: ollama:gemma3

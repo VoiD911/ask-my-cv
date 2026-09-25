@@ -7,6 +7,7 @@ import pytest
 from ask_my_cv.budget import InMemoryLedger
 from ask_my_cv.events import Answer, Done, Event, LLMProgress, StageEnd
 from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing
+from ask_my_cv.output_guard import REFUSAL
 from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, Deps, run_pipeline
 
 STAGES = [
@@ -97,6 +98,12 @@ async def test_ungrounded_answer_is_replaced(make_deps) -> None:
     events = await run(deps)
     assert ends(events)[-1] == ("output_guard", "blocked")
     assert done(events).answer_override == BLOCK_MESSAGES["ungrounded"]
+
+
+async def test_fixed_refusal_reaches_the_visitor(make_deps) -> None:
+    events = await run(make_deps(providers={"fake:echo": FakeLLM(id="fake:echo", reply=REFUSAL)}))
+    assert ends(events)[-1] == ("output_guard", "ok")
+    assert answers(events) == [REFUSAL]
 
 
 async def test_rate_limit_blocks_second_question(make_deps) -> None:
