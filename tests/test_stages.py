@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from ask_my_cv.events import Event, StageEnd
@@ -48,3 +50,14 @@ async def test_stage_fallback_status() -> None:
     end = events[-1]
     assert isinstance(end, StageEnd)
     assert end.status == "fallback"
+
+
+async def test_stage_cancelled_is_recorded_as_error() -> None:
+    events: list[Event] = []
+    with pytest.raises(asyncio.CancelledError):
+        async with stage("llm", events.append):
+            raise asyncio.CancelledError
+    end = events[-1]
+    assert isinstance(end, StageEnd)
+    assert end.status == "error"
+    assert end.attrs == {"error": "CancelledError"}

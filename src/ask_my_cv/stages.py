@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -52,6 +53,10 @@ async def stage(name: str, emit: Emit) -> AsyncIterator[StageRecorder]:
         except StageBlocked as exc:
             status = "blocked"
             recorder.set(reason=exc.reason, **exc.attrs)
+            raise
+        except asyncio.CancelledError:
+            status = "error"
+            recorder.set(error="CancelledError")
             raise
         except Exception as exc:
             status = "error"
