@@ -22,6 +22,8 @@ daily_cap_usd: 0.5
 per_visitor_limit: 10
 visitor_window_s: 3600
 stage_timeout_s: 20
+first_token_timeout_s: 8   # au-delà, bascule sur le fournisseur suivant
+llm_deadline_s: 30         # délai global de l'étape llm, toutes tentatives comprises
 allowed_contacts:
   - alex.martin@example.com
 visitor_salt: change-me

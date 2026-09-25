@@ -50,35 +50,57 @@ def _provider_chain(model_id: str, deps: Deps) -> list[LLMProvider]:
     return [deps.providers[i] for i in ids if i in deps.providers]
 
 
+@dataclass
+class Usage:
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+
+
+Account = Callable[[LLMProvider, str], None]
+
+
 async def _stream_llm(
     chain: list[LLMProvider],
     system: str,
     user: str,
     emit: Emit,
-    timeout_s: float,
+    settings: Settings,
     recorder: StageRecorder,
+    account: Account,
 ) -> tuple[LLMProvider, str]:
+    """Génère côté serveur. Aucun texte ne sort : on peut donc basculer à tout moment."""
     failed: list[str] = []
-    for provider in chain:
-        parts: list[str] = []
-        chars = 0
-        try:
-            async with asyncio.timeout(timeout_s):
-                async for piece in provider.stream(system, user):
+    async with asyncio.timeout(settings.llm_deadline_s):
+        for provider in chain:
+            parts: list[str] = []
+            chars = 0
+            stream = provider.stream(system, user)
+            try:
+                async with asyncio.timeout(settings.first_token_timeout_s):
+                    first = await anext(stream)
+                parts.append(first)
+                chars += len(first)
+                emit(LLMProgress(tokens=max(1, chars // 4)))
+                async for piece in stream:
                     parts.append(piece)
                     chars += len(piece)
                     emit(LLMProgress(tokens=max(1, chars // 4)))
-        except (LLMError, TimeoutError):
-            if parts:
-                # des tokens sont déjà partis : impossible de changer de modèle en cours de réponse
+            except asyncio.CancelledError:
+                # délai global dépassé ou visiteur déconnecté : les tokens produits sont facturés
+                account(provider, "".join(parts))
                 raise
-            failed.append(provider.id)
-            continue
-        recorder.set(provider=provider.id)
-        if failed:
-            recorder.fallback = True
-            recorder.set(failed=",".join(failed))
-        return provider, "".join(parts)
+            except Exception:
+                account(provider, "".join(parts))
+                failed.append(provider.id)
+                recorder.set(failed=",".join(failed))
+                continue
+            finally:
+                await stream.aclose()
+            recorder.set(provider=provider.id)
+            if failed:
+                recorder.fallback = True
+            return provider, "".join(parts)
     raise LLMError(f"tous les fournisseurs ont échoué : {failed}")
 
 
@@ -92,8 +114,7 @@ async def run_pipeline(
 ) -> None:
     settings = deps.settings
     started = time.perf_counter()
-    tokens_in = tokens_out = 0
-    cost = 0.0
+    usage = Usage()
     sources: list[str] = []
     override: str | None = None
     with tracer.start_as_current_span("ask") as root:
@@ -127,7 +148,8 @@ async def run_pipeline(
                 st.set(dim=len(query_vector))
 
             async with stage("retrieval", emit) as st:
-                hits = await deps.store.search(query_vector, settings.top_k)
+                async with asyncio.timeout(settings.stage_timeout_s):
+                    hits = await deps.store.search(query_vector, settings.top_k)
                 sources = [f"[{i}] {hit.chunk.section}" for i, hit in enumerate(hits, 1)]
                 st.set(hits=len(hits), top_score=round(hits[0].score, 3) if hits else 0.0)
 
@@ -137,15 +159,27 @@ async def run_pipeline(
                 st.set(template=f"{deps.template.name}@{deps.template.version}")
 
             async with stage("llm", emit) as st:
+
+                def account(provider: LLMProvider, text: str) -> None:
+                    if not text:
+                        return
+                    tokens_in, tokens_out = estimate_tokens(system + user), estimate_tokens(text)
+                    cost = provider.pricing.cost(tokens_in, tokens_out)
+                    deps.ledger.record(provider.id, cost, now())
+                    usage.tokens_in += tokens_in
+                    usage.tokens_out += tokens_out
+                    usage.cost_usd += cost
+
                 chain = _provider_chain(model_id, deps)
                 provider, answer = await _stream_llm(
-                    chain, system, user, emit, settings.stage_timeout_s, st
+                    chain, system, user, emit, settings, st, account
                 )
-                tokens_in = estimate_tokens(system + user)
-                tokens_out = estimate_tokens(answer)
-                cost = provider.pricing.cost(tokens_in, tokens_out)
-                deps.ledger.record(provider.id, cost, now())
-                st.set(tokens_in=tokens_in, tokens_out=tokens_out, cost_usd=round(cost, 6))
+                account(provider, answer)
+                st.set(
+                    tokens_in=usage.tokens_in,
+                    tokens_out=usage.tokens_out,
+                    cost_usd=round(usage.cost_usd, 6),
+                )
 
             async with stage("output_guard", emit):
                 checked = check_output(
@@ -164,9 +198,9 @@ async def run_pipeline(
         finally:
             emit(
                 Done(
-                    tokens_in=tokens_in,
-                    tokens_out=tokens_out,
-                    cost_usd=round(cost, 6),
+                    tokens_in=usage.tokens_in,
+                    tokens_out=usage.tokens_out,
+                    cost_usd=round(usage.cost_usd, 6),
                     latency_ms=round((time.perf_counter() - started) * 1000, 2),
                     sources=sources,
                     answer_override=override,

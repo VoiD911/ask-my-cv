@@ -1,5 +1,8 @@
+import asyncio
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
+
+import pytest
 
 from ask_my_cv.budget import InMemoryLedger
 from ask_my_cv.events import Answer, Done, Event, LLMProgress, StageEnd
@@ -126,16 +129,33 @@ async def test_llm_span_carries_provider(make_deps, spans) -> None:
 
 
 class Scripted:
-    def __init__(self, id: str, pieces: list[str], fail_after: int | None = None) -> None:
+    def __init__(
+        self,
+        id: str,
+        pieces: list[str],
+        fail_after: int | None = None,
+        pricing: ModelPricing | None = None,
+        error: Exception | None = None,
+        delay_s: float = 0.0,
+    ) -> None:
         self.id, self.pieces, self.fail_after = id, pieces, fail_after
-        self.pricing, self.calls = ModelPricing(), 0
+        self.pricing = pricing or ModelPricing()
+        self.error = error or LLMError(f"{id} coupé")
+        self.delay_s = delay_s
+        self.calls = 0
+        self.closed = False
 
-    async def stream(self, system: str, user: str) -> AsyncIterator[str]:
+    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
         self.calls += 1
-        for i, piece in enumerate(self.pieces):
-            if i == self.fail_after:
-                raise LLMError(f"{self.id} coupé")
-            yield piece.replace("{system}", system)
+        try:
+            for i, piece in enumerate(self.pieces):
+                if self.delay_s:
+                    await asyncio.sleep(self.delay_s)
+                if i == self.fail_after:
+                    raise self.error
+                yield piece.replace("{system}", system)
+        finally:
+            self.closed = True
 
 
 async def test_budget_exceeded_blocks_before_llm(make_deps) -> None:
@@ -167,15 +187,69 @@ async def test_canary_leak_is_replaced(make_deps) -> None:
     assert done(events).answer_override == BLOCK_MESSAGES["prompt_leak"]
 
 
-async def test_failure_after_tokens_does_not_fall_back(make_deps) -> None:
-    first = Scripted("first", ["D'après", " [1]", " suite"], fail_after=2)
+async def test_failure_mid_generation_falls_back_and_bills_the_partial_attempt(make_deps) -> None:
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    first = Scripted(
+        "first", ["D'après", " [1]", " suite"], fail_after=2, pricing=ModelPricing(1.0, 5.0)
+    )
     second = FakeLLM(id="second")
-    events = await run(make_deps(providers={"first": first, "second": second}))
-    assert sum(isinstance(e, LLMProgress) for e in events) == 2
-    assert answers(events) == []
+    events = await run(make_deps(providers={"first": first, "second": second}, ledger=ledger))
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert llm_end.status == "fallback"
+    assert (llm_end.attrs["provider"], llm_end.attrs["failed"]) == ("second", "first")
+    assert answers(events) == [second.reply]
+    assert first.closed
+    assert ledger.spent_by_provider(time.time())["first"] > 0
+
+
+async def test_first_token_timeout_falls_back(make_deps) -> None:
+    slow = Scripted("slow", ["[1] lent"], delay_s=1.0)
+    deps = make_deps(
+        providers={"slow": slow, "fast": FakeLLM(id="fast")}, first_token_timeout_s=0.05
+    )
+    events = await run(deps)
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert (llm_end.status, llm_end.attrs["failed"]) == ("fallback", "slow")
+    assert slow.closed
+
+
+async def test_llm_deadline_aborts_the_stage(make_deps) -> None:
+    trickle = Scripted("trickle", ["[1]"] + [" mot"] * 200, delay_s=0.01)
+    deps = make_deps(providers={"trickle": trickle}, first_token_timeout_s=0.5, llm_deadline_s=0.2)
+    events = await run(deps)
     assert ends(events)[-1] == ("llm", "error")
-    assert second.calls == 0
+    assert answers(events) == []
     assert done(events).answer_override == ERROR_MESSAGE
+    assert trickle.closed
+
+
+async def test_unexpected_provider_exception_triggers_fallback(make_deps) -> None:
+    broken = Scripted("broken", ["x"], fail_after=0, error=ValueError("json invalide"))
+    events = await run(make_deps(providers={"broken": broken, "ok": FakeLLM(id="ok")}))
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert (llm_end.status, llm_end.attrs["provider"]) == ("fallback", "ok")
+
+
+async def test_all_failures_are_listed_on_the_llm_span(make_deps) -> None:
+    deps = make_deps(providers={"a": FakeLLM(id="a", fail=True), "b": FakeLLM(id="b", fail=True)})
+    events = await run(deps)
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert (llm_end.status, llm_end.attrs["failed"]) == ("error", "a,b")
+
+
+async def test_client_disconnect_still_bills_generated_tokens(make_deps) -> None:
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    trickle = Scripted("t", ["[1] a"] + [" b"] * 100, delay_s=0.05, pricing=ModelPricing(1.0, 5.0))
+    deps = make_deps(providers={"t": trickle}, ledger=ledger)
+    events: list[Event] = []
+    task = asyncio.create_task(run_pipeline("Quelle expérience ?", "t", "v", deps, events.append))
+    while not any(isinstance(e, LLMProgress) for e in events):  # noqa: ASYNC110
+        await asyncio.sleep(0.01)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert ledger.spent_by_provider(time.time())["t"] > 0
+    assert trickle.closed
 
 
 async def test_all_providers_down_uses_error_message(make_deps) -> None:

@@ -34,6 +34,8 @@ class Settings(BaseModel):
     per_visitor_limit: int = 10
     visitor_window_s: float = 3600.0
     stage_timeout_s: float = 20.0
+    first_token_timeout_s: float = 8.0
+    llm_deadline_s: float = 30.0
     allowed_contacts: list[str] = []
     visitor_salt: str = "change-me"
 

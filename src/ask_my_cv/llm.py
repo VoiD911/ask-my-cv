@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -30,7 +30,7 @@ class LLMProvider(Protocol):
     id: str
     pricing: ModelPricing
 
-    def stream(self, system: str, user: str) -> AsyncIterator[str]: ...
+    def stream(self, system: str, user: str) -> AsyncGenerator[str, None]: ...
 
 
 DEFAULT_FAKE_REPLY = "D'après le CV [1], le candidat a une expérience concrète en MLOps."
@@ -52,7 +52,7 @@ class FakeLLM:
         self.fail = fail
         self.calls = 0
 
-    async def stream(self, system: str, user: str) -> AsyncIterator[str]:
+    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
         self.calls += 1
         if self.fail:
             raise LLMError(f"{self.id} indisponible")
@@ -77,7 +77,10 @@ class OllamaLLM:
         self.pricing = pricing or ModelPricing()
         self._client = client or httpx.AsyncClient(timeout=60)
 
-    async def stream(self, system: str, user: str) -> AsyncIterator[str]:
+    async def aclose(self) -> None:
+        await self._client.aclose()
+
+    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
         payload = {
             "model": self.model,
             "stream": True,
