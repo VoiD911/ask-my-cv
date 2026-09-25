@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import re
+from importlib.metadata import version
 from pathlib import Path
 
 from skl2onnx import to_onnx
@@ -33,6 +34,11 @@ HYPERPARAMS = {
     "class_weight": "balanced",
 }
 VERSION_PATTERN = re.compile(r"^v\d+\.\d+\.\d+$")
+LIBRARY_NAMES = ["scikit-learn", "skl2onnx", "onnxruntime", "numpy"]
+
+
+def library_versions() -> dict[str, str]:
+    return {name: version(name) for name in LIBRARY_NAMES}
 
 
 def build_pipeline() -> Pipeline:
@@ -122,6 +128,7 @@ def run_training(
         "model_sha256": hashlib.sha256(onnx_bytes).hexdigest(),
         "dataset_fingerprint": fingerprint(ds.train),
         "hyperparams": HYPERPARAMS,
+        "libraries": library_versions(),
         "sources": [{"name": s.name, "license": s.license, "sha256": s.sha256} for s in sources],
         **report.to_dict(),
     }

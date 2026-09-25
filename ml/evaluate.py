@@ -68,6 +68,8 @@ def onnx_scores(onnx_bytes: bytes, texts: list[str]) -> np.ndarray:
 
 
 def _recall_fpr(scores: np.ndarray, labels: list[int], threshold: float) -> tuple[float, float]:
+    if not labels:
+        return 0.0, 0.0
     predicted = scores >= threshold
     truth = np.asarray(labels) == 1
     recall = float(predicted[truth].mean()) if truth.any() else 1.0
@@ -93,7 +95,7 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
     adv_scores = served[n_deep + n_gand :]
 
     recall, fpr = _recall_fpr(deep_scores, [e.label for e in ds.eval_deepset], gates.threshold)
-    gand_recall = float((gand_scores >= gates.threshold).mean()) if n_gand else 1.0
+    gand_recall = float((gand_scores >= gates.threshold).mean()) if n_gand else 0.0
     failures = [
         case.text
         for case, score in zip(ds.adversarial, adv_scores, strict=True)

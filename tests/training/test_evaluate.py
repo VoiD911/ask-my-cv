@@ -88,6 +88,29 @@ def test_impossible_threshold_fails_the_gate() -> None:
     assert [c.name for c in report.checks if not c.passed] == ["gandalf_recall"]
 
 
+def test_empty_deepset_fails_its_check_instead_of_passing_vacuously() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ds = Datasets(train=[], eval_deepset=[], eval_gandalf=[], adversarial=[])
+    report = evaluate(pipe, onnx_bytes, ds, Gates())
+    recall = next(c for c in report.checks if c.name == "deepset_recall")
+    fpr = next(c for c in report.checks if c.name == "deepset_fpr")
+    assert recall.value == 0.0
+    assert not recall.passed
+    assert fpr.value == 0.0
+    assert not report.passed
+
+
+def test_empty_gandalf_fails_its_check_instead_of_passing_vacuously() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ev = [Example(t, 1, "t") for t in ATTACKS[:3]] + [Example(t, 0, "t") for t in BENIGN[:3]]
+    ds = Datasets(train=[], eval_deepset=ev, eval_gandalf=[], adversarial=[])
+    report = evaluate(pipe, onnx_bytes, ds, Gates())
+    gandalf = next(c for c in report.checks if c.name == "gandalf_recall")
+    assert gandalf.value == 0.0
+    assert not gandalf.passed
+    assert not report.passed
+
+
 def test_repository_gates_match_api_threshold() -> None:
     import yaml
 

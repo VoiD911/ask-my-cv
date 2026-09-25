@@ -65,6 +65,8 @@ def test_run_training_writes_model_metrics_and_card(tmp_path: Path) -> None:
     assert len(metrics["model_sha256"]) == 64
     assert len(metrics["dataset_fingerprint"]) == 64
     assert metrics["sources"] == [{"name": "demo", "license": "MIT", "sha256": "a" * 64}]
+    assert set(metrics["libraries"]) == {"scikit-learn", "skl2onnx", "onnxruntime", "numpy"}
+    assert all(isinstance(v, str) and v for v in metrics["libraries"].values())
     card = (tmp_path / "model_card.md").read_text(encoding="utf-8")
     assert "v0.0.1" in card and "MIT" in card and "deepset_recall" in card
     assert (tmp_path / "model.onnx").stat().st_size > 0
