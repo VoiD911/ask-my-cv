@@ -118,7 +118,14 @@ def test_ledger_protocol_exposes_spend_by_provider() -> None:
 
 @pytest.mark.parametrize(
     "origins",
-    [["*"], ["http://portfolio.example"], ["https://ok.example", "*"]],
+    [
+        ["*"],
+        ["http://portfolio.example"],
+        ["https://ok.example", "*"],
+        ["http://localhost.evil.com"],
+        ["https://ok.example/path"],
+        ["https://"],
+    ],
 )
 def test_cors_origins_are_restricted(origins: list[str]) -> None:
     with pytest.raises(ValidationError):
@@ -127,6 +134,12 @@ def test_cors_origins_are_restricted(origins: list[str]) -> None:
 
 def test_cors_allows_https_and_localhost() -> None:
     s = Settings.model_validate(
-        minimal(cors_origins=["https://portfolio.example", "http://localhost:3000"])
+        minimal(
+            cors_origins=[
+                "https://portfolio.example",
+                "http://localhost:3000",
+                "http://127.0.0.1:8080",
+            ]
+        )
     )
-    assert len(s.cors_origins) == 2
+    assert len(s.cors_origins) == 3

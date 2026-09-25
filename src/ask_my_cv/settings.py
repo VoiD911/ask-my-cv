@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urlsplit
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -73,11 +74,19 @@ class Settings(BaseModel):
         for origin in self.cors_origins:
             if origin == "*":
                 raise ValueError("cors_origins ne doit pas contenir '*'")
-            if origin.startswith(("http://localhost", "http://127.0.0.1")):
-                continue
-            if not origin.startswith("https://"):
+            parts = urlsplit(origin)
+            if parts.path or parts.query or parts.fragment:
                 raise ValueError(
-                    f"origine CORS invalide : {origin!r} doit commencer par 'https://' "
+                    f"origine CORS invalide : {origin!r} ne doit contenir ni chemin ni requête"
+                )
+            is_https = parts.scheme == "https" and bool(parts.hostname)
+            is_local_http = parts.scheme == "http" and parts.hostname in {
+                "localhost",
+                "127.0.0.1",
+            }
+            if not (is_https or is_local_http):
+                raise ValueError(
+                    f"origine CORS invalide : {origin!r} doit être en 'https://' "
                     "(sauf localhost/127.0.0.1 en développement)"
                 )
         return self
