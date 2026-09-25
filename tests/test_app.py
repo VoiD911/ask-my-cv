@@ -211,3 +211,11 @@ def test_one_failing_close_does_not_block_the_others(make_deps) -> None:
     with TestClient(create_app(make_deps(providers={"a": Bad(id="a"), "b": Good(id="b")}))):
         pass
     assert closed == ["b"]
+
+
+async def test_traces_are_flushed_once_per_request(make_deps) -> None:
+    calls: list[int] = []
+    app = create_app(make_deps(), flush=lambda: calls.append(1))
+    async with client_for(app) as client:
+        await client.post("/ask", json={"question": "Quelle expérience ?"})
+    assert calls == [1]

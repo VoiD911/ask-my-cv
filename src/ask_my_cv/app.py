@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -30,13 +30,18 @@ def _sse(event: Event) -> str:
     return f"event: {event.type}\ndata: {event.model_dump_json()}\n\n"
 
 
-def create_app(deps: Deps | None = None) -> FastAPI:
+def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None) -> FastAPI:
     """Fabrique : `uvicorn --factory ask_my_cv.app:create_app`. Tout est chargé et vérifié ici."""
     if deps is None:
         from ask_my_cv.container import build_deps
         from ask_my_cv.settings import load_settings
+        from ask_my_cv.telemetry import configure_tracing
 
-        deps = build_deps(load_settings())
+        settings = load_settings()
+        flush = configure_tracing(settings)
+        deps = build_deps(settings)
+    else:
+        flush = flush or (lambda: None)
     current = deps
 
     @asynccontextmanager
@@ -107,6 +112,7 @@ def create_app(deps: Deps | None = None) -> FastAPI:
                     queue.put_nowait,
                 )
             finally:
+                await asyncio.to_thread(flush)
                 queue.put_nowait(None)
 
         async def stream() -> AsyncIterator[str]:
