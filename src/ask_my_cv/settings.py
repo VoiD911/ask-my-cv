@@ -93,6 +93,16 @@ class Settings(BaseModel):
                     f"origine CORS invalide : {origin!r} doit être en 'https://' "
                     "(sauf localhost/127.0.0.1 en développement)"
                 )
+            try:
+                port = parts.port
+            except ValueError as exc:
+                raise ValueError(f"origine CORS invalide : {origin!r} : {exc}") from None
+            canonical = f"{parts.scheme}://{parts.hostname}{f':{port}' if port else ''}"
+            if canonical != origin:
+                raise ValueError(
+                    f"origine CORS invalide : {origin!r} n'est pas une origine canonique "
+                    f"(attendu {canonical!r})"
+                )
         return self
 
     def public_model_ids(self) -> set[str]:

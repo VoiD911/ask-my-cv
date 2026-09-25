@@ -125,6 +125,14 @@ def test_ledger_protocol_exposes_spend_by_provider() -> None:
         ["http://localhost.evil.com"],
         ["https://ok.example/path"],
         ["https://"],
+        ["HTTPS://A.EXAMPLE"],
+        ["https://A.example"],
+        ["https://user:pw@a.example"],
+        ["https://a.example:99999"],
+        ["https://a.example:abc"],
+        [" https://a.example"],
+        ["https://a.example?"],
+        ["https://a.example#"],
     ],
 )
 def test_cors_origins_are_restricted(origins: list[str]) -> None:
@@ -139,10 +147,11 @@ def test_cors_allows_https_and_localhost() -> None:
                 "https://portfolio.example",
                 "http://localhost:3000",
                 "http://127.0.0.1:8080",
+                "https://a.example:8443",
             ]
         )
     )
-    assert len(s.cors_origins) == 3
+    assert len(s.cors_origins) == 4
 
 
 def test_config_error_never_reveals_the_salt(
