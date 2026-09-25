@@ -11,12 +11,14 @@ TrustedProxy = Literal["none", "cloudfront"]
 
 def _normalize(raw: str) -> str | None:
     """Adresse normalisée ; IPv6 regroupée par /64 (un client contrôle au moins un /64)."""
-    for candidate in (raw.rsplit(":", 1)[0], raw):
+    for candidate in (raw, raw.rsplit(":", 1)[0]):
         try:
             addr = ipaddress.ip_address(candidate.strip().strip("[]"))
         except ValueError:
             continue
-        if addr.version == 6:
+        if isinstance(addr, ipaddress.IPv6Address):
+            if addr.ipv4_mapped is not None:
+                return str(addr.ipv4_mapped)
             return f"{ipaddress.ip_network(f'{addr}/64', strict=False).network_address}/64"
         return str(addr)
     return None

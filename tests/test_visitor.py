@@ -26,6 +26,12 @@ def test_ipv6_peer_is_bucketed_too() -> None:
     assert client_ip({}, "2001:db8::5", "none") == "2001:db8::/64"
 
 
+def test_ipv4_mapped_ipv6_is_treated_as_ipv4() -> None:
+    h = {"cloudfront-viewer-address": "::ffff:1.2.3.4:80"}
+    assert client_ip(h, None, "cloudfront") == "1.2.3.4"
+    assert client_ip({}, "::ffff:5.6.7.8", "none") == "5.6.7.8"
+
+
 def test_missing_header_falls_back_to_peer_then_unknown() -> None:
     assert client_ip({}, "10.0.0.1", "cloudfront") == "10.0.0.1"
     assert client_ip({}, None, "none") == "unknown"
