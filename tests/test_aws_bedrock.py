@@ -5,7 +5,7 @@ import time
 from typing import Any
 
 import pytest
-from botocore.exceptions import ClientError
+from botocore.exceptions import ClientError, EventStreamError
 
 from ask_my_cv.aws.bedrock import BedrockEmbedder, BedrockLLM
 from ask_my_cv.llm import LLMError, LLMProvider
@@ -102,3 +102,56 @@ async def test_titan_embedder_requests_normalized_vectors() -> None:
     assert len(vector) == 1024
     body = json.loads(runtime.calls[0]["body"])
     assert body == {"inputText": "Quelle expérience ?", "dimensions": 1024, "normalize": True}
+
+
+async def test_titan_embedder_rejects_a_dimension_mismatch() -> None:
+    class WrongDimRuntime:
+        def invoke_model(self, **kwargs: Any) -> dict:
+            return {"body": io.BytesIO(json.dumps({"embedding": [0.5] * 3}).encode())}
+
+    embedder = BedrockEmbedder("amazon.titan-embed-text-v2:0", WrongDimRuntime(), dim=1024)
+    with pytest.raises(ValueError):
+        await embedder.embed(["Quelle expérience ?"])
+
+
+async def test_event_stream_error_becomes_llm_error() -> None:
+    class ErrorRuntime:
+        def converse_stream(self, **kwargs: Any) -> dict:
+            def stream():
+                yield delta("a")
+                raise EventStreamError(
+                    {"Error": {"Code": "ThrottlingException", "Message": "lent"}},
+                    "ConverseStream",
+                )
+
+            return {"stream": stream()}
+
+    with pytest.raises(LLMError):
+        await collect(BedrockLLM(id="b", model_id="m", client=ErrorRuntime()))
+
+
+class ClosableEvents:
+    def __init__(self, events: list[dict]) -> None:
+        self.events, self.closed = events, False
+
+    def __iter__(self):
+        for event in self.events:
+            time.sleep(0.01)
+            yield event
+
+    def close(self) -> None:
+        self.closed = True
+
+
+async def test_abandoned_stream_closes_the_event_stream() -> None:
+    events = ClosableEvents([delta("a")] * 100)
+
+    class Runtime:
+        def converse_stream(self, **kwargs: Any) -> dict:
+            return {"stream": events}
+
+    stream = BedrockLLM(id="b", model_id="m", client=Runtime()).stream("s", "u")
+    assert await anext(stream) == "a"
+    await stream.aclose()
+    await asyncio.sleep(0.1)
+    assert events.closed

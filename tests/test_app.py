@@ -1,3 +1,4 @@
+import asyncio
 import json
 
 import httpx
@@ -219,3 +220,15 @@ async def test_traces_are_flushed_once_per_request(make_deps) -> None:
     async with client_for(app) as client:
         await client.post("/ask", json={"question": "Quelle expérience ?"})
     assert calls == [1]
+
+
+async def test_a_failing_flush_still_ends_the_stream(make_deps) -> None:
+    def broken() -> None:
+        raise RuntimeError("exportateur")
+
+    app = create_app(make_deps(), flush=broken)
+    async with client_for(app) as client:
+        response = await asyncio.wait_for(
+            client.post("/ask", json={"question": "Quelle expérience ?"}), timeout=5
+        )
+    assert "event: done" in response.text

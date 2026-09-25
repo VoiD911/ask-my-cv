@@ -112,8 +112,12 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
                     queue.put_nowait,
                 )
             finally:
-                await asyncio.to_thread(flush)
-                queue.put_nowait(None)
+                try:
+                    await asyncio.to_thread(flush)
+                except Exception:
+                    logger.warning("envoi des traces échoué", exc_info=True)
+                finally:
+                    queue.put_nowait(None)
 
         async def stream() -> AsyncIterator[str]:
             task = asyncio.create_task(produce())

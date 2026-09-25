@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import threading
 from collections.abc import AsyncGenerator
@@ -38,6 +39,7 @@ class BedrockLLM:
                 pass
 
         def pump() -> None:
+            events: Any = None
             try:
                 response = self._client.converse_stream(
                     modelId=self.model_id,
@@ -45,7 +47,8 @@ class BedrockLLM:
                     messages=[{"role": "user", "content": [{"text": user}]}],
                     inferenceConfig={"maxTokens": self.max_tokens, "temperature": 0.0},
                 )
-                for event in response["stream"]:
+                events = response["stream"]
+                for event in events:
                     if stop.is_set():
                         return
                     error = next((key for key in event if key.endswith("Exception")), None)
@@ -57,6 +60,10 @@ class BedrockLLM:
                 send("end", None)
             except Exception as exc:  # botocore, réseau, événement d'erreur
                 send("error", exc)
+            finally:
+                if events is not None:  # libère la connexion HTTP : Bedrock cesse de générer
+                    with contextlib.suppress(Exception):
+                        events.close()
 
         threading.Thread(target=pump, name=f"bedrock-{self.id}", daemon=True).start()
         try:
