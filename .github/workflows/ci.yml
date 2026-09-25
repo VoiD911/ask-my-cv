@@ -14,9 +14,27 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
-      - run: uv sync --frozen --python 3.12
+      - run: uv sync --frozen --python 3.12 --group ml
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
       - run: uv run pytest -q
+      - name: Récupérer et vérifier le modèle promu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version models/prod.json)
+          if [ "$VERSION" = "null" ]; then echo "Aucun modèle promu : détecteur heuristique."; exit 0; fi
+          gh release download "model-$VERSION" -p model.onnx -p model.onnx.sigstore.json -D models
+          echo "$(jq -r .sha256 models/prod.json)  models/model.onnx" | sha256sum -c -
+          echo "COSIGN_NEEDED=1" >> "$GITHUB_ENV"
+      - if: env.COSIGN_NEEDED == '1'
+        uses: sigstore/cosign-installer@v4.1.2
+      - name: Vérifier la signature du modèle
+        if: env.COSIGN_NEEDED == '1'
+        run: |
+          cosign verify-blob models/model.onnx \
+            --bundle models/model.onnx.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/train.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
       - run: docker build -t ask-my-cv:ci .

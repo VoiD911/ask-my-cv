@@ -1,0 +1,45 @@
+name: train
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version du modèle, ex. v1.0.0"
+        required: true
+
+permissions:
+  contents: write      # créer la release
+  id-token: write      # signature Sigstore keyless
+  attestations: write  # provenance SLSA (dépôt public uniquement)
+
+jobs:
+  train:
+    runs-on: ubuntu-latest
+    env:
+      VERSION: ${{ inputs.version }}
+    steps:
+      - name: Refuser une version invalide ou une branche autre que main
+        run: |
+          [[ "$GITHUB_REF" == "refs/heads/main" ]] || { echo "::error::train.yml ne tourne que sur main"; exit 1; }
+          [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::version invalide : $VERSION"; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --frozen --python 3.12 --group ml
+      - run: uv run python -m ml.fetch
+      - name: Entraîner et appliquer la porte d'évaluation
+        run: uv run python -m ml.train --version "$VERSION" --out dist
+      - uses: sigstore/cosign-installer@v4.1.2
+      - name: Signer le modèle (Sigstore keyless)
+        run: cosign sign-blob --yes --bundle dist/model.onnx.sigstore.json dist/model.onnx
+      - name: Attester la provenance (dépôt public uniquement)
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: dist/model.onnx
+      - name: Publier la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "model-$VERSION" \
+            dist/model.onnx dist/model.onnx.sigstore.json dist/metrics.json dist/model_card.md \
+            --title "Classifieur d'injection $VERSION" --notes-file dist/model_card.md

@@ -12,6 +12,7 @@ COPY src ./src
 COPY prompts ./prompts
 COPY data ./data
 COPY settings.yaml ./
+COPY models ./models
 RUN uv sync --frozen --no-dev && .venv/bin/python -m ask_my_cv.ingest
 
 RUN useradd --system --no-create-home app && chown -R app /app
