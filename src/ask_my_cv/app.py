@@ -6,15 +6,18 @@ from collections.abc import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ask_my_cv.events import Event
+from ask_my_cv.limits import MAX_BODY_BYTES, BodySizeLimit
 from ask_my_cv.pipeline import Deps, run_pipeline
 
 
 class AskRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     question: str = Field(max_length=2000)
-    model: str | None = None
+    model: str | None = Field(default=None, max_length=64)
 
 
 def _sse(event: Event) -> str:
@@ -23,6 +26,7 @@ def _sse(event: Event) -> str:
 
 def create_app(deps: Deps | None = None) -> FastAPI:
     app = FastAPI(title="ask-my-cv", version="0.1.0")
+    app.add_middleware(BodySizeLimit, max_bytes=MAX_BODY_BYTES)
     state: dict[str, Deps | None] = {"deps": deps}
 
     def get_deps() -> Deps:

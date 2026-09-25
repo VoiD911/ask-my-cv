@@ -64,6 +64,25 @@ async def test_ask_blocks_injection_over_http(make_deps) -> None:
     assert events[-1]["answer_override"] is not None
 
 
+async def test_ask_rejects_long_model_id(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        r = await client.post("/ask", json={"question": "q", "model": "x" * 65})
+    assert r.status_code == 422
+
+
+async def test_ask_rejects_unknown_fields(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        r = await client.post("/ask", json={"question": "q", "pad": "a"})
+    assert r.status_code == 422
+
+
+async def test_ask_rejects_oversized_body(make_deps) -> None:
+    body = b'{"question":"q","pad":"' + b"a" * 20_000 + b'"}'
+    async with client_for(create_app(make_deps())) as client:
+        r = await client.post("/ask", content=body, headers={"content-type": "application/json"})
+    assert r.status_code == 413
+
+
 async def test_ask_uses_requested_model(make_deps) -> None:
     from ask_my_cv.llm import FakeLLM
 
