@@ -17,7 +17,7 @@ class ConfigError(ValueError):
 
 class ModelConfig(BaseModel):
     id: str
-    provider: Literal["fake", "ollama"]
+    provider: Literal["fake", "ollama", "bedrock"]
     model: str = ""
     public: bool = True
     input_per_mtok: float = 0.0
@@ -25,8 +25,8 @@ class ModelConfig(BaseModel):
 
     @model_validator(mode="after")
     def _ollama_needs_model(self) -> ModelConfig:
-        if self.provider == "ollama" and not self.model:
-            raise ValueError(f"{self.id} : 'model' est obligatoire pour Ollama")
+        if self.provider in ("ollama", "bedrock") and not self.model:
+            raise ValueError(f"{self.id} : 'model' est obligatoire pour {self.provider}")
         return self
 
 
@@ -34,7 +34,7 @@ class Settings(BaseModel):
     cv_path: Path = Path("data/cv.md")
     index_path: Path = Path("data/index.json")
     prompt_path: Path = Path("prompts/answer@v2.md")
-    embed_dim: int = 256
+    embed_dim: int = Field(default=256, ge=1)
     models: list[ModelConfig]
     default_model: str
     fallback_chain: list[str]
@@ -54,6 +54,23 @@ class Settings(BaseModel):
     environment: Literal["dev", "prod"] = "dev"
     trusted_proxy: TrustedProxy = "none"
     cors_origins: list[str] = []
+    aws_region: str = "ca-central-1"
+    embedder: Literal["hash", "bedrock"] = "hash"
+    embed_model: str = "amazon.titan-embed-text-v2:0"
+    vector_store: Literal["file", "dynamodb"] = "file"
+    chunks_table: str = "ask-my-cv-chunks"
+    ledger: Literal["memory", "dynamodb"] = "memory"
+    ledger_table: str = "ask-my-cv-ledger"
+    tracing: list[Literal["console", "cloudwatch", "langfuse"]] = []
+    langfuse_endpoint: str = "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+
+    @model_validator(mode="after")
+    def _bedrock_embedder_dimension(self) -> Settings:
+        if self.embedder == "bedrock" and self.embed_dim not in (256, 512, 1024):
+            raise ValueError(
+                f"Titan V2 n'accepte que les dimensions 256, 512 ou 1024 (reçu {self.embed_dim})"
+            )
+        return self
 
     @model_validator(mode="after")
     def _known_models(self) -> Settings:

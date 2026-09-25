@@ -1,0 +1,35 @@
+# Configuration de production (AWS, ca-central-1). Secrets par variables d'environnement :
+# VISITOR_SALT, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
+environment: prod
+trusted_proxy: cloudfront
+aws_region: ca-central-1
+prompt_path: prompts/answer@v2.md
+detector: onnx
+model_manifest: models/prod.json
+embedder: bedrock
+embed_model: amazon.titan-embed-text-v2:0
+embed_dim: 1024
+vector_store: dynamodb
+chunks_table: ask-my-cv-chunks
+ledger: dynamodb
+ledger_table: ask-my-cv-ledger
+tracing: [cloudwatch, langfuse]
+default_model: bedrock:haiku-4.5
+fallback_chain: [bedrock:haiku-4.5]
+models:
+  - id: bedrock:haiku-4.5
+    provider: bedrock
+    model: us.anthropic.claude-haiku-4-5-20251001-v1:0   # profil d'inférence US : requêtes traitées aux États-Unis
+    public: true
+    input_per_mtok: 1.1      # tarif Haiku 4.5 + ~10 % inter-régions
+    output_per_mtok: 5.5
+top_k: 5
+injection_threshold: 0.5
+daily_cap_usd: 0.5
+per_visitor_limit: 10
+visitor_window_s: 3600
+stage_timeout_s: 10
+first_token_timeout_s: 8
+llm_deadline_s: 25
+allowed_contacts: [alex.martin@example.com]
+cors_origins: []          # origine du site (plan 1e)

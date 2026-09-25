@@ -110,6 +110,34 @@ def test_ollama_model_requires_a_model_name() -> None:
         Settings.model_validate(data)
 
 
+def test_bedrock_model_requires_a_model_id() -> None:
+    data = minimal()
+    data["models"].append({"id": "bedrock:x", "provider": "bedrock"})
+    with pytest.raises(ValidationError):
+        Settings.model_validate(data)
+
+
+@pytest.mark.parametrize("dim", [0, 300, 2048])
+def test_bedrock_embedder_needs_a_titan_dimension(dim: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(embedder="bedrock", embed_dim=dim))
+
+
+def test_production_aws_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VISITOR_SALT", "s" * 48)
+    settings = load_settings(Path("settings.aws.yaml"))
+    assert (settings.environment, settings.aws_region) == ("prod", "ca-central-1")
+    assert (settings.embedder, settings.vector_store, settings.ledger) == (
+        "bedrock",
+        "dynamodb",
+        "dynamodb",
+    )
+    assert settings.trusted_proxy == "cloudfront" and settings.detector == "onnx"
+    assert set(settings.tracing) == {"cloudwatch", "langfuse"}
+    haiku = next(m for m in settings.models if m.provider == "bedrock")
+    assert haiku.model.startswith("us.anthropic.claude-haiku-4-5")
+
+
 def test_ledger_protocol_exposes_spend_by_provider() -> None:
     from ask_my_cv.budget import BudgetLedger
 
