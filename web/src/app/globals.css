@@ -1,1 +1,546 @@
 @import "tailwindcss";
+
+/*
+ * Palette « carte électronique » : vernis épargne presque noir teinté de vert,
+ * sérigraphie blanc cassé, pistes cuivre au repos. Une seule couleur d'accent
+ * (l'impulsion) ; vert, rouge et ambre sont réservés aux statuts.
+ */
+@theme {
+  --color-board: #0a1110;
+  --color-board-raised: #0f1917;
+  --color-board-line: #1d2a27;
+  --color-silk: #e2e9e4;
+  --color-silk-dim: #82928b;
+  --color-silk-faint: #4b5a54;
+  --color-copper: #9a6a42;
+  --color-copper-faint: #2a2119;
+  --color-pulse: #74d8ff;
+  --color-ok: #46d27a;
+  --color-blocked: #ff5b4f;
+  --color-fallback: #f2b53a;
+
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-martian), ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-board);
+  color: var(--color-silk);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-pulse);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Cadre du circuit                                                    */
+/* ------------------------------------------------------------------ */
+
+.circuit {
+  position: relative;
+  border: 1px solid var(--color-board-line);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle at 14px 14px, var(--color-copper-faint) 0 4px, transparent 4.5px),
+    radial-gradient(circle at calc(100% - 14px) 14px, var(--color-copper-faint) 0 4px, transparent 4.5px),
+    radial-gradient(circle at 14px calc(100% - 14px), var(--color-copper-faint) 0 4px, transparent 4.5px),
+    radial-gradient(circle at calc(100% - 14px) calc(100% - 14px), var(--color-copper-faint) 0 4px, transparent 4.5px),
+    linear-gradient(180deg, var(--color-board-raised), var(--color-board));
+  padding: 12px 16px 14px;
+}
+
+@media (min-width: 768px) {
+  .circuit {
+    padding-inline: 28px;
+  }
+}
+
+.circuit__bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 2px 0 10px;
+  border-bottom: 1px dashed var(--color-board-line);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-stretch: 85%;
+}
+
+.circuit__title {
+  white-space: nowrap;
+  color: var(--color-silk-dim);
+  font-weight: 500;
+}
+
+.circuit__metrics {
+  color: var(--color-silk);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.circuit__log {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-board-line);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-stretch: 85%;
+  color: var(--color-silk-dim);
+}
+
+.circuit__log::before {
+  content: "› ";
+  color: var(--color-pulse);
+}
+
+.circuit__board {
+  display: none;
+}
+
+.circuit__column {
+  display: block;
+}
+
+@media (min-width: 768px) {
+  .circuit__board {
+    display: block;
+  }
+  .circuit__column {
+    display: none;
+  }
+}
+
+.board {
+  width: 100%;
+  max-height: 440px;
+  margin-inline: auto;
+}
+
+.board .react-flow {
+  background: transparent;
+}
+
+.board__grid {
+  --xy-background-pattern-color: var(--color-board-line);
+}
+
+.board .react-flow__node {
+  cursor: default;
+}
+
+.handle.react-flow__handle {
+  width: 1px;
+  height: 1px;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  opacity: 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pistes et impulsion                                                 */
+/* ------------------------------------------------------------------ */
+
+.trace__line {
+  fill: none;
+  stroke: var(--color-copper);
+  stroke-opacity: 0.35;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  transition:
+    stroke 400ms ease,
+    stroke-opacity 400ms ease;
+}
+
+.trace__via {
+  fill: var(--color-board);
+  stroke: var(--color-copper);
+  stroke-opacity: 0.5;
+  stroke-width: 1.5;
+}
+
+.trace[data-state="lit"] .trace__line,
+.trace[data-state="halted"] .trace__line {
+  stroke: var(--color-pulse);
+  stroke-opacity: 0.55;
+}
+
+.trace[data-state="live"] .trace__line {
+  stroke: var(--color-pulse);
+  stroke-opacity: 0.22;
+}
+
+.trace[data-state="lit"] .trace__via,
+.trace[data-state="halted"] .trace__via,
+.trace[data-state="live"] .trace__via {
+  stroke: var(--color-pulse);
+}
+
+.pulse path {
+  fill: none;
+  stroke: var(--color-pulse);
+  stroke-linecap: round;
+}
+
+.pulse__tail {
+  stroke-width: 2.5;
+  stroke-opacity: 0.55;
+  stroke-dasharray: 16 200;
+  animation: pulse-tail 1.1s linear infinite;
+}
+
+.pulse__head {
+  stroke-width: 7;
+  stroke-dasharray: 0 200;
+  filter: drop-shadow(0 0 5px var(--color-pulse));
+  animation: pulse-head 1.1s linear infinite;
+}
+
+@keyframes pulse-head {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: -100;
+  }
+}
+
+@keyframes pulse-tail {
+  from {
+    stroke-dashoffset: 16;
+  }
+  to {
+    stroke-dashoffset: -84;
+  }
+}
+
+.pulse-halt__dot {
+  fill: var(--color-blocked);
+}
+
+.pulse-halt__ring {
+  fill: none;
+  stroke: var(--color-blocked);
+  stroke-opacity: 0.45;
+  stroke-width: 1.5;
+}
+
+/* ------------------------------------------------------------------ */
+/* Puces (étapes)                                                      */
+/* ------------------------------------------------------------------ */
+
+.chip {
+  --chip-accent: var(--color-silk-faint);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 9px 12px 10px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 4px;
+  background: var(--color-board-raised);
+  font-family: var(--font-mono);
+  font-stretch: 85%;
+  transition:
+    border-color 300ms ease,
+    box-shadow 300ms ease;
+}
+
+/* Broches de la puce, sur les bords haut et bas. */
+.chip::before,
+.chip::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  height: 4px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--color-copper) 0 6px,
+    transparent 6px 14px
+  );
+  opacity: 0.4;
+}
+
+.chip::before {
+  top: -5px;
+}
+
+.chip::after {
+  bottom: -5px;
+}
+
+.chip[data-status="active"] {
+  --chip-accent: var(--color-pulse);
+  border-color: color-mix(in oklab, var(--color-pulse) 70%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-pulse) 12%, transparent);
+}
+
+.chip[data-status="ok"] {
+  --chip-accent: var(--color-ok);
+  border-color: color-mix(in oklab, var(--color-pulse) 28%, var(--color-board-line));
+}
+
+.chip[data-status="fallback"] {
+  --chip-accent: var(--color-fallback);
+  border-color: color-mix(in oklab, var(--color-fallback) 45%, var(--color-board-line));
+}
+
+.chip[data-status="blocked"],
+.chip[data-status="error"] {
+  --chip-accent: var(--color-blocked);
+  border-color: var(--color-blocked);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-blocked) 16%, transparent);
+}
+
+.chip[data-status="ok"]::before,
+.chip[data-status="ok"]::after,
+.chip[data-status="active"]::before,
+.chip[data-status="active"]::after,
+.chip[data-status="fallback"]::before,
+.chip[data-status="fallback"]::after {
+  opacity: 0.8;
+}
+
+.chip__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chip__ref {
+  color: var(--color-silk-faint);
+}
+
+.chip__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chip-accent);
+}
+
+.chip[data-status="idle"] .chip__status {
+  color: var(--color-silk-faint);
+}
+
+.chip__label {
+  margin-top: 2px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  color: var(--color-silk);
+}
+
+.chip[data-status="idle"] .chip__label {
+  color: color-mix(in oklab, var(--color-silk) 70%, var(--color-board));
+}
+
+.chip__id {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+  color: var(--color-silk-dim);
+}
+
+.chip__duration {
+  color: var(--color-silk);
+  font-variant-numeric: tabular-nums;
+}
+
+.chip__attrs {
+  margin-top: auto;
+  padding-top: 5px;
+  border-top: 1px solid var(--color-board-line);
+  font-size: 10.5px;
+  line-height: 1.5;
+}
+
+.chip__attr {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chip__attr dt {
+  color: var(--color-silk-faint);
+  flex: none;
+}
+
+.chip__attr dd {
+  color: var(--color-silk);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip[data-status="blocked"] .chip__attr:first-child dd,
+.chip[data-status="error"] .chip__attr:first-child dd {
+  color: var(--color-blocked);
+}
+
+.led {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.chip[data-status="idle"] .led {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--color-silk-faint);
+}
+
+.chip[data-status="active"] .led {
+  box-shadow: 0 0 6px currentColor;
+  animation: led-blink 0.8s steps(2, jump-none) infinite;
+}
+
+@keyframes led-blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Connecteurs J1 (question) et J2 (réponse)                           */
+/* ------------------------------------------------------------------ */
+
+.terminal {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 100%;
+  padding: 0 12px;
+  border: 1px dashed var(--color-silk-faint);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-stretch: 85%;
+  font-size: 11px;
+  color: var(--color-silk-dim);
+}
+
+.terminal__ref {
+  color: var(--color-silk-faint);
+}
+
+.terminal[data-state="standby"] .led {
+  color: var(--color-silk-faint);
+}
+
+.terminal[data-kind="in"][data-state="standby"] .led {
+  color: var(--color-pulse);
+  animation: standby 3.2s ease-in-out infinite;
+}
+
+.terminal[data-state="live"] .led,
+.terminal[data-state="ok"] .led {
+  color: var(--color-pulse);
+  box-shadow: 0 0 6px currentColor;
+}
+
+.terminal[data-state="ok"],
+.terminal[data-state="live"] {
+  border-style: solid;
+  border-color: color-mix(in oklab, var(--color-pulse) 45%, transparent);
+  color: var(--color-silk);
+}
+
+.terminal[data-kind="out"][data-state="ok"] .led {
+  color: var(--color-ok);
+}
+
+.terminal[data-state="blocked"] {
+  border-color: color-mix(in oklab, var(--color-blocked) 50%, transparent);
+}
+
+.terminal[data-state="blocked"] .led {
+  color: var(--color-blocked);
+}
+
+@keyframes standby {
+  0%,
+  100% {
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 8px currentColor;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Colonne mobile                                                      */
+/* ------------------------------------------------------------------ */
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 14px 0 4px;
+}
+
+.column > li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.column .chip {
+  height: auto;
+  min-height: 0;
+}
+
+.column .chip__attrs:has(.chip__attr--empty) {
+  display: none;
+}
+
+.column .terminal {
+  width: auto;
+  height: 32px;
+}
+
+.link {
+  display: block;
+  margin-block: 4px;
+  overflow: visible;
+}
+
+/* ------------------------------------------------------------------ */
+/* Réduction des animations : l'état reste lisible, rien ne bouge      */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse {
+    display: none;
+  }
+  .led,
+  .terminal .led {
+    animation: none !important;
+  }
+  .trace__line,
+  .chip {
+    transition: none;
+  }
+}

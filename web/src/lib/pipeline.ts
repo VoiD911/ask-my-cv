@@ -81,7 +81,7 @@ export type RunState = {
   startedAt: number | null;
 };
 
-const STATUS_LABELS: Record<StageStatus, string> = {
+export const STATUS_LABELS: Record<StageStatus, string> = {
   idle: "en attente",
   active: "en cours",
   ok: "terminée",
@@ -101,12 +101,12 @@ const STAGE_LABELS: Record<KnownStage, string> = {
   output_guard: "garde-fou de sortie",
 };
 
-function stageLabel(name: string): string {
+export function stageLabel(name: string): string {
   return STAGE_LABELS[name as KnownStage] ?? name;
 }
 
 /** Formate un nombre pour l'affichage en français (fr-FR), sans décimales inutiles. */
-function formatNumberFr(n: number): string {
+export function formatNumberFr(n: number): string {
   return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(n);
 }
 
