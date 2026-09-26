@@ -135,11 +135,12 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: evals/package-lock.json
-      - run: npm ci --prefix evals --no-audit --no-fund
-      - name: Tests du lecteur SSE et de l'assertion de fuite
-        run: node --test evals/sse.test.js evals/no_leak.test.js
+      # --ignore-scripts : aucun script d'installation des dépendances n'est exécuté
+      - run: npm ci --prefix evals --ignore-scripts --no-audit --no-fund
+      - name: Tests du lecteur SSE et des assertions
+        run: node --test evals/*.test.js
       - name: Suite promptfoo (PR)
-        run: npx --prefix evals promptfoo eval -c evals/pr.yaml --no-cache --no-progress-bar --no-table -o evals/output/pr.json
+        run: npx --prefix evals promptfoo eval -c evals/pr.yaml --no-cache --no-write --no-progress-bar --no-table -o evals/output/pr.json
       - name: Journal de l'API
         if: failure()
         run: cat api.log
@@ -168,7 +169,7 @@ jobs:
           done
 
   deploy:
-    needs: [test, terraform, security]
+    needs: [test, evals, terraform, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     concurrency: deploy-prod

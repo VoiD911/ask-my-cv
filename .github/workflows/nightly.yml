@@ -21,7 +21,6 @@ jobs:
       PROMPTFOO_DISABLE_UPDATE: "1"
       PROMPTFOO_DISABLE_SHARING: "1"
       SITE_URL: ${{ vars.SITE_URL }}
-      EVAL_TOKEN: ${{ secrets.EVAL_TOKEN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -31,9 +30,13 @@ jobs:
           node-version: 24
           cache: npm
           cache-dependency-path: evals/package-lock.json
-      - run: npm ci --prefix evals --no-audit --no-fund
+      # --ignore-scripts : aucun script d'installation des dépendances n'est exécuté
+      - run: npm ci --prefix evals --ignore-scripts --no-audit --no-fund
       - name: Suite promptfoo (nuit)
-        run: npx --prefix evals promptfoo eval -c evals/nightly.yaml --no-cache --no-progress-bar --no-table -o evals/output/nightly.json
+        # jeton limité à cette seule étape (jamais exposé aux étapes d'installation)
+        env:
+          EVAL_TOKEN: ${{ secrets.EVAL_TOKEN }}
+        run: npx --prefix evals promptfoo eval -c evals/nightly.yaml --no-cache --no-write --no-progress-bar --no-table -o evals/output/nightly.json
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
