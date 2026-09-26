@@ -141,7 +141,7 @@ Tout est dans `.github/workflows/ci.yml`. Les outils tournent depuis leurs image
 
 | Scan | Outil | Portée |
 |---|---|---|
-| Secrets | gitleaks | tout l'historique git (exceptions justifiées dans `.gitleaks.toml`) |
+| Secrets | gitleaks | tout l'historique git (règles par défaut, aucune exception) |
 | Code | semgrep | règles `p/python`, `p/dockerfile`, `p/github-actions`, `p/secrets` |
 | Dépendances | osv-scanner | `uv.lock` |
 | IaC | trivy config | `infra/`, sévérités HIGH et CRITICAL (constats acceptés et datés dans `.trivyignore.yaml`) |
@@ -152,7 +152,7 @@ Le job `test` construit aussi l'image, vérifie que chaque module d'exécution s
 
 1. L'image est poussée dans ECR (tags `IMMUTABLE`) ; la suite ne manipule plus que son **digest**.
 2. SBOM CycloneDX de l'image poussée, lu directement dans ECR par syft.
-3. Signature `cosign sign` et attestation du SBOM `cosign attest --type cyclonedx`, **sans clé** : le certificat Sigstore est émis pour l'identité OIDC du workflow GitHub et l'opération est inscrite au journal de transparence Rekor. cosign 3 range signature et attestation en *bundles* Sigstore, attachés à l'image comme référents OCI.
+3. Signature `cosign sign` et attestation du SBOM `cosign attest --type cyclonedx`, **sans clé** : le certificat Sigstore est émis pour l'identité OIDC du workflow GitHub et l'opération est inscrite au journal de transparence Rekor. cosign 3 range signature et attestation en *bundles* Sigstore, attachés à l'image comme référents OCI. Rekor est public : même si le dépôt est privé, le nom du dépôt, le chemin du workflow, le commit et le digest de l'image y sont visibles.
 4. `cosign verify` et `cosign verify-attestation` exigent l'identité exacte `…/.github/workflows/ci.yml@refs/heads/main` : une image signée par un autre workflow ou une autre branche est refusée. Lambda ne sait pas vérifier la signature d'une image conteneur : la vérification se fait donc en CI, juste avant le déploiement, sur le digest qui sera déployé.
 5. `update-function-code` avec `ecr/…@sha256:<digest>`, après avoir noté le digest en service.
 6. Test de fumée de production (`infra/scripts/smoke_prod.py`). S'il échoue, le digest précédent est remis en service automatiquement, puis `/api/healthz` est contrôlé ; le job reste en échec, et un retour arrière raté est signalé comme tel.

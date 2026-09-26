@@ -204,7 +204,9 @@ jobs:
           aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
       - name: Test de fumée de production
         id: smoke
-        run: python3 infra/scripts/smoke_prod.py "${{ vars.SITE_URL }}"
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: python3 infra/scripts/smoke_prod.py "$SITE_URL"
       - name: Retour arrière si le test de fumée échoue
         if: failure() && steps.smoke.outcome == 'failure' && env.PREVIOUS_IMAGE != ''
         env:
