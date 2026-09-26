@@ -154,10 +154,69 @@ jobs:
             docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" .
             docker push "$IMAGE"
           fi
-          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
-      - name: Déployer
+          # Tout ce qui suit (SBOM, signature, vérification, déploiement) vise ce digest exact,
+          # jamais le tag.
+          DIGEST=$(aws ecr describe-images --repository-name ask-my-cv --image-ids imageTag="$GITHUB_SHA" \
+            --query 'imageDetails[0].imageDigest' --output text)
+          if [[ "$DIGEST" != sha256:* ]]; then echo "::error::digest introuvable : $DIGEST"; exit 1; fi
+          echo "IMAGE_REF=$ECR_REPOSITORY_URL@$DIGEST" >> "$GITHUB_ENV"
+      - name: SBOM de l'image poussée
         run: |
-          aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE" >/dev/null
+          # syft lit l'image dans ECR (mode registry:), donc le SBOM décrit exactement le digest
+          # poussé, y compris quand l'image existait déjà (rejeu : aucune image locale).
+          # Identifiants passés par variables d'environnement plutôt qu'en montant
+          # ~/.docker : indépendant de la façon dont docker login range ses secrets. Le jeton
+          # (12 h) n'est jamais affiché (ni set -x ni echo) ; syft le masque dans ses journaux.
+          SYFT_REGISTRY_AUTH_PASSWORD=$(aws ecr get-login-password --region "$AWS_REGION")
+          export SYFT_REGISTRY_AUTH_PASSWORD
+          docker run --rm \
+            -e SYFT_REGISTRY_AUTH_AUTHORITY="${ECR_REPOSITORY_URL%%/*}" \
+            -e SYFT_REGISTRY_AUTH_USERNAME=AWS \
+            -e SYFT_REGISTRY_AUTH_PASSWORD \
+            -v "$PWD:/out" anchore/syft:v1.52.0@sha256:500e2d872ac019436926e8322b4fc1f39441d94d21f6f4046c6ff29b30e8cb02 \
+            "registry:$IMAGE_REF" -o cyclonedx-json=/out/sbom.cdx.json
+          test -s sbom.cdx.json
+      - name: Signer l'image et attester le SBOM (Sigstore keyless)
+        # cosign 3 : bundles Sigstore poussés comme référents OCI (valeurs par défaut) ;
+        # identifiants ECR lus dans ~/.docker/config.json (amazon-ecr-login).
+        run: |
+          cosign sign --yes "$IMAGE_REF"
+          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE_REF"
+      - name: Vérifier signature et attestation avant déploiement
+        run: |
+          ID="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/ci.yml@refs/heads/main"
+          ISSUER=https://token.actions.githubusercontent.com
+          cosign verify "$IMAGE_REF" --certificate-identity "$ID" --certificate-oidc-issuer "$ISSUER" >/dev/null
+          cosign verify-attestation "$IMAGE_REF" --type cyclonedx \
+            --certificate-identity "$ID" --certificate-oidc-issuer "$ISSUER" >/dev/null
+          echo "signature et SBOM vérifiés pour $IMAGE_REF"
+      - name: Déployer (par digest)
+        run: |
+          # Digest actuellement servi (ResolvedImageUri), pour un retour arrière exact.
+          PREVIOUS=$(aws lambda get-function --function-name "$FUNCTION_NAME" \
+            --query Code.ResolvedImageUri --output text)
+          if [[ "$PREVIOUS" == *@sha256:* ]]; then
+            echo "PREVIOUS_IMAGE=$PREVIOUS" >> "$GITHUB_ENV"
+          else
+            echo "::warning::image précédente inconnue ($PREVIOUS) : pas de retour arrière possible"
+          fi
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE_REF" >/dev/null
           aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
       - name: Test de fumée de production
+        id: smoke
         run: python3 infra/scripts/smoke_prod.py "${{ vars.SITE_URL }}"
+      - name: Retour arrière si le test de fumée échoue
+        if: failure() && steps.smoke.outcome == 'failure' && env.PREVIOUS_IMAGE != ''
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          echo "::error::test de fumée en échec : retour à $PREVIOUS_IMAGE"
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$PREVIOUS_IMAGE" >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
+          # Contrôle léger seulement : le test de fumée complet épuise le quota horaire de l'IP.
+          if ! curl -fsS --retry 5 --retry-all-errors --max-time 30 "${SITE_URL%/}/api/healthz"; then
+            echo "::error::retour arrière effectué mais /api/healthz ne répond pas : intervention manuelle"
+            exit 1
+          fi
+          echo
+          echo "::error::retour arrière effectué : $PREVIOUS_IMAGE est de nouveau en service"

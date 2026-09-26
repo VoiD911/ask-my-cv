@@ -129,9 +129,50 @@ L'OAC CloudFront → Lambda Function URL exige, pour tout `POST`, l'en-tête `x-
 5. `infra/scripts/enable-transaction-search.sh` (activation unique par compte).
 6. Ingestion : `ASK_SETTINGS=settings.aws.yaml uv run python -m ask_my_cv.ingest --target dynamodb`.
 7. Test de fumée réel : `python infra/scripts/smoke_prod.py <site_url>`.
-8. `gh variable set AWS_DEPLOY_ROLE_ARN / ECR_REPOSITORY_URL / SITE_URL` → active le job `deploy` de la CI (OIDC) : reconstruit/pousse l'image si besoin, `update-function-code`, puis rejoue le test de fumée en production.
+8. `gh variable set AWS_DEPLOY_ROLE_ARN / ECR_REPOSITORY_URL / SITE_URL` → active le job `deploy` de la CI (OIDC) : reconstruit/pousse l'image si besoin, la signe et la vérifie, `update-function-code` par digest, puis rejoue le test de fumée en production (voir « Chaîne de sécurité »).
 
 Après ce déploiement, `terraform plan` n'affiche plus aucun changement sur les deux racines.
+
+### Chaîne de sécurité
+
+Tout est dans `.github/workflows/ci.yml`. Les outils tournent depuis leurs images Docker officielles épinglées par digest (pas d'actions tierces) ; les actions GitHub sont épinglées par SHA de commit et Dependabot tient à jour actions, `uv.lock` et Dockerfile.
+
+**À chaque PR et à chaque push sur `main`** (job `security`) :
+
+| Scan | Outil | Portée |
+|---|---|---|
+| Secrets | gitleaks | tout l'historique git (exceptions justifiées dans `.gitleaks.toml`) |
+| Code | semgrep | règles `p/python`, `p/dockerfile`, `p/github-actions`, `p/secrets` |
+| Dépendances | osv-scanner | `uv.lock` |
+| IaC | trivy config | `infra/`, sévérités HIGH et CRITICAL (constats acceptés et datés dans `.trivyignore.yaml`) |
+
+Le job `test` construit aussi l'image, vérifie que chaque module d'exécution s'y importe, la scanne avec trivy (HIGH/CRITICAL corrigeables) et publie son SBOM CycloneDX (syft) en artefact de la CI (`sbom-<sha>`, 30 jours).
+
+**Au déploiement** (push sur `main`, job `deploy`) :
+
+1. L'image est poussée dans ECR (tags `IMMUTABLE`) ; la suite ne manipule plus que son **digest**.
+2. SBOM CycloneDX de l'image poussée, lu directement dans ECR par syft.
+3. Signature `cosign sign` et attestation du SBOM `cosign attest --type cyclonedx`, **sans clé** : le certificat Sigstore est émis pour l'identité OIDC du workflow GitHub et l'opération est inscrite au journal de transparence Rekor. cosign 3 range signature et attestation en *bundles* Sigstore, attachés à l'image comme référents OCI.
+4. `cosign verify` et `cosign verify-attestation` exigent l'identité exacte `…/.github/workflows/ci.yml@refs/heads/main` : une image signée par un autre workflow ou une autre branche est refusée. Lambda ne sait pas vérifier la signature d'une image conteneur : la vérification se fait donc en CI, juste avant le déploiement, sur le digest qui sera déployé.
+5. `update-function-code` avec `ecr/…@sha256:<digest>`, après avoir noté le digest en service.
+6. Test de fumée de production (`infra/scripts/smoke_prod.py`). S'il échoue, le digest précédent est remis en service automatiquement, puis `/api/healthz` est contrôlé ; le job reste en échec, et un retour arrière raté est signalé comme tel.
+
+Vérifier soi-même une image (accès ECR requis tant que l'image est privée) :
+
+```bash
+cosign verify <compte>.dkr.ecr.ca-central-1.amazonaws.com/ask-my-cv@sha256:<digest> \
+  --certificate-identity https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+Même chose pour le SBOM avec `cosign verify-attestation --type cyclonedx` (mêmes options).
+
+**Décisions** (écarts assumés par rapport à la spec) :
+
+- **Pas de canary CodeDeploy à 10 %** : pour un trafic de démo, test de fumée de production + retour arrière automatique donnent la même garantie sans alias, CodeDeploy ni alarmes. À revoir si le trafic devient réel.
+- **`terraform apply` reste manuel** : les environnements GitHub avec approbation ne sont pas garantis sur un dépôt privé du plan gratuit, et un rôle CI capable d'`apply` aurait des droits d'administrateur. `terraform plan` en commentaire de PR est reporté : il faudrait un rôle de lecture incapable de lire les secrets SSM.
+- **Provenance SLSA (`attest-build-provenance`) reportée** : les attestations GitHub exigent un dépôt public (ou GitHub Enterprise). La signature cosign et l'attestation SBOM, elles, fonctionnent sur un dépôt privé.
+- **Vérification publique par copier-coller** impossible tant que l'image est dans un ECR privé : à traiter avec la publication (miroir public).
 
 ### Coût
 
