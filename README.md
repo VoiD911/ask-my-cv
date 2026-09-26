@@ -46,7 +46,7 @@ Les journaux d'accès sont désactivés : ils contiendraient les IP des visiteur
 ## Tests
 
 ```bash
-uv run pytest -q && uv run ruff check . && uv run pyright
+uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run pyright
 ```
 
 ## Classifieur d'injection (MLOps)

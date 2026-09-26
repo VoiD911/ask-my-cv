@@ -6,7 +6,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ask_my_cv.visitor import TrustedProxy
 
@@ -16,6 +16,8 @@ class ConfigError(ValueError):
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: str
     provider: Literal["fake", "ollama", "bedrock"]
     model: str = ""
@@ -31,10 +33,12 @@ class ModelConfig(BaseModel):
 
 
 class Settings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     cv_path: Path = Path("data/cv.md")
     index_path: Path = Path("data/index.json")
     prompt_path: Path = Path("prompts/answer@v2.md")
-    embed_dim: int = Field(default=256, ge=1)
+    embed_dim: int = Field(default=256, ge=1, le=4096)
     models: list[ModelConfig]
     default_model: str
     fallback_chain: list[str]
@@ -63,6 +67,14 @@ class Settings(BaseModel):
     ledger_table: str = "ask-my-cv-ledger"
     tracing: list[Literal["console", "cloudwatch", "langfuse"]] = []
     langfuse_endpoint: str = "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+
+    @field_validator("ollama_url")
+    @classmethod
+    def _ollama_url_is_http(cls, value: str) -> str:
+        parts = urlsplit(value)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise ValueError("ollama_url doit être une URL http(s) avec un hôte")
+        return value
 
     @model_validator(mode="after")
     def _bedrock_embedder_dimension(self) -> Settings:

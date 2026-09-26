@@ -194,6 +194,67 @@ def test_cors_allows_https_and_localhost() -> None:
     assert len(s.cors_origins) == 4
 
 
+def test_unknown_top_level_key_is_rejected_with_key_name(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ask_my_cv.settings import ConfigError
+
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML + "cors_origin: ['https://ok.example']\n", encoding="utf-8")
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    with pytest.raises(ConfigError) as info:
+        load_settings(path)
+    assert "cors_origin" in str(info.value)
+    assert "ok.example" not in str(info.value)
+
+
+def test_unknown_key_in_model_entry_is_rejected() -> None:
+    data = minimal()
+    data["models"][0]["unexpected_key"] = "nope"
+    with pytest.raises(ValidationError) as info:
+        Settings.model_validate(data)
+    assert "unexpected_key" in str(info.value)
+
+
+@pytest.mark.parametrize("dim", [4097, 5000])
+def test_embed_dim_upper_bound_is_enforced(dim: int) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(embed_dim=dim))
+
+
+def test_embed_dim_at_upper_bound_is_accepted() -> None:
+    assert Settings.model_validate(minimal(embed_dim=4096)).embed_dim == 4096
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "file:///etc/passwd",
+        "ftp://host",
+        "not-a-url",
+        "http://",
+        "https://",
+    ],
+)
+def test_ollama_url_rejects_non_http_schemes_or_missing_host(url: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(ollama_url=url))
+
+
+def test_ollama_url_accepts_https_with_host() -> None:
+    settings = Settings.model_validate(minimal(ollama_url="https://ollama.internal:11434"))
+    assert settings.ollama_url == "https://ollama.internal:11434"
+
+
+def test_dev_settings_file_loads(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OLLAMA_URL", raising=False)
+    monkeypatch.delenv("ASK_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("VISITOR_SALT", raising=False)
+    settings = load_settings(Path("settings.yaml"))
+    assert settings.environment == "dev"
+    assert settings.default_model == "ollama:gemma3"
+
+
 def test_config_error_never_reveals_the_salt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
