@@ -28,13 +28,12 @@ EPSILON = 1e-4
 POLL_INTERVAL_S = 2.0
 MAX_POLLS = 30
 
-# Le span `injection` porte `attributes.xops.score` (clé pointée à l'intérieur de `attributes`).
-# CloudWatch Logs Insights découvre automatiquement les champs JSON imbriqués par notation
-# pointée ; comme le segment de clé contient lui-même un point, il doit être isolé entre
-# backticks pour ne pas être confondu avec un niveau d'imbrication supplémentaire.
+# Le span `injection` porte `attributes.xops.score`. Logs Insights aplatit le JSON en
+# `attributes.xops.score` : le nom complet, points compris, se met entre backticks (vérifié sur
+# `aws/spans` le 2026-09-26 ; la forme attributes.`xops.score` renvoie un champ vide).
 LOGS_INSIGHTS_QUERY = (
-    'filter name = "injection" and not isPresent(attributes.`xops.eval`)\n'
-    "| fields attributes.`xops.score` as score\n"
+    'filter name = "injection" and not isPresent(`attributes.xops.eval`)\n'
+    "| fields `attributes.xops.score` as score\n"
     "| limit 10000"
 )
 
