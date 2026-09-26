@@ -1,5 +1,6 @@
-# Configuration de production (AWS, ca-central-1). Secrets par variables d'environnement :
-# VISITOR_SALT, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY.
+# Configuration de production (AWS, ca-central-1). Secrets (VISITOR_SALT, LANGFUSE_PUBLIC_KEY,
+# LANGFUSE_SECRET_KEY) lus au démarrage dans SSM Parameter Store (SecureString sous
+# `ASK_SSM_PREFIX`, ex. `/ask-my-cv/`) ; une variable d'environnement explicite est prioritaire.
 environment: prod
 trusted_proxy: cloudfront
 aws_region: ca-central-1

@@ -4,6 +4,8 @@ import os
 from collections.abc import Callable, MutableMapping
 from typing import Any
 
+from ask_my_cv.settings import ConfigError
+
 SECRET_NAMES = ("VISITOR_SALT", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
 
 
@@ -23,10 +25,15 @@ def _ssm_client() -> Any:
     import boto3
     from botocore.config import Config
 
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "ca-central-1"
     return boto3.client(
         "ssm",
-        region_name=os.environ.get("AWS_REGION", "ca-central-1"),
-        config=Config(connect_timeout=2, read_timeout=3, retries={"max_attempts": 2}),
+        region_name=region,
+        config=Config(
+            connect_timeout=2,
+            read_timeout=3,
+            retries={"total_max_attempts": 2, "mode": "standard"},
+        ),
     )
 
 
@@ -37,10 +44,16 @@ def apply_ssm_secrets(
     """Si `ASK_SSM_PREFIX` est défini, complète l'environnement (une valeur déjà définie gagne).
 
     Une erreur SSM empêche le démarrage : mieux vaut aucune API qu'une API sans secret.
+    De même, si un secret attendu n'est ni dans SSM ni déjà dans l'environnement, on
+    échoue explicitement plutôt que de démarrer avec un secret manquant.
     """
     env = os.environ if environ is None else environ
     prefix = env.get("ASK_SSM_PREFIX")
     if not prefix:
         return
-    for name, value in load_ssm_secrets(prefix, client_factory()).items():
+    values = load_ssm_secrets(prefix, client_factory())
+    for name, value in values.items():
         env.setdefault(name, value)
+    missing = [name for name in SECRET_NAMES if not env.get(name)]
+    if missing:
+        raise ConfigError(f"SSM {prefix} : paramètres absents : {', '.join(missing)}")
