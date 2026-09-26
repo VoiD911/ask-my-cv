@@ -1,0 +1,7 @@
+# Remplace la liste par défaut de semgrep : les tests restent analysés.
+# Données, modèles et fichier de verrouillage : pas de code à analyser.
+data/
+models/
+ml/data/
+uv.lock
+.venv/

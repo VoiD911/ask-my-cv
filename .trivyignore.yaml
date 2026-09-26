@@ -1,0 +1,22 @@
+# Constats trivy config acceptés : chacun est limité à un fichier, justifié et daté.
+# Chemins relatifs à la cible du scan (infra/). Passé à trivy par --ignorefile.
+misconfigurations:
+  - id: AWS-0132
+    paths:
+      - "bootstrap/main.tf"
+    statement: >-
+      Bucket d'état Terraform chiffré par SSE-S3 (clé gérée par AWS, chiffrement par défaut
+      d'S3) plutôt que par une clé KMS client. Le bucket est privé (blocage d'accès public),
+      versionné et refuse tout accès hors TLS ; une clé KMS client ajouterait coût et
+      gestion de politique de clé sans réduire le risque pour un compte à un seul
+      administrateur. À réévaluer si d'autres principaux accèdent au compte.
+    expired_at: 2027-03-26
+  - id: AWS-0011
+    paths:
+      - "prod/cdn.tf"
+    statement: >-
+      Distribution CloudFront sans WAF : trafic de démonstration, abus déjà bornés par le
+      quota par visiteur et le plafond de dépense (DynamoDB), la concurrence réservée de la
+      Lambda et l'alerte de budget. Un WAF (coût fixe mensuel) est reporté ; suivi avec les
+      journaux d'accès CloudFront dans followups.md.
+    expired_at: 2027-03-26
