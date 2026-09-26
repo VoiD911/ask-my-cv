@@ -9,3 +9,4 @@ ml/.cache/
 dist/
 models/*.onnx
 models/*.sigstore.json
+sbom.cdx.json

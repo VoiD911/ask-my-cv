@@ -67,6 +67,19 @@ jobs:
       - run: docker build -t ask-my-cv:ci .
       - name: Imports de chaque module dans l'image
         run: docker run --rm --entrypoint .venv/bin/python ask-my-cv:ci scripts/check_imports.py
+      - name: Scan de l'image (trivy)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/src" aquasec/trivy:0.74.0@sha256:62b1e65e8869bc4b4c6aa4fa2b21595256c7c2f6018a9d9ad61caf87187c1969 image \
+            --ignore-unfixed --severity HIGH,CRITICAL --exit-code 1 --ignorefile /src/.trivyignore.yaml ask-my-cv:ci
+      - name: SBOM CycloneDX (syft)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" anchore/syft:v1.52.0@sha256:500e2d872ac019436926e8322b4fc1f39441d94d21f6f4046c6ff29b30e8cb02 \
+            ask-my-cv:ci -o cyclonedx-json=/out/sbom.cdx.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          retention-days: 30
       - name: Test de fumée du conteneur
         run: |
           docker run -d --name smoke -p 8000:8000 -e VISITOR_SALT="$(openssl rand -hex 32)" ask-my-cv:ci
