@@ -35,9 +35,29 @@ def test_spend_is_tracked_per_provider() -> None:
 
 
 def test_in_memory_ledger_is_thread_safe() -> None:
+    import sys
     from concurrent.futures import ThreadPoolExecutor
 
-    ledger = InMemoryLedger(daily_cap_usd=1000.0, per_visitor_limit=10_000, window_s=3600)
+    ledger = InMemoryLedger(daily_cap_usd=1000.0, per_visitor_limit=50, window_s=3600)
+
+    def attempt(_: int) -> bool:
+        try:
+            ledger.check("v", 0.0)
+        except RateLimited:
+            return False
+        return True
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-6)
+    try:
+        with ThreadPoolExecutor(max_workers=16) as pool:
+            results = list(pool.map(attempt, range(500)))
+    finally:
+        sys.setswitchinterval(old_interval)
+
+    assert sum(results) == 50
+    assert len(results) - sum(results) == 450
+
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(lambda _: ledger.record("p", 0.001, 0.0), range(2000)))
-    assert abs(ledger.spent_today(0.0) - 2.0) < 1e-9
+    assert abs(ledger.spent_by_provider(0.0)["p"] - 2.0) < 1e-9
