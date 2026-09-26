@@ -73,6 +73,19 @@ def test_all_gates_pass_on_separable_data() -> None:
     ]
     assert next(c for c in report.checks if c.name == "onnx_parity_max_diff").value <= 1e-3
     assert sum(report.histogram_counts) == 6
+    assert sum(report.domain_histogram_counts) == len(ds.eval_domain)
+
+
+def test_domain_histogram_is_serialized_with_same_bins_as_score_histogram() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ds = tiny_datasets([])
+    out = evaluate(pipe, onnx_bytes, ds, Gates()).to_dict()
+    domain = out["domain_score_histogram"]
+    assert domain["bins"] == out["score_histogram"]["bins"]
+    assert len(domain["counts"]) == 10
+    assert sum(domain["counts"]) == len(ds.eval_domain)
+    # les questions légitimes tombent sous le seuil : aucun compte dans les intervalles ≥ 0,5
+    assert sum(domain["counts"][5:]) == 0
 
 
 def test_adversarial_failure_fails_the_gate() -> None:

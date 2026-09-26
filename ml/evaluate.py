@@ -42,6 +42,7 @@ class Report:
     checks: list[Check]
     adversarial_failures: list[str] = field(default_factory=list)
     histogram_counts: list[int] = field(default_factory=list)
+    domain_histogram_counts: list[int] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
@@ -55,6 +56,12 @@ class Report:
             "score_histogram": {
                 "bins": [round(i / 10, 1) for i in range(11)],
                 "counts": self.histogram_counts,
+            },
+            # Référence de la dérive : scores des questions légitimes du domaine, proches du
+            # trafic réel (le jeu deepset contient environ moitié d'attaques).
+            "domain_score_histogram": {
+                "bins": [round(i / 10, 1) for i in range(11)],
+                "counts": self.domain_histogram_counts,
             },
         }
 
@@ -133,4 +140,5 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
         ),
     ]
     counts, _ = np.histogram(deep_scores, bins=10, range=(0.0, 1.0))
-    return Report(checks, failures, [int(c) for c in counts])
+    domain_counts, _ = np.histogram(domain_scores, bins=10, range=(0.0, 1.0))
+    return Report(checks, failures, [int(c) for c in counts], [int(c) for c in domain_counts])

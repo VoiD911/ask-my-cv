@@ -68,6 +68,9 @@ def test_run_training_writes_model_metrics_and_card(tmp_path: Path) -> None:
     assert metrics["sources"] == [{"name": "demo", "license": "MIT", "sha256": "a" * 64}]
     assert set(metrics["libraries"]) == {"scikit-learn", "skl2onnx", "onnxruntime", "numpy"}
     assert all(isinstance(v, str) and v for v in metrics["libraries"].values())
+    domain = metrics["domain_score_histogram"]
+    assert domain["bins"] == metrics["score_histogram"]["bins"]
+    assert sum(domain["counts"]) == len(tiny_datasets().eval_domain)
     card = (tmp_path / "model_card.md").read_text(encoding="utf-8")
     assert "v0.0.1" in card and "MIT" in card and "deepset_recall" in card
     assert (tmp_path / "model.onnx").stat().st_size > 0
