@@ -16,7 +16,7 @@ misconfigurations:
       - "prod/cdn.tf"
     statement: >-
       Distribution CloudFront sans WAF : trafic de démonstration, abus déjà bornés par le
-      quota par visiteur et le plafond de dépense (DynamoDB), la concurrence réservée de la
-      Lambda et l'alerte de budget. Un WAF (coût fixe mensuel) est reporté ; suivi avec les
+      quota par visiteur et le plafond de dépense (DynamoDB), la limite de concurrence
+      Lambda du compte (10) et l'alerte de budget. Un WAF (coût fixe mensuel) est reporté ; suivi avec les
       journaux d'accès CloudFront dans followups.md.
     expired_at: 2027-03-26
