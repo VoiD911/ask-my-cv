@@ -76,8 +76,12 @@ CloudWatch Logs Insights (`aws/spans`, rôle IAM `ask-my-cv-nightly`, lecture se
 par PSI (Population Stability Index, 10 compartiments sur `[0, 1]`), à `domain_score_histogram`
 du `metrics.json` du modèle promu (scores sur les 50 questions de
 `ml/data/recruiter_eval.jsonl`, représentatives du trafic réel plutôt que du jeu de test
-adverse). En dessous de 50 scores sur la fenêtre, la mesure est jugée non significative et le
-job réussit sans avis. PSI ≥ 0,1 : avertissement ; PSI ≥ 0,2 : échec.
+adverse). Les scores ≥ `--threshold` (0,5 par défaut, égal à `injection_threshold`) sont
+exclus : ce sont des attaques bloquées, pas une dérive du modèle, et une vague d'attaques ne
+doit pas déclencher l'alerte. En dessous de 50 scores restants sur la fenêtre, la mesure est
+jugée non significative et le job réussit sans avis. PSI ≥ 0,1 : avertissement ; PSI ≥ 0,2 :
+échec. Une référence sans `domain_score_histogram` (modèle antérieur à v1.2.0) donne un
+avertissement et le job réussit : la dérive n'est pas calculable.
 
 Job `report` (`needs: [redteam, drift]`, `if: failure()`) : à la moindre suite en échec, une
 issue GitHub étiquetée `nightly` est ouverte (« Nuit : évaluations en échec », date, jobs en

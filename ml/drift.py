@@ -1,10 +1,19 @@
 """Dérive du classifieur d'injection : PSI des scores de production contre le domaine.
 
-python -m ml.drift --reference metrics.json --days 7 [--log-group aws/spans] [--region ca-central-1]
+python -m ml.drift --reference metrics.json --days 7 [--threshold 0.5]
+    [--log-group aws/spans] [--region ca-central-1]
 
 Lit les scores `xops.score` des spans `injection` (hors trafic d'évaluation `xops.eval`) dans
 CloudWatch Logs Insights sur `--days` jours, et calcule le PSI (Population Stability Index)
 contre `domain_score_histogram` du `metrics.json` de la release promue.
+
+Les scores ≥ `--threshold` (le seuil d'injection servi, `injection_threshold`) sont exclus :
+ce sont des attaques bloquées, pas des questions du domaine, et la référence ne décrit que
+le domaine. Une vague d'attaques ne doit pas passer pour une dérive du modèle. Le minimum de
+MIN_SAMPLES scores s'applique après cette exclusion.
+
+Une référence sans `domain_score_histogram` (modèle antérieur à v1.2.0) produit un
+avertissement et un code de sortie 0 : la dérive n'est pas calculable.
 """
 
 from __future__ import annotations
@@ -30,9 +39,11 @@ MAX_POLLS = 30
 
 # Le span `injection` porte `attributes.xops.score`. Logs Insights aplatit le JSON en
 # `attributes.xops.score` : le nom complet, points compris, se met entre backticks (vérifié sur
-# `aws/spans` le 2026-09-26 ; la forme attributes.`xops.score` renvoie un champ vide).
+# `aws/spans` le 2026-09-26 ; la forme attributes.`xops.score` renvoie un champ vide). Les
+# spans sans score (étape en erreur avant la mesure) sont écartés par `isPresent`.
 LOGS_INSIGHTS_QUERY = (
-    'filter name = "injection" and not isPresent(`attributes.xops.eval`)\n'
+    'filter name = "injection" and not isPresent(`attributes.xops.eval`)'
+    " and isPresent(`attributes.xops.score`)\n"
     "| fields `attributes.xops.score` as score\n"
     "| limit 10000"
 )
@@ -113,23 +124,38 @@ def main(
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", required=True, help="metrics.json de la release promue")
     parser.add_argument("--days", type=int, default=7, help="fenêtre glissante en jours")
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        help="seuil d'injection servi : les scores au-dessus (attaques bloquées) sont exclus",
+    )
     parser.add_argument("--log-group", default="aws/spans")
     parser.add_argument("--region", default="ca-central-1")
     args = parser.parse_args(argv)
 
     reference = json.loads(Path(args.reference).read_text(encoding="utf-8"))
+    if "domain_score_histogram" not in reference:
+        print(
+            "::warning::référence sans domain_score_histogram (modèle antérieur à v1.2.0) : "
+            "dérive non calculée"
+        )
+        return 0
     reference_counts = reference["domain_score_histogram"]["counts"]
 
     end = int(time.time())
     start = end - args.days * 86400
 
     client = client_factory(args.region)
-    scores = fetch_scores(client, args.log_group, start, end)
+    fetched = fetch_scores(client, args.log_group, start, end)
+    # attaques bloquées exclues : la référence ne décrit que les questions du domaine
+    scores = [score for score in fetched if score < args.threshold]
+    excluded = len(fetched) - len(scores)
 
     if len(scores) < MIN_SAMPLES:
         print(
-            f"données insuffisantes : {len(scores)} score(s) sur les {args.days} derniers "
-            f"jours (minimum {MIN_SAMPLES})."
+            f"données insuffisantes : {len(scores)} score(s) sous le seuil {args.threshold} "
+            f"sur les {args.days} derniers jours ({excluded} exclu(s), minimum {MIN_SAMPLES})."
         )
         return 0
 
@@ -148,7 +174,10 @@ def main(
             f"(seuil d'échec {PSI_FAIL_THRESHOLD}, {len(scores)} scores sur {args.days} jours)."
         )
         return 0
-    print(f"pas de dérive significative : PSI={value:.4f} ({len(scores)} scores).")
+    print(
+        f"pas de dérive significative : PSI={value:.4f} ({len(scores)} scores, "
+        f"{excluded} attaque(s) bloquée(s) exclue(s))."
+    )
     return 0
 
 

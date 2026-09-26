@@ -167,7 +167,7 @@ def test_main_signale_des_donnees_insuffisantes(
 
 def test_main_echoue_si_psi_haut(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.95] * 60
+    scores = [0.45] * 60  # sous le seuil : questions du domaine au score anormal
 
     def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
         return scores
@@ -184,7 +184,7 @@ def test_main_echoue_si_psi_haut(tmp_path: Path, capsys: pytest.CaptureFixture) 
 
 def test_main_avertit_si_psi_intermediaire(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
     reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.01] * 98 + [0.99] * 2
+    scores = [0.01] * 98 + [0.45] * 2
     assert 0.1 <= drift.psi([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], drift.histogram(scores)) < 0.2
 
     def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
@@ -201,11 +201,12 @@ def test_main_avertit_si_psi_intermediaire(tmp_path: Path, capsys: pytest.Captur
 
 
 def test_main_ok_si_psi_bas(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    counts = [10, 10, 10, 10, 10, 10, 10, 10, 10, 10]
+    # le domaine ne produit que des scores sous le seuil (les attaques sont exclues)
+    counts = [10, 10, 10, 10, 10, 0, 0, 0, 0, 0]
     reference = _reference_file(tmp_path, counts)
     scores = []
-    for i in range(10):
-        scores += [i / 10 + 0.01] * 10
+    for i in range(5):
+        scores += [i / 10 + 0.01] * 12
 
     def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
         return scores
@@ -218,3 +219,96 @@ def test_main_ok_si_psi_bas(tmp_path: Path, capsys: pytest.CaptureFixture) -> No
     out = capsys.readouterr().out
     assert code == 0
     assert "::warning::" not in out
+
+
+def test_requete_ecarte_les_spans_sans_score() -> None:
+    # forme vérifiée sur aws/spans : nom complet entre backticks
+    assert "isPresent(`attributes.xops.score`)" in drift.LOGS_INSIGHTS_QUERY
+    assert "not isPresent(`attributes.xops.eval`)" in drift.LOGS_INSIGHTS_QUERY
+
+
+def test_main_avertit_et_reussit_si_reference_sans_histogramme(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    reference = tmp_path / "metrics.json"
+    reference.write_text(json.dumps({"deepset_recall": 0.9}), encoding="utf-8")
+
+    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
+        raise AssertionError("aucune requête sans histogramme de référence")
+
+    code = drift.main(
+        ["--reference", str(reference)],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    assert code == 0
+    assert (
+        "::warning::référence sans domain_score_histogram (modèle antérieur à v1.2.0) : "
+        "dérive non calculée"
+    ) in capsys.readouterr().out
+
+
+def test_main_exclut_les_attaques_bloquees_du_psi(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    # domaine stable + vague d'attaques bloquées (≥ 0,5) : pas une dérive du modèle
+    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    scores = [0.05] * 60 + [0.97] * 500
+
+    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
+        return scores
+
+    code = drift.main(
+        ["--reference", str(reference)],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "pas de dérive significative" in out
+    assert "500 attaque(s) bloquée(s) exclue(s)" in out
+
+
+def test_main_seuil_configurable(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    scores = [0.05] * 60 + [0.75] * 60
+
+    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
+        return scores
+
+    # seuil 0,9 : les scores à 0,75 restent dans la population et font dériver le PSI
+    code = drift.main(
+        ["--reference", str(reference), "--threshold", "0.9"],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    assert code == 1
+    capsys.readouterr()
+    # seuil par défaut 0,5 : ils sont exclus
+    code = drift.main(
+        ["--reference", str(reference)],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    assert code == 0
+
+
+def test_main_minimum_applique_apres_exclusion(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+    # 200 scores au total, mais seulement MIN_SAMPLES - 1 sous le seuil
+    scores = [0.05] * (drift.MIN_SAMPLES - 1) + [0.99] * 151
+
+    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
+        return scores
+
+    code = drift.main(
+        ["--reference", str(reference)],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "données insuffisantes" in out
+    assert "151 exclu(s)" in out
