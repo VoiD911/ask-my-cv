@@ -34,9 +34,11 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
     """Fabrique : `uvicorn --factory ask_my_cv.app:create_app`. Tout est chargé et vérifié ici."""
     if deps is None:
         from ask_my_cv.container import build_deps
+        from ask_my_cv.secrets import apply_ssm_secrets
         from ask_my_cv.settings import load_settings
         from ask_my_cv.telemetry import configure_tracing
 
+        apply_ssm_secrets()
         settings = load_settings()
         flush = configure_tracing(settings)
         deps = build_deps(settings)
