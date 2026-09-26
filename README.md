@@ -68,6 +68,36 @@ uv run python -m ml.train --version v0.0.0 --out dist
 
 ## Production (AWS, `ca-central-1`)
 
+Déployée et vérifiée le 2026-09-26. `ask-my-cv-api.cloudfront.net` (en clair : `d35ssr2343raxt.cloudfront.net`) sert l'API à `/api/*`.
+
+### Architecture
+
+```
+Navigateur
+   │  POST /api/ask  (x-amz-content-sha256 obligatoire, voir plus bas)
+   ▼
+CloudFront (d35ssr2343raxt.cloudfront.net)
+   │  fonction CloudFront : strip /api, méthodes filtrées, https-only,
+   │  en-têtes de sécurité gérés
+   │  OAC → signature SigV4
+   ▼
+Lambda Function URL (AWS_IAM, RESPONSE_STREAM)
+   │  appel direct de l'URL → 403 (seul CloudFront est autorisé)
+   ▼
+Conteneur Lambda (Lambda Web Adapter 1.1.0 + uvicorn)
+   │
+   ├──▶ Bedrock : Claude Haiku 4.5 (profil `us.`) + Titan V2 embeddings (ca-central-1)
+   ├──▶ DynamoDB : `ask-my-cv-chunks` (index vectoriel natif, DOT_PRODUCT, 1024 dim, awscc)
+   │              `ask-my-cv-ledger` (TTL)
+   ├──▶ SSM Parameter Store : VISITOR_SALT, LANGFUSE_* (SecureString, sous /ask-my-cv)
+   └──▶ traces OTLP → X-Ray / CloudWatch Transaction Search (aws/spans, rétention 14 j)
+                    → Langfuse (US)
+```
+
+Budget AWS Budgets : 15 $/mois hors crédits, alertes par courriel.
+
+### Configuration de production
+
 La configuration de production est `settings.aws.yaml` (`ASK_SETTINGS=settings.aws.yaml`) :
 
 - **LLM** : Claude Haiku 4.5 via Bedrock (`ConverseStream`), profil d'inférence `us.` : les requêtes au LLM sont traitées aux États-Unis.
@@ -76,7 +106,7 @@ La configuration de production est `settings.aws.yaml` (`ASK_SETTINGS=settings.a
 - **Quotas et budget** : table DynamoDB `ledger`, compteurs atomiques, TTL `expires_at`.
 - **Traces** : OpenTelemetry vers CloudWatch (OTLP signé SigV4) et Langfuse ; ni IP ni question dans les traces.
 
-Secrets, uniquement par variables d'environnement : `VISITOR_SALT` (au moins 32 caractères), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`.
+Secrets, uniquement par variables d'environnement (chargées depuis SSM en production) : `VISITOR_SALT` (au moins 32 caractères), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`.
 
 Indexer le CV dans DynamoDB (exige `embedder: bedrock`) :
 
@@ -85,3 +115,43 @@ ASK_SETTINGS=settings.aws.yaml uv run python -m ask_my_cv.ingest --target dynamo
 ```
 
 Les tests n'appellent jamais AWS : les clients sont simulés (`Stubber`, moto) et l'environnement AWS est isolé.
+
+### `x-amz-content-sha256` obligatoire
+
+L'OAC CloudFront → Lambda Function URL exige, pour tout `POST`, l'en-tête `x-amz-content-sha256` égal au SHA-256 hexadécimal du corps exact envoyé. Sans lui (ou avec une valeur qui ne correspond pas au corps), CloudFront renvoie une erreur avant même d'atteindre la Lambda. `infra/scripts/smoke_prod.py` calcule cet en-tête ; un futur client web devra faire de même (`crypto.subtle.digest`).
+
+### Ordre de mise en place (première fois)
+
+1. `terraform apply` sur `infra/bootstrap` (état S3, ECR, fournisseur OIDC GitHub, rôle de déploiement). Le fournisseur OIDC existait déjà dans le compte : importé avec `terraform import`.
+2. Première image : `docker build --platform linux/amd64 --provenance=false --sbom=false -t <repo>:<tag> .` puis `docker push`.
+3. `terraform apply` sur `infra/prod` (14 ressources : tables, IAM, Lambda, CloudFront, observabilité, budget).
+4. Secrets : `infra/scripts/put-secrets.sh` (ou les valeurs reprises d'un fichier `.env` non versionné).
+5. `infra/scripts/enable-transaction-search.sh` (activation unique par compte).
+6. Ingestion : `ASK_SETTINGS=settings.aws.yaml uv run python -m ask_my_cv.ingest --target dynamodb`.
+7. Test de fumée réel : `python infra/scripts/smoke_prod.py <site_url>`.
+8. `gh variable set AWS_DEPLOY_ROLE_ARN / ECR_REPOSITORY_URL / SITE_URL` → active le job `deploy` de la CI (OIDC) : reconstruit/pousse l'image si besoin, `update-function-code`, puis rejoue le test de fumée en production.
+
+Après ce déploiement, `terraform plan` n'affiche plus aucun changement sur les deux racines.
+
+### Coût
+
+≈ 1 $/mois hors Bedrock (Lambda, CloudFront, DynamoDB, ECR, CloudWatch, S3, SSM). Une question ≈ 0,0009 $ (Bedrock).
+
+### Destruction
+
+```bash
+terraform -chdir=infra/prod destroy
+```
+
+Puis, sur `infra/bootstrap` : retirer `prevent_destroy` sur le bucket d'état et sur le dépôt ECR, vider le bucket (toutes les versions) et le dépôt ECR, puis `terraform destroy`.
+
+### Notes Windows
+
+- Git Bash réécrit les chemins `/...` avant de les passer à `aws.exe` : les scripts exportent `MSYS_NO_PATHCONV=1`.
+- En PowerShell, des variables `AWS_*` laissées par `aws configure export-credentials` prennent le pas sur une session `aws login` plus récente : `Remove-Item Env:AWS_*` avant de relancer `aws login`.
+
+### Leçons du déploiement
+
+- `requests` n'était qu'une dépendance transitive de dev : l'image démarrait puis plantait au premier appel (import manquant). Elle est maintenant déclarée explicitement, et les imports sont vérifiés à l'intérieur de l'image construite (pas seulement dans l'environnement de dev).
+- L'export OTLP vers X-Ray exige `xray:PutTraceSegments` en plus de `xray:PutSpans` / `PutSpansForIndexing` : sans elle, l'export échoue en 403.
+- GitHub émet désormais des sujets OIDC immuables : `repo:<propriétaire>@<id>/<dépôt>@<id>:ref:...` (à relever avec `gh api repos/<o>/<r>/actions/oidc/customization/sub`) ; la politique de confiance du rôle de déploiement a été mise à jour en conséquence.
