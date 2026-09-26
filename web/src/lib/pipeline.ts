@@ -1,12 +1,14 @@
 /**
  * Réducteur pur : transforme les événements SSE de l'API en état du pipeline.
  *
- * NOTE : `PipelineEvent` ci-dessous est une redéfinition locale et minimale
- * des événements consommés ici, dérivée de `src/ask_my_cv/events.py`. Le
- * fichier `web/src/lib/events.ts` (écrit en parallèle par un autre agent)
- * doit à terme satisfaire — ou remplacer — ce type ; le contrôleur du flux
- * SSE (`sse.ts`/`ask.ts`) est responsable de la réconciliation.
+ * Les types d'événements viennent de `./events` (miroir de
+ * `src/ask_my_cv/events.py`), la même définition que celle validée par
+ * `isAskEvent` dans le client `ask.ts` : une seule source de vérité.
  */
+
+import type { AskEvent, DoneEvent, StageStatus as ApiStageStatus } from "./events";
+
+export type { DoneEvent } from "./events";
 
 /** Les 8 étapes du pipeline, dans l'ordre où l'API les traverse. */
 export const STAGES = [
@@ -22,13 +24,8 @@ export const STAGES = [
 
 export type KnownStage = (typeof STAGES)[number];
 
-export type StageStatus =
-  | "idle"
-  | "active"
-  | "ok"
-  | "blocked"
-  | "error"
-  | "fallback";
+/** Statut affiché d'une étape : les statuts de l'API, plus « au repos » et « en cours ». */
+export type StageStatus = "idle" | "active" | ApiStageStatus;
 
 export type StageState = {
   status: StageStatus;
@@ -36,38 +33,8 @@ export type StageState = {
   attrs: Record<string, string>;
 };
 
-export type DoneEvent = {
-  type: "done";
-  tokens_in: number;
-  tokens_out: number;
-  cost_usd: number;
-  latency_ms: number;
-  sources: string[];
-  answer_override: string | null;
-  trace_id: string | null;
-};
-
-export type StageStartEvent = { type: "stage.start"; name: string; ts: number };
-
-export type StageEndEvent = {
-  type: "stage.end";
-  name: string;
-  status: Exclude<StageStatus, "idle" | "active">;
-  duration_ms: number;
-  attrs: Record<string, unknown>;
-};
-
-export type LlmProgressEvent = { type: "llm.progress"; tokens: number };
-
-export type AnswerEvent = { type: "answer"; text: string };
-
-/** Union minimale des événements consommés par le réducteur du pipeline. */
-export type PipelineEvent =
-  | StageStartEvent
-  | StageEndEvent
-  | LlmProgressEvent
-  | AnswerEvent
-  | DoneEvent;
+/** Événements consommés par le réducteur : exactement ceux de l'API. */
+export type PipelineEvent = AskEvent;
 
 export type RunState = {
   stages: Record<string, StageState>;
