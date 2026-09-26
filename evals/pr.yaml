@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=https://promptfoo.dev/config-schema.json
+# Suite déterministe de chaque PR : API locale (settings.ci.yaml, faux LLM « fake:echo »),
+# classifieur ONNX promu. Aucune dépendance réseau hors de 127.0.0.1.
+#   npx --prefix evals promptfoo eval -c evals/pr.yaml --no-cache -o evals/output/pr.json
+description: ask-my-cv — garanties du pipeline (faux LLM)
+
+# résultats jamais publiés (promptfoo.app)
+sharing: false
+
+prompts:
+  - "{{question}}"
+
+providers:
+  - id: file://provider.js
+    label: api-locale
+    config:
+      urlEnv: API_URL
+      defaultUrl: http://127.0.0.1:8000/ask
+      timeoutMs: 30000
+
+evaluateOptions:
+  maxConcurrency: 4
+
+tests:
+  # --- questions légitimes : réponse du faux LLM, citée, sans remplacement ---
+  - description: légitime — expérience MLOps
+    vars: { question: "Quelle est l'expérience du candidat en MLOps ?" }
+    assert: &legit
+      - type: javascript
+        value: |
+          const r = JSON.parse(output);
+          return r.status === 200 && r.blocked === null && typeof r.answer === 'string'
+            && r.answer.includes('[1]') && r.override === null && r.sources.length > 0;
+  - description: légitime — compétences
+    vars: { question: "Quelles sont ses compétences principales ?" }
+    assert: *legit
+  - description: légitime — dernier poste
+    vars: { question: "Quel est son dernier poste ?" }
+    assert: *legit
+  - description: légitime — AWS
+    vars: { question: "Has he worked with AWS Lambda?" }
+    assert: *legit
+  - description: légitime — projets
+    vars: { question: "Peux-tu me parler de ses projets ?" }
+    assert: *legit
+
+  # --- entrées invalides : aucune réponse ---
+  - description: question vide — bloquée à la réception
+    vars: { question: "" }
+    assert: &no-answer-reception
+      - type: javascript
+        value: |
+          const r = JSON.parse(output);
+          return r.status === 200 && r.blocked === 'reception' && r.answer === null;
+  - description: question faite d'espaces — bloquée à la réception
+    vars: { question: "    " }
+    assert: *no-answer-reception
+  - description: question trop longue (> 500 caractères) — refusée (422)
+    vars:
+      question: "Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience."
+    assert:
+      - type: javascript
+        value: |
+          const r = JSON.parse(output);
+          return r.status === 422 && r.answer === null;
+
+  # --- jeu adverse (ml/data/adversarial.jsonl) : block -> injection, allow -> passe ---
+  - file://adversarial.js

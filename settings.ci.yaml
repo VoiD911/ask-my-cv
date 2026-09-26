@@ -1,0 +1,31 @@
+# Configuration déterministe de la CI (job `evals`) : faux LLM uniquement, quota large,
+# classifieur ONNX promu (téléchargé et vérifié dans le job).
+environment: dev
+trusted_proxy: none
+cors_origins: []
+
+cv_path: data/cv.md
+index_path: data/index.json
+prompt_path: prompts/answer@v2.md
+embed_dim: 256
+
+default_model: fake:echo
+fallback_chain: [fake:echo]
+models:
+  - id: fake:echo
+    provider: fake
+    public: true
+
+top_k: 5
+injection_threshold: 0.5
+detector: onnx
+model_manifest: models/prod.json
+daily_cap_usd: 0.5
+per_visitor_limit: 1000
+visitor_window_s: 3600
+stage_timeout_s: 20
+first_token_timeout_s: 8
+llm_deadline_s: 30
+allowed_contacts:
+  - alex.martin@example.com
+visitor_salt: change-me

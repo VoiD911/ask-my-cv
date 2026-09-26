@@ -91,6 +91,66 @@ jobs:
           docker logs smoke
           exit 1
 
+  # Garanties du pipeline prouvées de bout en bout sur l'API locale : faux LLM
+  # (settings.ci.yaml), classifieur ONNX promu, suite promptfoo evals/pr.yaml.
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      PROMPTFOO_DISABLE_TELEMETRY: "1"
+      PROMPTFOO_DISABLE_UPDATE: "1"
+      PROMPTFOO_DISABLE_SHARING: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen --python 3.12
+      - name: Récupérer et vérifier le modèle promu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version models/prod.json)
+          if [ "$VERSION" = "null" ]; then echo "::error::aucun modèle promu : settings.ci.yaml exige detector: onnx"; exit 1; fi
+          gh release download "model-$VERSION" -p model.onnx -p model.onnx.sigstore.json -D models
+          echo "$(jq -r .sha256 models/prod.json)  models/model.onnx" | sha256sum -c -
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.3
+      - name: Vérifier la signature du modèle
+        run: |
+          cosign verify-blob models/model.onnx             --bundle models/model.onnx.sigstore.json             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/train.yml@refs/heads/main"             --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - name: Index du CV
+        run: ASK_SETTINGS=settings.ci.yaml uv run python -m ask_my_cv.ingest
+      - name: Démarrer l'API locale (faux LLM)
+        run: |
+          ASK_SETTINGS=settings.ci.yaml VISITOR_SALT="$(openssl rand -hex 32)"             nohup uv run uvicorn --factory ask_my_cv.app:create_app --host 127.0.0.1 --port 8000 > api.log 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS 127.0.0.1:8000/healthz; then echo; exit 0; fi
+            sleep 1
+          done
+          cat api.log
+          exit 1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: evals/package-lock.json
+      - run: npm ci --prefix evals --no-audit --no-fund
+      - name: Tests du lecteur SSE et de l'assertion de fuite
+        run: node --test evals/sse.test.js evals/no_leak.test.js
+      - name: Suite promptfoo (PR)
+        run: npx --prefix evals promptfoo eval -c evals/pr.yaml --no-cache --no-progress-bar --no-table -o evals/output/pr.json
+      - name: Journal de l'API
+        if: failure()
+        run: cat api.log
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: evals-pr-${{ github.sha }}
+          path: evals/output/pr.json
+          retention-days: 14
+          if-no-files-found: ignore
+
   terraform:
     runs-on: ubuntu-latest
     steps:

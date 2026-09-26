@@ -5,3 +5,7 @@ models/
 ml/data/
 uv.lock
 .venv/
+# promptfoo : dépendances et résultats locaux (le code des suites reste analysé).
+evals/node_modules/
+evals/output/
+evals/package-lock.json

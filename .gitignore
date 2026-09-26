@@ -10,3 +10,5 @@ dist/
 models/*.onnx
 models/*.sigstore.json
 sbom.cdx.json
+evals/node_modules/
+evals/output/
