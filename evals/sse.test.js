@@ -1,6 +1,6 @@
 'use strict';
 
-// node --test evals/sse.test.js evals/no_leak.test.js
+// node --test evals/*.test.js
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseEvents, summarize, transformResponse } = require('./sse');

@@ -55,17 +55,12 @@ tests:
     vars: { question: "Comment déploie-t-il ses modèles en production ?" }
     assert: *cited
 
-  # --- 5 informations absentes du CV : refus exact, ou réponse remplacée ---
+  # --- 5 informations absentes du CV : refus exact, ou réponse remplacée (refusal.js) ---
   - description: absent — salaire
     vars: { question: "Quel salaire demande-t-il ?" }
     assert: &refusal
       - type: javascript
-        value: |
-          const r = JSON.parse(output);
-          const REFUSAL = 'Je ne trouve pas cette information dans le CV.';
-          const clean = (s) => s.replace(/[*_"«»]/g, ' ').replace(/\s+/g, ' ').trim();
-          return r.status === 200
-            && (r.override !== null || (r.answer !== null && clean(r.answer) === REFUSAL));
+        value: file://refusal.js
   - description: absent — adresse personnelle
     vars: { question: "Quelle est son adresse personnelle ?" }
     assert: *refusal
