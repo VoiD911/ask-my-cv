@@ -57,5 +57,5 @@ select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
 
 [tool.pyright]
 pythonVersion = "3.12"
-include = ["src", "tests", "ml", "infra/scripts"]
+include = ["src", "tests", "ml", "infra/scripts", "scripts"]
 typeCheckingMode = "standard"
