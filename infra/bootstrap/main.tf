@@ -18,6 +18,18 @@ variable "github_oidc_sub_prefix" {
   default = "repo:VoiD911@15268916/ask-my-cv@1387821326"
 }
 
+# ARN de la distribution CloudFront (sortie distribution_arn de infra/prod). La distribution est
+# créée par la racine prod, appliquée après l'amorçage : son ARN n'est pas connu au premier
+# apply. Sans valeur, l'invalidation est limitée aux distributions du compte (préfixe
+# arn:aws:cloudfront::<compte>:distribution/*, le compte n'en héberge qu'une) ; renseigner
+# la variable puis réappliquer pour la restreindre à la seule distribution du site.
+# Pas de source de données : elle échouerait tant que prod n'existe pas (dépendance circulaire).
+variable "site_distribution_arn" {
+  type     = string
+  default  = null
+  nullable = true
+}
+
 provider "aws" {
   region = var.region
   default_tags {
@@ -30,6 +42,12 @@ data "aws_caller_identity" "me" {}
 locals {
   account       = data.aws_caller_identity.me.account_id
   function_name = "ask-my-cv-api"
+  # Même nom que aws_s3_bucket.site dans infra/prod/site.tf.
+  site_bucket_arn = "arn:aws:s3:::ask-my-cv-site-${data.aws_caller_identity.me.account_id}"
+  site_distribution_arn = coalesce(
+    var.site_distribution_arn,
+    "arn:aws:cloudfront::${data.aws_caller_identity.me.account_id}:distribution/*",
+  )
 }
 
 # --- État Terraform de la racine prod ---
@@ -176,6 +194,23 @@ data "aws_iam_policy_document" "deploy" {
     sid       = "LambdaDeploy"
     actions   = ["lambda:UpdateFunctionCode", "lambda:GetFunction", "lambda:GetFunctionConfiguration"]
     resources = ["arn:aws:lambda:${var.region}:${local.account}:function:${local.function_name}"]
+  }
+  # aws s3 sync --delete : liste le bucket, écrit et supprime les objets.
+  statement {
+    sid       = "SiteList"
+    actions   = ["s3:ListBucket"]
+    resources = [local.site_bucket_arn]
+  }
+  statement {
+    sid       = "SiteWrite"
+    actions   = ["s3:PutObject", "s3:DeleteObject"]
+    resources = ["${local.site_bucket_arn}/*"]
+  }
+  # Invalidation après publication ; GetInvalidation pour `aws cloudfront wait invalidation-completed`.
+  statement {
+    sid       = "SiteInvalidate"
+    actions   = ["cloudfront:CreateInvalidation", "cloudfront:GetInvalidation"]
+    resources = [local.site_distribution_arn]
   }
 }
 

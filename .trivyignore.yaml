@@ -11,6 +11,16 @@ misconfigurations:
       gestion de politique de clé sans réduire le risque pour un compte à un seul
       administrateur. À réévaluer si d'autres principaux accèdent au compte.
     expired_at: 2027-03-26
+  - id: AWS-0132
+    paths:
+      - "prod/site.tf"
+    statement: >-
+      Bucket du site statique chiffré par SSE-S3 plutôt que par une clé KMS client : son
+      contenu (export Next.js) est public par nature, servi à tous par CloudFront. Une clé
+      KMS client obligerait à autoriser CloudFront dans sa politique de clé et ajouterait un
+      coût par requête, sans protéger aucune donnée confidentielle. Bucket privé (OAC,
+      blocage d'accès public, ACL désactivées) et accès hors TLS refusé.
+    expired_at: 2027-03-26
   - id: AWS-0011
     paths:
       - "prod/cdn.tf"

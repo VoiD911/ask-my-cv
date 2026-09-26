@@ -19,6 +19,15 @@ provider "aws" {
   }
 }
 
+# CloudFront n'accepte que des certificats ACM de us-east-1.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+  default_tags {
+    tags = { project = "ask-my-cv", managed-by = "terraform", stack = "prod" }
+  }
+}
+
 provider "awscc" {
   region = var.region
 }

@@ -15,8 +15,19 @@ resource "aws_cloudfront_function" "strip_api" {
   code    = file("${path.module}/functions/strip-api.js")
 }
 
+resource "aws_cloudfront_function" "site_index" {
+  name    = "ask-my-cv-site-index"
+  runtime = "cloudfront-js-2.0"
+  publish = true
+  code    = file("${path.module}/functions/site-index.js")
+}
+
 data "aws_cloudfront_cache_policy" "disabled" {
   name = "Managed-CachingDisabled"
+}
+
+data "aws_cloudfront_cache_policy" "optimized" {
+  name = "Managed-CachingOptimized"
 }
 
 # Tous les en-têtes du visiteur sauf Host, plus les en-têtes CloudFront (dont CloudFront-Viewer-Address).
@@ -29,6 +40,41 @@ data "aws_cloudfront_response_headers_policy" "security" {
   name = "Managed-SecurityHeadersPolicy"
 }
 
+# En-têtes de sécurité du site : ceux de Managed-SecurityHeadersPolicy plus la CSP.
+resource "aws_cloudfront_response_headers_policy" "site" {
+  name    = "ask-my-cv-site"
+  comment = "En-tetes de securite et CSP du site statique"
+
+  security_headers_config {
+    content_security_policy {
+      content_security_policy = var.site_csp
+      override                = true
+    }
+    strict_transport_security {
+      access_control_max_age_sec = 31536000
+      include_subdomains         = false # sous-domaine d'un domaine personnel : ne pas imposer HSTS aux voisins
+      preload                    = false
+      override                   = true
+    }
+    content_type_options {
+      override = true
+    }
+    frame_options {
+      frame_option = "DENY"
+      override     = true
+    }
+    referrer_policy {
+      referrer_policy = "strict-origin-when-cross-origin"
+      override        = true
+    }
+    xss_protection {
+      protection = true
+      mode_block = true
+      override   = true
+    }
+  }
+}
+
 locals {
   api_domain = trimsuffix(trimprefix(aws_lambda_function_url.api.function_url, "https://"), "/")
 }
@@ -39,6 +85,9 @@ resource "aws_cloudfront_distribution" "site" {
   price_class     = "PriceClass_100"
   http_version    = "http2and3"
   is_ipv6_enabled = true
+
+  aliases             = [var.site_domain]
+  default_root_object = "index.html"
 
   origin {
     origin_id                = "api"
@@ -54,11 +103,33 @@ resource "aws_cloudfront_distribution" "site" {
     }
   }
 
-  # Plan 1e : le comportement par défaut passera au bucket S3 du site ; /api/* restera ici.
-  # https-only (pas redirect-to-https) : une redirection 301 sur un POST transformerait la
-  # requête en GET et perdrait le corps. À revoir au plan 1e quand S3 deviendra le comportement
-  # par défaut (S3 pourra alors accepter redirect-to-https sans ce risque).
+  origin {
+    origin_id                = "site"
+    domain_name              = aws_s3_bucket.site.bucket_regional_domain_name
+    origin_access_control_id = aws_cloudfront_origin_access_control.site.id
+  }
+
+  # Site statique : GET/HEAD seulement, donc redirect-to-https sans risque de perdre un corps.
   default_cache_behavior {
+    target_origin_id           = "site"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD"]
+    cached_methods             = ["GET", "HEAD"]
+    cache_policy_id            = data.aws_cloudfront_cache_policy.optimized.id
+    response_headers_policy_id = aws_cloudfront_response_headers_policy.site.id
+    compress                   = true
+
+    function_association {
+      event_type   = "viewer-request"
+      function_arn = aws_cloudfront_function.site_index.arn
+    }
+  }
+
+  # API : https-only (pas redirect-to-https) : une redirection 301 sur un POST transformerait
+  # la requête en GET et perdrait le corps. CloudFront transmet l'URI complète (/api/...) :
+  # strip-api retire le préfixe avant l'origine Lambda.
+  ordered_cache_behavior {
+    path_pattern               = "/api/*"
     target_origin_id           = "api"
     viewer_protocol_policy     = "https-only"
     allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
@@ -79,7 +150,9 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   viewer_certificate {
-    cloudfront_default_certificate = true
+    acm_certificate_arn      = aws_acm_certificate_validation.site.certificate_arn # certificat validé
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
   }
 }
 
