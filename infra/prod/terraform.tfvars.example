@@ -1,0 +1,2 @@
+image_tag   = "<sha git de l'image poussée>"
+alert_email = "<adresse qui reçoit les alertes de budget>"
