@@ -9,3 +9,8 @@ uv.lock
 evals/node_modules/
 evals/output/
 evals/package-lock.json
+# Site : dépendances, sorties de build et verrou (le code source web/src reste analysé).
+web/node_modules/
+web/.next/
+web/out/
+web/package-lock.json

@@ -12,3 +12,8 @@ models/*.sigstore.json
 sbom.cdx.json
 evals/node_modules/
 evals/output/
+web/node_modules/
+web/.next/
+web/out/
+web/test-results/
+web/playwright-report/

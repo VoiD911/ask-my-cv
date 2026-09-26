@@ -13,3 +13,21 @@ updates:
   - package-ecosystem: docker
     directory: /
     schedule: { interval: weekly }
+  - package-ecosystem: npm
+    directory: /web
+    schedule: { interval: weekly }
+    groups:
+      web: { patterns: ["*"] }
+    # Majeures bloquées par l'écosystème : eslint-config-next (plugins react, import,
+    # jsx-a11y) plafonne ESLint à 9 ; typescript-eslint et le contrôle de types de
+    # `next build` exigent l'API JS de TypeScript, absente de TypeScript 7 (natif).
+    ignore:
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+  - package-ecosystem: npm
+    directory: /evals
+    schedule: { interval: weekly }
+    groups:
+      evals: { patterns: ["*"] }
