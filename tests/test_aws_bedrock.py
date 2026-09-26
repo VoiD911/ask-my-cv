@@ -102,6 +102,20 @@ async def test_stream_without_metadata_reports_no_usage() -> None:
     assert not any(isinstance(p, TokenUsage) for p in pieces)
 
 
+async def test_stream_with_incomplete_usage_metadata_reports_no_usage() -> None:
+    runtime = FakeRuntime(
+        [
+            delta("Bon"),
+            {"messageStop": {"stopReason": "end_turn"}},
+            {"metadata": {"usage": {"totalTokens": 12}, "metrics": {"latencyMs": 5}}},
+        ]
+    )
+    llm = BedrockLLM(id="bedrock:haiku", model_id="m", client=runtime)
+    pieces = await collect(llm)
+    assert pieces == ["Bon"]
+    assert not any(isinstance(p, TokenUsage) for p in pieces)
+
+
 async def test_client_error_becomes_llm_error() -> None:
     error = ClientError(
         {"Error": {"Code": "ThrottlingException", "Message": "lent"}}, "ConverseStream"

@@ -70,8 +70,9 @@ class FakeLLM:
         self.calls += 1
         if self.fail:
             raise LLMError(f"{self.id} indisponible")
-        for i, word in enumerate(self.reply.split(" ")):
-            yield word if i == 0 else f" {word}"
+        if self.reply:
+            for i, word in enumerate(self.reply.split(" ")):
+                yield word if i == 0 else f" {word}"
         if self.usage is not None:
             yield self.usage
 

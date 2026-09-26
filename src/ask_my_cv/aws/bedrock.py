@@ -63,12 +63,13 @@ class BedrockLLM:
                     if "metadata" in event:
                         usage = event["metadata"].get("usage")
                         if usage:
-                            send(
-                                "usage",
-                                TokenUsage(
-                                    usage["inputTokens"], usage["outputTokens"], stop_reason
-                                ),
+                            tokens_in, tokens_out = (
+                                usage.get("inputTokens"),
+                                usage.get("outputTokens"),
                             )
+                            # champs absents ou de type inattendu : on laisse le pipeline estimer
+                            if isinstance(tokens_in, int) and isinstance(tokens_out, int):
+                                send("usage", TokenUsage(tokens_in, tokens_out, stop_reason))
                 send("end", None)
             except Exception as exc:  # botocore, réseau, événement d'erreur
                 send("error", exc)

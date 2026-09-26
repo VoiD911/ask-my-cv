@@ -8,7 +8,7 @@ from requests.adapters import BaseAdapter
 
 from ask_my_cv.aws.sigv4 import SigV4Session
 from ask_my_cv.settings import ConfigError, ModelConfig, Settings
-from ask_my_cv.telemetry import build_tracer_provider, exporter_config, exporter_for
+from ask_my_cv.telemetry import ExporterConfig, build_tracer_provider, exporter_config, exporter_for
 
 
 class Capture(BaseAdapter):
@@ -84,6 +84,14 @@ def test_cloudwatch_without_aws_credentials_fails_fast(monkeypatch: pytest.Monke
     monkeypatch.setattr(botocore.session.Session, "get_credentials", lambda self: None)
     with pytest.raises(ConfigError):
         exporter_config("cloudwatch", settings(tracing=["cloudwatch"]))
+
+
+def test_exporter_config_repr_hides_the_headers_token() -> None:
+    config = ExporterConfig(
+        endpoint="https://example.test", headers={"Authorization": "Basic secret-token"}
+    )
+    assert "secret-token" not in repr(config)
+    assert "Authorization" not in repr(config)
 
 
 def test_unknown_exporter_name_fails_fast() -> None:

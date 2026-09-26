@@ -37,6 +37,13 @@ async def test_fake_llm_emits_usage_when_given() -> None:
     assert all(isinstance(p, str) for p in pieces[:-1])
 
 
+async def test_fake_llm_empty_reply_emits_only_usage() -> None:
+    usage = TokenUsage(tokens_in=10, tokens_out=5, stop_reason="max_tokens")
+    llm = FakeLLM(id="fake:echo", reply="", usage=usage)
+    pieces = [p async for p in llm.stream("sys", "user")]
+    assert pieces == [usage]
+
+
 async def test_fake_llm_without_usage_emits_only_text() -> None:
     llm = FakeLLM(id="fake:echo", reply="Bonjour")
     pieces = [p async for p in llm.stream("sys", "user")]

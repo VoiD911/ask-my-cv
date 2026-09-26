@@ -9,7 +9,7 @@ from ask_my_cv.budget import InMemoryLedger
 from ask_my_cv.events import Answer, Done, Event, LLMProgress, StageEnd
 from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing, TokenUsage
 from ask_my_cv.output_guard import REFUSAL
-from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, Deps, run_pipeline
+from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, LEDGER_WAIT_S, Deps, run_pipeline
 
 STAGES = [
     "reception",
@@ -207,24 +207,38 @@ async def test_cancellation_does_not_wait_for_the_ledger_write(make_deps) -> Non
     assert await asyncio.to_thread(written.wait, 2)
 
 
-async def test_normal_end_waits_at_most_a_stage_timeout_for_the_ledger(make_deps) -> None:
+async def test_normal_end_waits_at_most_ledger_wait_s_for_the_ledger(make_deps) -> None:
     release = threading.Event()
 
     class StuckLedger(InMemoryLedger):
         def record(self, provider_id: str, cost_usd: float, now: float) -> None:
             release.wait(5)
 
-    deps = make_deps(
-        ledger=StuckLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600),
-        stage_timeout_s=0.2,
-    )
+    deps = make_deps(ledger=StuckLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600))
     try:
-        async with asyncio.timeout(2):
+        async with asyncio.timeout(LEDGER_WAIT_S + 2):
             events = await run(deps)
     finally:
         release.set()
     assert len(answers(events)) == 1
     assert done(events).answer_override is None
+
+
+async def test_pending_ledger_write_after_wait_is_logged(make_deps, caplog) -> None:
+    release = threading.Event()
+
+    class StuckLedger(InMemoryLedger):
+        def record(self, provider_id: str, cost_usd: float, now: float) -> None:
+            release.wait(5)
+
+    deps = make_deps(ledger=StuckLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600))
+    try:
+        async with asyncio.timeout(LEDGER_WAIT_S + 2):
+            await run(deps)
+    finally:
+        release.set()
+    [record] = [r for r in caplog.records if "écriture(s) non terminée(s)" in r.getMessage()]
+    assert "1" in record.getMessage()
 
 
 async def test_cost_is_recorded_in_ledger(make_deps) -> None:
@@ -267,6 +281,36 @@ async def test_without_reported_usage_the_estimate_is_kept(make_deps, spans) -> 
     await run(make_deps())
     [llm_span] = [s for s in spans.get_finished_spans() if s.name == "llm"]
     assert llm_span.attributes["xops.usage_source"] == "estimated"
+
+
+async def test_usage_only_stream_without_text_falls_back(make_deps) -> None:
+    usage_only = FakeLLM(id="usage_only", reply="", usage=TokenUsage(10, 5, "max_tokens"))
+    second = FakeLLM(id="second")
+    events = await run(make_deps(providers={"usage_only": usage_only, "second": second}))
+    llm_end = next(e for e in events if isinstance(e, StageEnd) and e.name == "llm")
+    assert llm_end.status == "fallback"
+    assert (llm_end.attrs["provider"], llm_end.attrs["failed"]) == ("second", "usage_only")
+    assert answers(events) == [second.reply]
+
+
+async def test_fallback_after_reported_usage_clears_the_stale_stop_reason(make_deps, spans) -> None:
+    usage_only = FakeLLM(id="usage_only", reply="", usage=TokenUsage(10, 5, "max_tokens"))
+    second = FakeLLM(id="second")
+    await run(make_deps(providers={"usage_only": usage_only, "second": second}))
+    [llm_span] = [s for s in spans.get_finished_spans() if s.name == "llm"]
+    assert llm_span.attributes["xops.usage_source"] == "estimated"
+    assert llm_span.attributes["xops.stop_reason"] == ""
+
+
+async def test_call_without_output_still_bills_the_estimated_input(make_deps) -> None:
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    bad = FakeLLM(
+        id="bad", fail=True, pricing=ModelPricing(input_per_mtok=1.0, output_per_mtok=5.0)
+    )
+    good = FakeLLM(id="good")
+    events = await run(make_deps(providers={"bad": bad, "good": good}, ledger=ledger))
+    assert done(events).answer_override is None
+    assert ledger.spent_by_provider(time.time())["bad"] > 0
 
 
 class Scripted:

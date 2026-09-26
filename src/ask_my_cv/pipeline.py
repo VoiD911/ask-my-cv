@@ -37,6 +37,10 @@ BLOCK_MESSAGES = {
 }
 ERROR_MESSAGE = "Une erreur est survenue. La trace a été enregistrée."
 
+# attente des écritures du registre à la fin de la requête : reste courte pour garder
+# la latence totale sous le timeout Lambda de 60 s, même en cas de registre lent.
+LEDGER_WAIT_S = 3.0
+
 
 @dataclass
 class Deps:
@@ -110,6 +114,10 @@ async def _stream_llm(
                     parts.append(piece)
                     chars += len(piece)
                     emit(LLMProgress(tokens=max(1, chars // 4)))
+                if not parts:
+                    # rien à répondre au visiteur (seul un TokenUsage a pu être reçu) :
+                    # on facture quand même via le except ci-dessous et on bascule
+                    raise LLMError(f"{provider.id} : aucun texte reçu")
             except asyncio.CancelledError:
                 # délai global dépassé ou visiteur déconnecté : les tokens produits sont facturés
                 account(provider, "".join(parts), reported)
@@ -190,15 +198,15 @@ async def run_pipeline(
                 loop = asyncio.get_running_loop()
 
                 def account(provider: LLMProvider, text: str, reported: TokenUsage | None) -> None:
-                    if not text and reported is None:
-                        return
                     if reported is not None:
                         tokens_in, tokens_out = reported.tokens_in, reported.tokens_out
                         st.set(usage_source="reported", stop_reason=reported.stop_reason or "")
                     else:
+                        # même sans texte (échec avant le premier jeton, déconnexion) : Bedrock
+                        # a déjà lu le prompt, donc l'entrée est facturée sur l'estimation
                         tokens_in = estimate_tokens(system + user)
-                        tokens_out = estimate_tokens(text)
-                        st.set(usage_source="estimated")
+                        tokens_out = estimate_tokens(text) if text else 0
+                        st.set(usage_source="estimated", stop_reason="")
                     cost = provider.pricing.cost(tokens_in, tokens_out)
                     # hors de la boucle, sans attendre : appelé aussi pendant une annulation
                     future = loop.run_in_executor(
@@ -242,7 +250,12 @@ async def run_pipeline(
                 # fin normale : les dépenses sont écrites avant Done, sans bloquer la boucle ;
                 # annulation : on n'attend pas, les écritures finissent dans leur thread
                 try:
-                    await asyncio.wait(set(pending), timeout=settings.stage_timeout_s)
+                    _, not_done = await asyncio.wait(set(pending), timeout=LEDGER_WAIT_S)
+                    if not_done:
+                        logger.warning(
+                            "registre des dépenses : %d écriture(s) non terminée(s)",
+                            len(not_done),
+                        )
                 except asyncio.CancelledError:
                     interrupted = True
             emit(

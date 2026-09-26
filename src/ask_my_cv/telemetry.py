@@ -20,7 +20,8 @@ EXPORT_TIMEOUT_S = 2.0
 @dataclass(frozen=True)
 class ExporterConfig:
     endpoint: str
-    headers: dict[str, str] = field(default_factory=dict)
+    # repr=False : le jeton Basic (Langfuse) ne doit jamais apparaître dans un repr/log
+    headers: dict[str, str] = field(default_factory=dict, repr=False)
     timeout_s: float = EXPORT_TIMEOUT_S
     sigv4: bool = False  # True : session signée SigV4 (service xray)
 
