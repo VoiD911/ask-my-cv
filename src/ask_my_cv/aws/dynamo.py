@@ -81,8 +81,9 @@ class DynamoLedger:
         self.window_s = window_s
         self._client = client
 
-    def check(self, visitor: str, now: float) -> None:
-        if self.spent_today(now) >= self.daily_cap_usd:
+    def check(self, visitor: str, now: float) -> float:
+        spent = self.spent_today(now)  # seule lecture de la requête
+        if spent >= self.daily_cap_usd:
             raise BudgetExceeded
         window = int(now // self.window_s)
         try:
@@ -100,6 +101,7 @@ class DynamoLedger:
             )
         except self._client.exceptions.ConditionalCheckFailedException:
             raise RateLimited from None
+        return spent
 
     def record(self, provider_id: str, cost_usd: float, now: float) -> None:
         self._client.update_item(

@@ -126,9 +126,9 @@ async def test_quota_runs_off_the_event_loop(make_deps) -> None:
     seen: list[int] = []
 
     class ThreadSpy(InMemoryLedger):
-        def check(self, visitor: str, now: float) -> None:
+        def check(self, visitor: str, now: float) -> float:
             seen.append(threading.get_ident())
-            super().check(visitor, now)
+            return super().check(visitor, now)
 
     deps = make_deps(ledger=ThreadSpy(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600))
     await run(deps)
@@ -137,8 +137,9 @@ async def test_quota_runs_off_the_event_loop(make_deps) -> None:
 
 async def test_slow_ledger_fails_the_quota_stage_closed(make_deps) -> None:
     class SlowLedger(InMemoryLedger):
-        def check(self, visitor: str, now: float) -> None:
+        def check(self, visitor: str, now: float) -> float:
             time.sleep(0.5)
+            return 0.0
 
     llm = FakeLLM(id="fake:echo")
     deps = make_deps(
@@ -149,6 +150,81 @@ async def test_slow_ledger_fails_the_quota_stage_closed(make_deps) -> None:
     events = await run(deps)
     assert ends(events)[-1] == ("quota", "error")
     assert llm.calls == 0
+
+
+async def test_quota_reads_the_spend_from_check_only(make_deps, spans) -> None:
+    class CheckOnly(InMemoryLedger):
+        def spent_today(self, now: float) -> float:
+            raise AssertionError("spent_today ne doit plus être appelé")
+
+    ledger = CheckOnly(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    ledger.record("fake:echo", 0.125, time.time())
+    events = await run(make_deps(ledger=ledger))
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    [quota] = [s for s in spans.get_finished_spans() if s.name == "quota"]
+    assert quota.attributes["xops.spent_today_usd"] == 0.125
+
+
+async def test_ledger_record_runs_off_the_event_loop(make_deps) -> None:
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+
+    class ThreadSpy(InMemoryLedger):
+        def record(self, provider_id: str, cost_usd: float, now: float) -> None:
+            seen.append(threading.get_ident())
+            super().record(provider_id, cost_usd, now)
+
+    await run(make_deps(ledger=ThreadSpy(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)))
+    assert seen and all(t != loop_thread for t in seen)
+
+
+async def test_cancellation_does_not_wait_for_the_ledger_write(make_deps) -> None:
+    release = threading.Event()
+    written = threading.Event()
+
+    class BlockingLedger(InMemoryLedger):
+        def record(self, provider_id: str, cost_usd: float, now: float) -> None:
+            release.wait(5)
+            super().record(provider_id, cost_usd, now)
+            written.set()
+
+    ledger = BlockingLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    trickle = Scripted("t", ["[1] a"] + [" b"] * 100, delay_s=0.05, pricing=ModelPricing(1.0, 5.0))
+    deps = make_deps(providers={"t": trickle}, ledger=ledger)
+    events: list[Event] = []
+    task = asyncio.create_task(run_pipeline("Quelle expérience ?", "t", "v", deps, events.append))
+    while not any(isinstance(e, LLMProgress) for e in events):  # noqa: ASYNC110
+        await asyncio.sleep(0.01)
+    task.cancel()
+    try:
+        async with asyncio.timeout(1):
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        assert isinstance(events[-1], Done)
+        assert not written.is_set()
+    finally:
+        release.set()
+    assert await asyncio.to_thread(written.wait, 2)
+
+
+async def test_normal_end_waits_at_most_a_stage_timeout_for_the_ledger(make_deps) -> None:
+    release = threading.Event()
+
+    class StuckLedger(InMemoryLedger):
+        def record(self, provider_id: str, cost_usd: float, now: float) -> None:
+            release.wait(5)
+
+    deps = make_deps(
+        ledger=StuckLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600),
+        stage_timeout_s=0.2,
+    )
+    try:
+        async with asyncio.timeout(2):
+            events = await run(deps)
+    finally:
+        release.set()
+    assert len(answers(events)) == 1
+    assert done(events).answer_override is None
 
 
 async def test_cost_is_recorded_in_ledger(make_deps) -> None:
@@ -354,8 +430,11 @@ async def test_client_disconnect_still_bills_generated_tokens(make_deps) -> None
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert ledger.spent_by_provider(time.time())["t"] > 0
     assert trickle.closed
+    # l'écriture n'est pas attendue dans le chemin d'annulation : elle finit dans son thread
+    async with asyncio.timeout(2):
+        while ledger.spent_by_provider(time.time()).get("t", 0.0) <= 0:  # noqa: ASYNC110
+            await asyncio.sleep(0.01)
 
 
 async def test_all_providers_down_uses_error_message(make_deps) -> None:
@@ -392,7 +471,7 @@ async def test_canary_never_leaves_the_server(make_deps) -> None:
     assert "Règles" not in serialized(events)
 
 
-async def test_ledger_write_failure_does_not_break_the_answer(make_deps) -> None:
+async def test_ledger_write_failure_does_not_break_the_answer(make_deps, caplog) -> None:
     class FlakyLedger(InMemoryLedger):
         def record(self, provider_id: str, cost_usd: float, now: float) -> None:
             raise RuntimeError("DynamoDB indisponible")
@@ -401,6 +480,8 @@ async def test_ledger_write_failure_does_not_break_the_answer(make_deps) -> None
     events = await run(deps)
     assert ends(events)[-1] == ("output_guard", "ok")
     assert len(answers(events)) == 1
+    [record] = [r for r in caplog.records if "registre des dépenses" in r.getMessage()]
+    assert record.exc_info and isinstance(record.exc_info[1], RuntimeError)
 
 
 async def test_stages_share_one_trace_and_done_carries_it(make_deps, spans) -> None:

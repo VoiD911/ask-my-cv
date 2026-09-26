@@ -42,6 +42,16 @@ def test_spend_accumulates_per_day_and_provider_then_blocks(ledger: DynamoLedger
     assert ledger.spent_today(T0 + 86_400) == 0.0
 
 
+def test_check_returns_todays_spend_with_a_single_read(ledger: DynamoLedger) -> None:
+    reads: list[str] = []
+    ledger._client.meta.events.register(
+        "before-call.dynamodb.GetItem", lambda **_: reads.append("GetItem")
+    )
+    ledger.record("p", 0.0025, T0)
+    assert ledger.check("v1", T0) == pytest.approx(0.0025)
+    assert reads == ["GetItem"]
+
+
 def test_items_carry_a_ttl(ledger: DynamoLedger) -> None:
     ledger.check("v1", T0)
     ledger.record("p", 0.001, T0)

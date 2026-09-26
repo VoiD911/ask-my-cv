@@ -12,11 +12,11 @@ from ask_my_cv.prompting import load_template
 from ask_my_cv.settings import ModelConfig, Settings
 from ask_my_cv.vectorstore import InMemoryVectorStore, VectorStore
 
-# (connexion, lecture) en secondes, par service. DynamoDB doit échouer vite : `check`/
-# `spent_today` tournent désormais dans un thread du pool avec un timeout d'étape (étape quota de
-# pipeline.py), mais un appel qui atteint son timeout continue d'occuper un thread de l'executor
-# par défaut, d'où l'importance de délais courts ; `ledger.record` (étape llm), lui, reste
-# synchrone sur la boucle d'événements (à en sortir, plan 1d). Bedrock lit un flux, la lecture
+# (connexion, lecture) en secondes, par service. DynamoDB doit échouer vite : `check` (une seule
+# lecture) tourne dans un thread du pool avec un timeout d'étape (étape quota de pipeline.py) et
+# `record` (étape llm) part dans l'executor par défaut, attendu au plus un timeout d'étape en fin
+# normale et pas du tout en cas d'annulation ; un appel qui dépasse ce délai continue d'occuper un
+# thread de l'executor, d'où l'importance de délais courts. Bedrock lit un flux, la lecture
 # borne l'écart maximal entre deux morceaux plutôt que la durée totale.
 _TIMEOUTS = {"dynamodb": (2, 3), "bedrock-runtime": (3, 30)}
 

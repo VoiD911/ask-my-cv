@@ -64,6 +64,19 @@ class Usage:
 Account = Callable[[LLMProvider, str, TokenUsage | None], None]
 
 
+def _log_record_failure(future: asyncio.Future[None]) -> None:
+    """Récupère toujours le résultat : ni exception relancée, ni « never retrieved »."""
+    if future.cancelled():
+        return
+    if (exc := future.exception()) is not None:
+        logger.warning("registre des dépenses indisponible", exc_info=exc)
+
+
+def _cancelling() -> bool:
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
 async def _stream_llm(
     chain: list[LLMProvider],
     system: str,
@@ -129,6 +142,8 @@ async def run_pipeline(
     usage = Usage()
     sources: list[str] = []
     override: str | None = None
+    # écritures du registre en cours dans l'executor : référence forte jusqu'à leur fin
+    pending: set[asyncio.Future[None]] = set()
     with tracer.start_as_current_span("ask") as root:
         try:
             async with stage("reception", emit) as st:
@@ -142,8 +157,7 @@ async def run_pipeline(
             async with stage("quota", emit) as st:
                 try:
                     async with asyncio.timeout(settings.stage_timeout_s):
-                        await asyncio.to_thread(deps.ledger.check, visitor, now())
-                        spent = await asyncio.to_thread(deps.ledger.spent_today, now())
+                        spent = await asyncio.to_thread(deps.ledger.check, visitor, now())
                 except RateLimited:
                     raise StageBlocked("rate_limited") from None
                 except BudgetExceeded:
@@ -173,6 +187,7 @@ async def run_pipeline(
                 st.set(template=f"{deps.template.name}@{deps.template.version}")
 
             async with stage("llm", emit) as st:
+                loop = asyncio.get_running_loop()
 
                 def account(provider: LLMProvider, text: str, reported: TokenUsage | None) -> None:
                     if not text and reported is None:
@@ -185,10 +200,13 @@ async def run_pipeline(
                         tokens_out = estimate_tokens(text)
                         st.set(usage_source="estimated")
                     cost = provider.pricing.cost(tokens_in, tokens_out)
-                    try:
-                        deps.ledger.record(provider.id, cost, now())
-                    except Exception:
-                        logger.warning("registre des dépenses indisponible", exc_info=True)
+                    # hors de la boucle, sans attendre : appelé aussi pendant une annulation
+                    future = loop.run_in_executor(
+                        None, deps.ledger.record, provider.id, cost, now()
+                    )
+                    pending.add(future)
+                    future.add_done_callback(pending.discard)
+                    future.add_done_callback(_log_record_failure)
                     usage.tokens_in += tokens_in
                     usage.tokens_out += tokens_out
                     usage.cost_usd += cost
@@ -219,6 +237,14 @@ async def run_pipeline(
         except Exception:
             override = ERROR_MESSAGE
         finally:
+            interrupted = False
+            if pending and not _cancelling():
+                # fin normale : les dépenses sont écrites avant Done, sans bloquer la boucle ;
+                # annulation : on n'attend pas, les écritures finissent dans leur thread
+                try:
+                    await asyncio.wait(set(pending), timeout=settings.stage_timeout_s)
+                except asyncio.CancelledError:
+                    interrupted = True
             emit(
                 Done(
                     tokens_in=usage.tokens_in,
@@ -230,3 +256,5 @@ async def run_pipeline(
                     trace_id=format(root.get_span_context().trace_id, "032x"),
                 )
             )
+            if interrupted:
+                raise asyncio.CancelledError

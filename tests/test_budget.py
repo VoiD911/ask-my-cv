@@ -27,6 +27,14 @@ def test_daily_cap_blocks_then_resets_next_day() -> None:
     ledger.check("v1", T0 + DAY)
 
 
+def test_check_returns_todays_spend() -> None:
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=60)
+    assert ledger.check("v", T0) == 0.0
+    ledger.record("p", 0.25, T0)
+    assert ledger.check("v", T0) == pytest.approx(0.25)
+    assert ledger.check("v", T0 + DAY) == 0.0
+
+
 def test_spend_is_tracked_per_provider() -> None:
     ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=60)
     ledger.record("a", 0.1, T0)
