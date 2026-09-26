@@ -5,3 +5,6 @@
 __pycache__
 data/index.json
 tests
+.env
+.github
+infra
