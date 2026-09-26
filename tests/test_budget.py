@@ -32,3 +32,12 @@ def test_spend_is_tracked_per_provider() -> None:
     ledger.record("a", 0.1, T0)
     ledger.record("b", 0.2, T0)
     assert ledger.spent_by_provider(T0) == {"a": pytest.approx(0.1), "b": pytest.approx(0.2)}
+
+
+def test_in_memory_ledger_is_thread_safe() -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    ledger = InMemoryLedger(daily_cap_usd=1000.0, per_visitor_limit=10_000, window_s=3600)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: ledger.record("p", 0.001, 0.0), range(2000)))
+    assert abs(ledger.spent_today(0.0) - 2.0) < 1e-9

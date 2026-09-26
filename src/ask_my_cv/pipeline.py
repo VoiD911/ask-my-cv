@@ -134,12 +134,14 @@ async def run_pipeline(
 
             async with stage("quota", emit) as st:
                 try:
-                    deps.ledger.check(visitor, now())
+                    async with asyncio.timeout(settings.stage_timeout_s):
+                        await asyncio.to_thread(deps.ledger.check, visitor, now())
+                        spent = await asyncio.to_thread(deps.ledger.spent_today, now())
                 except RateLimited:
                     raise StageBlocked("rate_limited") from None
                 except BudgetExceeded:
                     raise StageBlocked("budget_exceeded") from None
-                st.set(spent_today_usd=round(deps.ledger.spent_today(now()), 4))
+                st.set(spent_today_usd=round(spent, 4))
 
             async with stage("injection", emit) as st:
                 verdict = check_input(deps.detector, question, settings.injection_threshold)

@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 from collections.abc import AsyncGenerator
 
@@ -118,6 +119,36 @@ async def test_unknown_model_is_refused(make_deps) -> None:
     events = await run(make_deps(), model="nope")
     assert ends(events) == [("reception", "blocked")]
     assert done(events).answer_override == BLOCK_MESSAGES["unknown_model"]
+
+
+async def test_quota_runs_off_the_event_loop(make_deps) -> None:
+    loop_thread = threading.get_ident()
+    seen: list[int] = []
+
+    class ThreadSpy(InMemoryLedger):
+        def check(self, visitor: str, now: float) -> None:
+            seen.append(threading.get_ident())
+            super().check(visitor, now)
+
+    deps = make_deps(ledger=ThreadSpy(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600))
+    await run(deps)
+    assert seen and all(t != loop_thread for t in seen)
+
+
+async def test_slow_ledger_fails_the_quota_stage_closed(make_deps) -> None:
+    class SlowLedger(InMemoryLedger):
+        def check(self, visitor: str, now: float) -> None:
+            time.sleep(0.5)
+
+    llm = FakeLLM(id="fake:echo")
+    deps = make_deps(
+        providers={"fake:echo": llm},
+        ledger=SlowLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600),
+        stage_timeout_s=0.1,
+    )
+    events = await run(deps)
+    assert ends(events)[-1] == ("quota", "error")
+    assert llm.calls == 0
 
 
 async def test_cost_is_recorded_in_ledger(make_deps) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections import defaultdict
 from typing import Protocol
@@ -36,22 +37,31 @@ class InMemoryLedger:
         self.window_s = window_s
         self._hits: dict[str, list[float]] = {}
         self._spend: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+        self._lock = threading.Lock()
 
     def check(self, visitor: str, now: float) -> None:
-        if self.spent_today(now) >= self.daily_cap_usd:
-            raise BudgetExceeded
-        recent = [t for t in self._hits.get(visitor, []) if now - t < self.window_s]
-        if len(recent) >= self.per_visitor_limit:
+        with self._lock:
+            if self._spent(now) >= self.daily_cap_usd:
+                raise BudgetExceeded
+            recent = [t for t in self._hits.get(visitor, []) if now - t < self.window_s]
+            if len(recent) >= self.per_visitor_limit:
+                self._hits[visitor] = recent
+                raise RateLimited
+            recent.append(now)
             self._hits[visitor] = recent
-            raise RateLimited
-        recent.append(now)
-        self._hits[visitor] = recent
 
     def record(self, provider_id: str, cost_usd: float, now: float) -> None:
-        self._spend[_day(now)][provider_id] += cost_usd
+        with self._lock:
+            self._spend[_day(now)][provider_id] += cost_usd
 
     def spent_today(self, now: float) -> float:
-        return sum(self._spend.get(_day(now), {}).values())
+        with self._lock:
+            return self._spent(now)
 
     def spent_by_provider(self, now: float) -> dict[str, float]:
-        return dict(self._spend.get(_day(now), {}))
+        with self._lock:
+            return dict(self._spend.get(_day(now), {}))
+
+    def _spent(self, now: float) -> float:
+        """Calcul sans verrou : appelé par `check` (déjà sous verrou) et `spent_today`."""
+        return sum(self._spend.get(_day(now), {}).values())
