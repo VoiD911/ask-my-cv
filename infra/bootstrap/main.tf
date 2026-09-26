@@ -10,9 +10,12 @@ variable "region" {
   default = "ca-central-1"
 }
 
-variable "github_repo" {
+# Sujet OIDC immuable de GitHub (IDs numériques du compte et du dépôt) :
+# `gh api repos/<propriétaire>/<dépôt>/actions/oidc/customization/sub` → sub_claim_prefix.
+# Un dépôt recréé sous le même nom n'hérite donc pas du rôle.
+variable "github_oidc_sub_prefix" {
   type    = string
-  default = "VoiD911/ask-my-cv"
+  default = "repo:VoiD911@15268916/ask-my-cv@1387821326"
 }
 
 provider "aws" {
@@ -136,7 +139,7 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${var.github_repo}:ref:refs/heads/main"]
+      values   = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main"]
     }
   }
 }

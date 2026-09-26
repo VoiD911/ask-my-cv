@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "api" {
   }
   statement {
     sid       = "Traces"
-    actions   = ["xray:PutSpans", "xray:PutSpansForIndexing"]
+    actions   = ["xray:PutSpans", "xray:PutSpansForIndexing", "xray:PutTraceSegments"] # OTLP : PutTraceSegments exigé (403 sans, vérifié en production)
     resources = ["*"]
   }
   statement {
