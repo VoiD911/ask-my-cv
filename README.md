@@ -49,6 +49,41 @@ Les journaux d'accès sont désactivés : ils contiendraient les IP des visiteur
 uv run pytest -q && uv run ruff check . && uv run ruff format --check . && uv run pyright
 ```
 
+## Évaluations
+
+Deux suites [promptfoo](https://promptfoo.dev) (`evals/`, un fournisseur HTTP maison qui lit le
+flux SSE) :
+
+- **À chaque PR** (`evals/pr.yaml`, job `evals` de `ci.yml`) : API locale, faux LLM
+  (`settings.ci.yaml`), classifieur ONNX promu. Déterministe, sans dépendance réseau hors de
+  `127.0.0.1` — ce sont les garanties du pipeline (citations, refus, blocage des entrées
+  invalides, jeu adverse) qui sont prouvées à chaque changement.
+- **Chaque nuit** (`evals/nightly.yaml`, job `redteam` de `nightly.yml`, cron `17 7 * * *` +
+  `workflow_dispatch`) : vrai modèle, API **déployée** en production (`SITE_URL`, derrière
+  CloudFront) — questions légitimes, informations absentes du CV, red team (fuite du prompt
+  système reformulée sans vocabulaire d'injection, jeu adverse).
+
+Les requêtes de nuit portent l'en-tête `X-Eval-Token` (secret `EVAL_TOKEN`, comparé en temps
+constant à la valeur SSM) : elles tombent dans un compartiment de quota séparé (`eval`, limite
+plus large que les visiteurs) sans jamais dépasser le plafond de dépense quotidien, et leurs
+spans sont marqués `xops.eval=true`. Un jeton absent ou faux est traité comme un visiteur
+ordinaire — aucun raccourci n'existe pour contourner les quotas ou se faire reconnaître comme
+tel sans le secret.
+
+**Dérive du classifieur** (job `drift` de `nightly.yml`, `ml/drift.py`) : les scores
+`xops.score` des spans `injection` des 7 derniers jours (hors trafic `xops.eval`) sont lus dans
+CloudWatch Logs Insights (`aws/spans`, rôle IAM `ask-my-cv-nightly`, lecture seule) et comparés,
+par PSI (Population Stability Index, 10 compartiments sur `[0, 1]`), à `domain_score_histogram`
+du `metrics.json` du modèle promu (scores sur les 50 questions de
+`ml/data/recruiter_eval.jsonl`, représentatives du trafic réel plutôt que du jeu de test
+adverse). En dessous de 50 scores sur la fenêtre, la mesure est jugée non significative et le
+job réussit sans avis. PSI ≥ 0,1 : avertissement ; PSI ≥ 0,2 : échec.
+
+Job `report` (`needs: [redteam, drift]`, `if: failure()`) : à la moindre suite en échec, une
+issue GitHub étiquetée `nightly` est ouverte (« Nuit : évaluations en échec », date, jobs en
+échec, lien de l'exécution) — ou, si une telle issue est déjà ouverte, complétée d'un commentaire
+plutôt que dupliquée.
+
 ## Classifieur d'injection (MLOps)
 
 ```bash

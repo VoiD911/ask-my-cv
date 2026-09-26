@@ -1,0 +1,105 @@
+name: nightly
+
+# Chaque nuit (≈ 3 h à Montréal) et sur demande : red team + évaluations sur le vrai modèle
+# contre l'API déployée (CloudFront), et dérive du classifieur (PSI) sur les scores de
+# production. Tout échec ouvre (ou complète) une issue GitHub étiquetée `nightly`.
+on:
+  schedule:
+    - cron: "17 7 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Suite promptfoo de nuit (evals/nightly.yaml) : vrai modèle, API en production, jeton
+  # d'évaluation (compartiment de quota séparé, plafond de dépense conservé).
+  redteam:
+    runs-on: ubuntu-latest
+    env:
+      PROMPTFOO_DISABLE_TELEMETRY: "1"
+      PROMPTFOO_DISABLE_UPDATE: "1"
+      PROMPTFOO_DISABLE_SHARING: "1"
+      SITE_URL: ${{ vars.SITE_URL }}
+      EVAL_TOKEN: ${{ secrets.EVAL_TOKEN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: evals/package-lock.json
+      - run: npm ci --prefix evals --no-audit --no-fund
+      - name: Suite promptfoo (nuit)
+        run: npx --prefix evals promptfoo eval -c evals/nightly.yaml --no-cache --no-progress-bar --no-table -o evals/output/nightly.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: evals-nightly-${{ github.run_id }}
+          path: evals/output/nightly.json
+          retention-days: 14
+          if-no-files-found: ignore
+
+  # Dérive du classifieur : PSI des scores `xops.score` de production (CloudWatch Logs
+  # Insights, aws/spans) contre l'histogramme de référence du domaine (modèle promu).
+  drift:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen --python 3.12
+      - name: Récupérer les métriques du modèle promu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version models/prod.json)
+          if [ "$VERSION" = "null" ]; then echo "::error::aucun modèle promu : dérive impossible sans histogramme de référence"; exit 1; fi
+          gh release download "model-$VERSION" -p metrics.json
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_NIGHTLY_ROLE_ARN }}
+          aws-region: ca-central-1
+      - name: Mesurer la dérive (PSI, 7 derniers jours)
+        run: uv run python -m ml.drift --reference metrics.json --days 7
+
+  # Ouvre ou complète une issue si l'une des suites ci-dessus a échoué.
+  report:
+    needs: [redteam, drift]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REDTEAM_RESULT: ${{ needs.redteam.result }}
+      DRIFT_RESULT: ${{ needs.drift.result }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Signaler l'échec (issue étiquetée nightly)
+        run: |
+          gh label create nightly --color B60205 --description "Échec des évaluations de nuit" --force
+
+          FAILED=""
+          [ "$REDTEAM_RESULT" = "success" ] || FAILED="${FAILED}- redteam : ${REDTEAM_RESULT}\n"
+          [ "$DRIFT_RESULT" = "success" ] || FAILED="${FAILED}- drift : ${DRIFT_RESULT}\n"
+
+          BODY=$(printf 'Date : %s\n\nJobs en échec :\n%b\nExécution : %s\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$FAILED" "$RUN_URL")
+
+          ISSUE_NUMBER=$(gh issue list --label nightly --state open --json number --jq '.[0].number')
+          if [ -n "$ISSUE_NUMBER" ]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "Nuit : évaluations en échec" --label nightly --body "$BODY"
+          fi

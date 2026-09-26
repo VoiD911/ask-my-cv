@@ -183,3 +183,33 @@ resource "aws_iam_role_policy" "deploy" {
   role   = aws_iam_role.deploy.id
   policy = data.aws_iam_policy_document.deploy.json
 }
+
+# --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
+# Même confiance OIDC que le rôle de déploiement (sujet immuable, branche main) : réutilise le
+# même document plutôt que d'en dupliquer un identique.
+resource "aws_iam_role" "nightly" {
+  name                 = "ask-my-cv-nightly"
+  assume_role_policy   = data.aws_iam_policy_document.deploy_trust.json
+  max_session_duration = 3600
+}
+
+# Référence d'autorisation IAM (service CloudWatch Logs) : `logs:StartQuery` accepte le type de
+# ressource `log-group` (ARN restreint à `aws/spans`) ; `logs:GetQueryResults` et `logs:StopQuery`
+# ne définissent aucun type de ressource et n'acceptent donc que `*`.
+data "aws_iam_policy_document" "nightly" {
+  statement {
+    sid       = "LogsInsightsStart"
+    actions   = ["logs:StartQuery"]
+    resources = ["arn:aws:logs:${var.region}:${local.account}:log-group:aws/spans:*"]
+  }
+  statement {
+    sid       = "LogsInsightsResults"
+    actions   = ["logs:GetQueryResults", "logs:StopQuery"]
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "nightly" {
+  role   = aws_iam_role.nightly.id
+  policy = data.aws_iam_policy_document.nightly.json
+}
