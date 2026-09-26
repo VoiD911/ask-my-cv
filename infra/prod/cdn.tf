@@ -1,3 +1,6 @@
+# Pour une requête POST, le client doit envoyer x-amz-content-sha256 = SHA-256 hexadécimal
+# du corps (l'OAC Lambda refuse les payloads non signés). Le site (plan 1e) et
+# infra/scripts/smoke_prod.py s'en chargent.
 resource "aws_cloudfront_origin_access_control" "api" {
   name                              = "ask-my-cv-api"
   origin_access_control_origin_type = "lambda"
@@ -19,6 +22,11 @@ data "aws_cloudfront_cache_policy" "disabled" {
 # Tous les en-têtes du visiteur sauf Host, plus les en-têtes CloudFront (dont CloudFront-Viewer-Address).
 data "aws_cloudfront_origin_request_policy" "all_but_host" {
   name = "Managed-AllViewerExceptHostHeader"
+}
+
+# En-têtes de sécurité standard (HSTS, X-Content-Type-Options, etc.).
+data "aws_cloudfront_response_headers_policy" "security" {
+  name = "Managed-SecurityHeadersPolicy"
 }
 
 locals {
@@ -47,14 +55,18 @@ resource "aws_cloudfront_distribution" "site" {
   }
 
   # Plan 1e : le comportement par défaut passera au bucket S3 du site ; /api/* restera ici.
+  # https-only (pas redirect-to-https) : une redirection 301 sur un POST transformerait la
+  # requête en GET et perdrait le corps. À revoir au plan 1e quand S3 deviendra le comportement
+  # par défaut (S3 pourra alors accepter redirect-to-https sans ce risque).
   default_cache_behavior {
-    target_origin_id         = "api"
-    viewer_protocol_policy   = "redirect-to-https"
-    allowed_methods          = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
-    cached_methods           = ["GET", "HEAD"]
-    cache_policy_id          = data.aws_cloudfront_cache_policy.disabled.id
-    origin_request_policy_id = data.aws_cloudfront_origin_request_policy.all_but_host.id
-    compress                 = false # pas de compression d'un flux SSE
+    target_origin_id           = "api"
+    viewer_protocol_policy     = "https-only"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods             = ["GET", "HEAD"]
+    cache_policy_id            = data.aws_cloudfront_cache_policy.disabled.id
+    origin_request_policy_id   = data.aws_cloudfront_origin_request_policy.all_but_host.id
+    response_headers_policy_id = data.aws_cloudfront_response_headers_policy.security.id
+    compress                   = false # pas de compression d'un flux SSE
 
     function_association {
       event_type   = "viewer-request"
