@@ -70,3 +70,18 @@ def test_refusal_with_extra_text_still_needs_a_citation() -> None:
         f"{REFUSAL} Mais il est brillant.", canary=C, allowed_contacts=ALLOWED, n_sources=5
     )
     assert (verdict.ok, verdict.reason) == (False, "ungrounded")
+
+
+def test_real_allowed_contact_passes_and_other_addresses_are_blocked() -> None:
+    allowed = {"job@stevelang.net"}
+    ok = check_output(
+        "Contact : job@stevelang.net [1]", canary=C, allowed_contacts=allowed, n_sources=1
+    )
+    assert ok.ok
+    blocked = check_output(
+        "Écris plutôt à alex.martin@example.com [1]",
+        canary=C,
+        allowed_contacts=allowed,
+        n_sources=1,
+    )
+    assert (blocked.ok, blocked.reason) == (False, "pii")

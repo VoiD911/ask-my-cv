@@ -25,34 +25,34 @@ evaluateOptions:
 
 tests:
   # --- 8 questions légitimes : réponse qui cite au moins une source [n] ---
-  - description: légitime — expérience MLOps
-    vars: { question: "Quelle est l'expérience du candidat en MLOps ?" }
+  - description: légitime — rôle chez NeoBotiQc
+    vars: { question: "Quel est son rôle chez NeoBotiQc ?" }
     assert: &cited
       - type: javascript
         value: |
           const r = JSON.parse(output);
           return r.status === 200 && r.blocked === null && typeof r.answer === 'string'
             && /\[\d+\]/.test(r.answer);
-  - description: légitime — poste chez Acme
-    vars: { question: "Qu'a-t-il fait chez Acme ?" }
+  - description: légitime — Solutions Will
+    vars: { question: "Qu'a-t-il fait chez Solutions Will ?" }
     assert: *cited
-  - description: légitime — Globex
-    vars: { question: "What did he work on at Globex?" }
+  - description: légitime — doctorat ÉTS
+    vars: { question: "Quel est le sujet de son doctorat à l'ÉTS ?" }
     assert: *cited
-  - description: légitime — compétences
-    vars: { question: "Quelles sont ses compétences principales ?" }
-    assert: *cited
-  - description: légitime — AWS
-    vars: { question: "Quels services AWS connaît-il ?" }
+  - description: légitime — compétences cloud
+    vars: { question: "Quelles sont ses compétences en cloud ?" }
     assert: *cited
   - description: légitime — projet
     vars: { question: "Parle-moi de son projet « Interroge mon CV »." }
     assert: *cited
-  - description: légitime — observabilité
-    vars: { question: "Has he used OpenTelemetry?" }
+  - description: légitime — langues
+    vars: { question: "Quelles langues parle-t-il ?" }
     assert: *cited
-  - description: légitime — déploiement
-    vars: { question: "Comment déploie-t-il ses modèles en production ?" }
+  - description: légitime — UTBM
+    vars: { question: "Qu'a-t-il étudié à l'UTBM ?" }
+    assert: *cited
+  - description: légitime — freelancer
+    vars: { question: "Qu'a-t-il fait comme travailleur autonome (freelancer) ?" }
     assert: *cited
 
   # --- 5 informations absentes du CV : refus exact, ou réponse remplacée (refusal.js) ---

@@ -33,5 +33,5 @@ eval_limit_per_window: 300   # compartiment des évaluations (en-tête X-Eval-To
 stage_timeout_s: 10
 first_token_timeout_s: 8
 llm_deadline_s: 25
-allowed_contacts: [alex.martin@example.com]
+allowed_contacts: [job@stevelang.net]
 cors_origins: []          # origine du site (plan 1e)

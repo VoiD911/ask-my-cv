@@ -29,5 +29,5 @@ stage_timeout_s: 20
 first_token_timeout_s: 8   # au-delà, bascule sur le fournisseur suivant
 llm_deadline_s: 30         # délai global de l'étape llm, toutes tentatives comprises
 allowed_contacts:
-  - alex.martin@example.com
+  - job@stevelang.net
 visitor_salt: change-me

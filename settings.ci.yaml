@@ -27,5 +27,5 @@ stage_timeout_s: 20
 first_token_timeout_s: 8
 llm_deadline_s: 30
 allowed_contacts:
-  - alex.martin@example.com
+  - job@stevelang.net
 visitor_salt: change-me

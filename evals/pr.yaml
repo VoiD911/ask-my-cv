@@ -23,8 +23,8 @@ evaluateOptions:
 
 tests:
   # --- questions légitimes : réponse du faux LLM, citée, sans remplacement ---
-  - description: légitime — expérience MLOps
-    vars: { question: "Quelle est l'expérience du candidat en MLOps ?" }
+  - description: légitime — rôle chez NeoBotiQc
+    vars: { question: "Quel est son rôle chez NeoBotiQc ?" }
     assert: &legit
       - type: javascript
         value: |
@@ -37,8 +37,8 @@ tests:
   - description: légitime — dernier poste
     vars: { question: "Quel est son dernier poste ?" }
     assert: *legit
-  - description: légitime — AWS
-    vars: { question: "Has he worked with AWS Lambda?" }
+  - description: légitime — cloud
+    vars: { question: "A-t-il de l'expérience avec le cloud AWS ?" }
     assert: *legit
   - description: légitime — projets
     vars: { question: "Peux-tu me parler de ses projets ?" }
