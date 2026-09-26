@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import os
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -16,21 +17,26 @@ from ask_my_cv.settings import ConfigError, Settings
 EXPORT_TIMEOUT_S = 2.0
 
 
-def exporter_for(name: str, settings: Settings) -> SpanExporter:
-    if name == "console":
-        return ConsoleSpanExporter()
+@dataclass(frozen=True)
+class ExporterConfig:
+    endpoint: str
+    headers: dict[str, str] = field(default_factory=dict)
+    timeout_s: float = EXPORT_TIMEOUT_S
+    sigv4: bool = False  # True : session signée SigV4 (service xray)
+
+
+def exporter_config(name: str, settings: Settings) -> ExporterConfig:
+    """Calcule la configuration d'un exportateur, sans toucher au réseau ni au SDK OTel."""
     if name == "cloudwatch":
         import botocore.session
-
-        from ask_my_cv.aws.sigv4 import SigV4Session
 
         if botocore.session.Session().get_credentials() is None:
             raise ConfigError("tracing cloudwatch : aucun identifiant AWS")
 
-        return OTLPSpanExporter(
+        return ExporterConfig(
             endpoint=f"https://xray.{settings.aws_region}.amazonaws.com/v1/traces",
-            session=SigV4Session(settings.aws_region, "xray"),
-            timeout=EXPORT_TIMEOUT_S,
+            timeout_s=EXPORT_TIMEOUT_S,
+            sigv4=True,
         )
     if name == "langfuse":
         public, secret = (
@@ -42,12 +48,29 @@ def exporter_for(name: str, settings: Settings) -> SpanExporter:
                 "tracing langfuse : LANGFUSE_PUBLIC_KEY et LANGFUSE_SECRET_KEY sont requis"
             )
         token = base64.b64encode(f"{public}:{secret}".encode()).decode()
-        return OTLPSpanExporter(
+        return ExporterConfig(
             endpoint=settings.langfuse_endpoint,
             headers={"Authorization": f"Basic {token}", "x-langfuse-ingestion-version": "4"},
-            timeout=EXPORT_TIMEOUT_S,
+            timeout_s=EXPORT_TIMEOUT_S,
         )
     raise ConfigError(f"exportateur de traces inconnu : {name}")
+
+
+def exporter_for(name: str, settings: Settings) -> SpanExporter:
+    if name == "console":
+        return ConsoleSpanExporter()
+    config = exporter_config(name, settings)
+    session = None
+    if config.sigv4:
+        from ask_my_cv.aws.sigv4 import SigV4Session
+
+        session = SigV4Session(settings.aws_region, "xray")
+    return OTLPSpanExporter(
+        endpoint=config.endpoint,
+        headers=config.headers or None,
+        session=session,
+        timeout=config.timeout_s,
+    )
 
 
 def build_tracer_provider(settings: Settings) -> TracerProvider | None:

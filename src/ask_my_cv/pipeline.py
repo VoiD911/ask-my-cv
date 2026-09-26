@@ -151,7 +151,7 @@ async def run_pipeline(
                 if not question or len(question) > MAX_QUESTION_CHARS:
                     raise StageBlocked("invalid_question", length=len(question))
                 if model_id not in settings.public_model_ids():
-                    raise StageBlocked("unknown_model", model=model_id)
+                    raise StageBlocked("unknown_model", model_len=len(model_id))
                 st.set(model=model_id)
 
             async with stage("quota", emit) as st:
