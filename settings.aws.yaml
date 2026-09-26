@@ -1,5 +1,5 @@
 # Configuration de production (AWS, ca-central-1). Secrets (VISITOR_SALT, LANGFUSE_PUBLIC_KEY,
-# LANGFUSE_SECRET_KEY) lus au démarrage dans SSM Parameter Store (SecureString sous
+# LANGFUSE_SECRET_KEY, et EVAL_TOKEN facultatif) lus au démarrage dans SSM Parameter Store (SecureString sous
 # `ASK_SSM_PREFIX`, ex. `/ask-my-cv/`) ; une variable d'environnement explicite est prioritaire.
 environment: prod
 trusted_proxy: cloudfront
@@ -29,6 +29,7 @@ injection_threshold: 0.5
 daily_cap_usd: 0.5
 per_visitor_limit: 10
 visitor_window_s: 3600
+eval_limit_per_window: 300   # compartiment des évaluations (en-tête X-Eval-Token, secret EVAL_TOKEN)
 stage_timeout_s: 10
 first_token_timeout_s: 8
 llm_deadline_s: 25

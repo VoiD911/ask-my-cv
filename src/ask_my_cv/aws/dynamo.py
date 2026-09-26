@@ -81,7 +81,8 @@ class DynamoLedger:
         self.window_s = window_s
         self._client = client
 
-    def check(self, visitor: str, now: float) -> float:
+    def check(self, visitor: str, now: float, limit: int | None = None) -> float:
+        limit = self.per_visitor_limit if limit is None else limit
         spent = self.spent_today(now)  # seule lecture de la requête
         if spent >= self.daily_cap_usd:
             raise BudgetExceeded
@@ -95,7 +96,7 @@ class DynamoLedger:
                 ExpressionAttributeNames={"#count": "count", "#exp": "expires_at"},
                 ExpressionAttributeValues={
                     ":one": {"N": "1"},
-                    ":limit": {"N": str(self.per_visitor_limit)},
+                    ":limit": {"N": str(limit)},
                     ":exp": {"N": str(int(now + 2 * self.window_s))},
                 },
             )

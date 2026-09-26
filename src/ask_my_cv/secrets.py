@@ -7,16 +7,18 @@ from typing import Any
 from ask_my_cv.settings import ConfigError
 
 SECRET_NAMES = ("VISITOR_SALT", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
+# chargés s'ils existent sous le préfixe, sans erreur s'ils sont absents
+OPTIONAL_SECRET_NAMES = ("EVAL_TOKEN",)
 
 
 def load_ssm_secrets(prefix: str, client: Any) -> dict[str, str]:
-    """Lit les secrets connus sous `prefix` (SecureString déchiffrés) ; ignore les autres."""
+    """Lit les secrets connus (obligatoires ou facultatifs) sous `prefix` ; ignore les autres."""
     values: dict[str, str] = {}
     paginator = client.get_paginator("get_parameters_by_path")
     for page in paginator.paginate(Path=prefix.rstrip("/"), WithDecryption=True):
         for parameter in page.get("Parameters", []):
             name = parameter["Name"].rsplit("/", 1)[-1]
-            if name in SECRET_NAMES:
+            if name in SECRET_NAMES or name in OPTIONAL_SECRET_NAMES:
                 values[name] = parameter["Value"]
     return values
 
@@ -45,7 +47,8 @@ def apply_ssm_secrets(
 
     Une erreur SSM empêche le démarrage : mieux vaut aucune API qu'une API sans secret.
     De même, si un secret attendu n'est ni dans SSM ni déjà dans l'environnement, on
-    échoue explicitement plutôt que de démarrer avec un secret manquant.
+    échoue explicitement plutôt que de démarrer avec un secret manquant. Les secrets
+    facultatifs (`OPTIONAL_SECRET_NAMES`) sont chargés s'ils existent, sans contrôle.
     """
     env = os.environ if environ is None else environ
     prefix = env.get("ASK_SSM_PREFIX")

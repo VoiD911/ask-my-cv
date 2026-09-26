@@ -57,3 +57,20 @@ def test_items_carry_a_ttl(ledger: DynamoLedger) -> None:
     ledger.record("p", 0.001, T0)
     items = ledger._client.scan(TableName="ledger")["Items"]
     assert all(int(i["expires_at"]["N"]) > T0 for i in items)
+
+
+def test_explicit_limit_is_used_in_the_condition(ledger: DynamoLedger) -> None:
+    for i in range(4):
+        ledger.check("eval", T0 + i, limit=4)
+    with pytest.raises(RateLimited):
+        ledger.check("eval", T0 + 5, limit=4)
+    ledger.check("v1", T0)
+    ledger.check("v1", T0 + 1)
+    with pytest.raises(RateLimited):
+        ledger.check("v1", T0 + 2)  # limite par défaut (2) inchangée
+
+
+def test_explicit_limit_does_not_bypass_the_spend_cap(ledger: DynamoLedger) -> None:
+    ledger.record("p", 0.02, T0)
+    with pytest.raises(BudgetExceeded):
+        ledger.check("eval", T0, limit=1000)

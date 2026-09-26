@@ -144,7 +144,11 @@ async def run_pipeline(
     deps: Deps,
     emit: Emit,
     now: Callable[[], float] = time.time,
+    evaluation: bool = False,
 ) -> None:
+    """`evaluation` : requête authentifiée par le jeton d'évaluation (compartiment de quota
+    séparé, spans `quota` et `injection` marqués `xops.eval`) ; le plafond de dépense
+    s'applique toujours."""
     settings = deps.settings
     started = time.perf_counter()
     usage = Usage()
@@ -163,9 +167,19 @@ async def run_pipeline(
                 st.set(model=model_id)
 
             async with stage("quota", emit) as st:
+                if evaluation:
+                    st.set(eval=True)
                 try:
                     async with asyncio.timeout(settings.stage_timeout_s):
-                        spent = await asyncio.to_thread(deps.ledger.check, visitor, now())
+                        if evaluation:
+                            spent = await asyncio.to_thread(
+                                deps.ledger.check,
+                                visitor,
+                                now(),
+                                limit=settings.eval_limit_per_window,
+                            )
+                        else:
+                            spent = await asyncio.to_thread(deps.ledger.check, visitor, now())
                 except RateLimited:
                     raise StageBlocked("rate_limited") from None
                 except BudgetExceeded:
@@ -173,6 +187,8 @@ async def run_pipeline(
                 st.set(spent_today_usd=round(spent, 4))
 
             async with stage("injection", emit) as st:
+                if evaluation:
+                    st.set(eval=True)
                 verdict = check_input(deps.detector, question, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
                 if verdict.blocked:

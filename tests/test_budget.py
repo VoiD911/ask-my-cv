@@ -69,3 +69,15 @@ def test_in_memory_ledger_is_thread_safe() -> None:
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(lambda _: ledger.record("p", 0.001, 0.0), range(2000)))
     assert abs(ledger.spent_by_provider(0.0)["p"] - 2.0) < 1e-9
+
+
+def test_explicit_limit_overrides_the_visitor_limit_but_not_the_cap() -> None:
+    ledger = InMemoryLedger(daily_cap_usd=0.01, per_visitor_limit=1, window_s=60)
+    ledger.check("eval", T0, limit=3)
+    ledger.check("eval", T0 + 1, limit=3)
+    ledger.check("eval", T0 + 2, limit=3)
+    with pytest.raises(RateLimited):
+        ledger.check("eval", T0 + 3, limit=3)
+    ledger.record("p", 0.02, T0)
+    with pytest.raises(BudgetExceeded):
+        ledger.check("autre", T0 + 4, limit=100)

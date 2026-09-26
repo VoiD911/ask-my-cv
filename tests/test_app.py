@@ -232,3 +232,103 @@ async def test_a_failing_flush_still_ends_the_stream(make_deps) -> None:
             client.post("/ask", json={"question": "Quelle expérience ?"}), timeout=5
         )
     assert "event: done" in response.text
+
+
+TOKEN = "jeton-eval-" + "k" * 40
+
+
+def quota_end(response: httpx.Response) -> dict:
+    return next(
+        e for e in parse_sse(response.text) if e["type"] == "stage.end" and e["name"] == "quota"
+    )
+
+
+def one_per_visitor(make_deps, **overrides):
+    from ask_my_cv.budget import InMemoryLedger
+
+    return make_deps(
+        ledger=InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=1, window_s=3600),
+        **overrides,
+    )
+
+
+async def test_eval_token_uses_the_eval_bucket(make_deps, spans) -> None:
+    app = create_app(one_per_visitor(make_deps, eval_token=TOKEN))
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(app) as client:
+        responses = [
+            await client.post("/ask", json=body, headers={"X-Eval-Token": TOKEN}) for _ in range(3)
+        ]
+        visitor = await client.post("/ask", json=body)
+    assert [quota_end(r)["status"] for r in responses] == ["ok", "ok", "ok"]
+    assert all(quota_end(r)["attrs"].get("eval") is True for r in responses)
+    # le compartiment d'évaluation ne consomme pas celui de l'adresse du client
+    assert quota_end(visitor)["status"] == "ok"
+    assert "eval" not in quota_end(visitor)["attrs"]
+    for response in [*responses, visitor]:
+        assert TOKEN not in response.text
+    for span in spans.get_finished_spans():
+        assert not any(TOKEN in str(v) for v in (span.attributes or {}).values())
+    marked = {s.name for s in spans.get_finished_spans() if s.attributes.get("xops.eval")}
+    assert marked == {"quota", "injection"}
+
+
+async def test_eval_bucket_has_its_own_limit(make_deps) -> None:
+    app = create_app(one_per_visitor(make_deps, eval_token=TOKEN, eval_limit_per_window=2))
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(app) as client:
+        statuses = [
+            quota_end(await client.post("/ask", json=body, headers={"X-Eval-Token": TOKEN}))[
+                "status"
+            ]
+            for _ in range(3)
+        ]
+    assert statuses == ["ok", "ok", "blocked"]
+
+
+async def test_wrong_or_absent_token_is_an_ordinary_visitor(make_deps) -> None:
+    from ask_my_cv.pipeline import BLOCK_MESSAGES
+
+    app = create_app(one_per_visitor(make_deps, eval_token=TOKEN))
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(app) as client:
+        first = await client.post("/ask", json=body, headers={"X-Eval-Token": TOKEN[:-1] + "x"})
+        wrong = await client.post(
+            "/ask", json=body, headers={b"X-Eval-Token": ("é" + TOKEN).encode()}
+        )
+        absent = await client.post("/ask", json=body)
+        empty = await client.post("/ask", json=body, headers={"X-Eval-Token": ""})
+    assert quota_end(first)["status"] == "ok"
+    for response in (wrong, absent, empty):
+        assert response.status_code == 200
+        assert quota_end(response)["status"] == "blocked"
+        assert "eval" not in quota_end(response)["attrs"]
+        assert parse_sse(response.text)[-1]["answer_override"] == BLOCK_MESSAGES["rate_limited"]
+    assert "eval" not in quota_end(first)["attrs"]
+
+
+async def test_eval_header_is_ignored_without_a_configured_token(make_deps) -> None:
+    app = create_app(one_per_visitor(make_deps))
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(app) as client:
+        first = await client.post("/ask", json=body, headers={"X-Eval-Token": TOKEN})
+        second = await client.post("/ask", json=body, headers={"X-Eval-Token": TOKEN})
+    assert (quota_end(first)["status"], quota_end(second)["status"]) == ("ok", "blocked")
+    assert "eval" not in quota_end(first)["attrs"]
+
+
+async def test_eval_token_still_hits_the_daily_spend_cap(make_deps) -> None:
+    import time
+
+    from ask_my_cv.budget import InMemoryLedger
+    from ask_my_cv.pipeline import BLOCK_MESSAGES
+
+    ledger = InMemoryLedger(daily_cap_usd=0.01, per_visitor_limit=100, window_s=3600)
+    ledger.record("fake:echo", 0.02, time.time())
+    app = create_app(make_deps(ledger=ledger, eval_token=TOKEN))
+    async with client_for(app) as client:
+        response = await client.post(
+            "/ask", json={"question": "Quelle expérience ?"}, headers={"X-Eval-Token": TOKEN}
+        )
+    assert quota_end(response)["status"] == "blocked"
+    assert parse_sse(response.text)[-1]["answer_override"] == BLOCK_MESSAGES["budget_exceeded"]

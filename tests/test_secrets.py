@@ -93,3 +93,17 @@ def test_ssm_client_region_falls_back_to_default(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("AWS_DEFAULT_REGION", "us-west-2")
     client = _ssm_client()
     assert client.meta.region_name == "us-west-2"
+
+
+def test_optional_eval_token_is_loaded_when_present(ssm) -> None:
+    ssm.put_parameter(Name="/ask-my-cv/EVAL_TOKEN", Value="jeton-eval", Type="SecureString")
+    env = {"ASK_SSM_PREFIX": "/ask-my-cv/"}
+    apply_ssm_secrets(env, client_factory=lambda: ssm)
+    assert env["EVAL_TOKEN"] == "jeton-eval"
+    assert env["VISITOR_SALT"] == "valeur-VISITOR_SALT"
+
+
+def test_absent_eval_token_is_not_an_error(ssm) -> None:
+    env = {"ASK_SSM_PREFIX": "/ask-my-cv/"}
+    apply_ssm_secrets(env, client_factory=lambda: ssm)
+    assert "EVAL_TOKEN" not in env

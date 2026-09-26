@@ -272,3 +272,54 @@ def test_config_error_never_reveals_the_salt(
     with pytest.raises(ConfigError) as info:
         load_settings(path)
     assert "S3CR3T" not in str(info.value)
+
+
+def test_eval_token_defaults_and_env_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.delenv("EVAL_TOKEN", raising=False)
+    settings = load_settings(path)
+    assert (settings.eval_token, settings.eval_limit_per_window) == (None, 300)
+    monkeypatch.setenv("EVAL_TOKEN", "jeton-local")
+    assert load_settings(path).eval_token == "jeton-local"
+
+
+def test_eval_token_is_never_in_the_repr() -> None:
+    settings = Settings.model_validate(minimal(eval_token="JETON-SECRET-" + "e" * 32))
+    assert "JETON-SECRET" not in repr(settings)
+
+
+def test_empty_eval_token_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(eval_token=""))
+
+
+def test_eval_limit_must_be_positive() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(eval_limit_per_window=0))
+
+
+def test_production_refuses_a_short_eval_token_without_revealing_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ask_my_cv.settings import ConfigError
+
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_ENVIRONMENT", "prod")
+    monkeypatch.setenv("VISITOR_SALT", "s" * 32)
+    monkeypatch.setenv("EVAL_TOKEN", "JETON-COURT")
+    with pytest.raises(ConfigError) as info:
+        load_settings(path)
+    assert "EVAL_TOKEN" in str(info.value) and "JETON-COURT" not in str(info.value)
+    monkeypatch.setenv("EVAL_TOKEN", "J" * 32)
+    assert load_settings(path).eval_token == "J" * 32
+
+
+def test_production_aws_settings_declare_the_eval_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("VISITOR_SALT", "s" * 48)
+    monkeypatch.delenv("EVAL_TOKEN", raising=False)
+    settings = load_settings(Path("settings.aws.yaml"))
+    assert settings.eval_limit_per_window == 300 and settings.eval_token is None

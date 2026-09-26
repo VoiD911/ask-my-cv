@@ -50,6 +50,9 @@ class Settings(BaseModel):
     daily_cap_usd: float = Field(default=0.5, ge=0.0)
     per_visitor_limit: int = Field(default=10, ge=1)
     visitor_window_s: float = Field(default=3600.0, gt=0.0)
+    # jeton des évaluations automatiques (en-tête X-Eval-Token) : jamais dans un repr ni un log
+    eval_token: str | None = Field(default=None, repr=False)
+    eval_limit_per_window: int = Field(default=300, ge=1)
     stage_timeout_s: float = Field(default=20.0, gt=0.0)
     first_token_timeout_s: float = Field(default=8.0, gt=0.0)
     llm_deadline_s: float = Field(default=30.0, gt=0.0)
@@ -103,6 +106,15 @@ class Settings(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def _eval_token_is_strong(self) -> Settings:
+        # message sans la valeur ; un jeton vide égalerait un en-tête absent
+        if self.eval_token is not None and (
+            not self.eval_token or (self.environment == "prod" and len(self.eval_token) < 32)
+        ):
+            raise ValueError("EVAL_TOKEN doit être non vide (au moins 32 caractères en production)")
+        return self
+
+    @model_validator(mode="after")
     def _cors_origins_are_restricted(self) -> Settings:
         for origin in self.cors_origins:
             if origin == "*":
@@ -142,6 +154,7 @@ _ENV_OVERRIDES = {
     "OLLAMA_URL": "ollama_url",
     "VISITOR_SALT": "visitor_salt",
     "ASK_ENVIRONMENT": "environment",
+    "EVAL_TOKEN": "eval_token",
 }
 
 

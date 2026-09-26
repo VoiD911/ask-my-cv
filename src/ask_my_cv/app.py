@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hmac
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -17,6 +18,15 @@ from ask_my_cv.pipeline import MAX_QUESTION_CHARS, Deps, run_pipeline
 from ask_my_cv.visitor import client_ip, visitor_id
 
 logger = logging.getLogger(__name__)
+
+EVAL_VISITOR = "eval"  # compartiment de quota des évaluations (jamais un pseudonyme hexadécimal)
+
+
+def _is_eval(presented: str | None, expected: str | None) -> bool:
+    """Comparaison en temps constant ; jeton absent, vide ou non configuré = visiteur ordinaire."""
+    if not expected or not presented:
+        return False
+    return hmac.compare_digest(presented.encode("utf-8"), expected.encode("utf-8"))
 
 
 class AskRequest(BaseModel):
@@ -99,9 +109,13 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
 
     @app.post("/ask")
     async def ask(body: AskRequest, request: Request) -> StreamingResponse:
-        peer = request.client.host if request.client else None
-        ip = client_ip(request.headers, peer, current.settings.trusted_proxy)
-        visitor = visitor_id(ip, current.settings.visitor_salt)
+        evaluation = _is_eval(request.headers.get("x-eval-token"), current.settings.eval_token)
+        if evaluation:
+            visitor = EVAL_VISITOR
+        else:
+            peer = request.client.host if request.client else None
+            ip = client_ip(request.headers, peer, current.settings.trusted_proxy)
+            visitor = visitor_id(ip, current.settings.visitor_salt)
         queue: asyncio.Queue[Event | None] = asyncio.Queue()
 
         async def produce() -> None:
@@ -112,6 +126,7 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
                     visitor,
                     current,
                     queue.put_nowait,
+                    evaluation=evaluation,
                 )
             finally:
                 try:

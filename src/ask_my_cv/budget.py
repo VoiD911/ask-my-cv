@@ -15,8 +15,12 @@ class BudgetExceeded(Exception):
 
 
 class BudgetLedger(Protocol):
-    def check(self, visitor: str, now: float) -> float:
-        """Contrôle plafond et quota, compte la question ; renvoie la dépense du jour."""
+    def check(self, visitor: str, now: float, limit: int | None = None) -> float:
+        """Contrôle plafond et quota, compte la question ; renvoie la dépense du jour.
+
+        `limit` remplace la limite par visiteur (compartiment d'évaluation) ; le plafond de
+        dépense s'applique toujours.
+        """
         ...
 
     def record(self, provider_id: str, cost_usd: float, now: float) -> None: ...
@@ -41,13 +45,14 @@ class InMemoryLedger:
         self._spend: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
         self._lock = threading.Lock()
 
-    def check(self, visitor: str, now: float) -> float:
+    def check(self, visitor: str, now: float, limit: int | None = None) -> float:
+        limit = self.per_visitor_limit if limit is None else limit
         with self._lock:
             spent = self._spent(now)
             if spent >= self.daily_cap_usd:
                 raise BudgetExceeded
             recent = [t for t in self._hits.get(visitor, []) if now - t < self.window_s]
-            if len(recent) >= self.per_visitor_limit:
+            if len(recent) >= limit:
                 self._hits[visitor] = recent
                 raise RateLimited
             recent.append(now)
