@@ -7,7 +7,7 @@ import threading
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from ask_my_cv.llm import LLMError, ModelPricing
+from ask_my_cv.llm import Chunk, LLMError, ModelPricing, TokenUsage
 
 
 class BedrockLLM:
@@ -27,7 +27,7 @@ class BedrockLLM:
         self.max_tokens = max_tokens
         self._client = client
 
-    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
+    async def stream(self, system: str, user: str) -> AsyncGenerator[Chunk, None]:
         loop = asyncio.get_running_loop()
         queue: asyncio.Queue[tuple[str, Any]] = asyncio.Queue()
         stop = threading.Event()
@@ -40,6 +40,7 @@ class BedrockLLM:
 
         def pump() -> None:
             events: Any = None
+            stop_reason: str | None = None
             try:
                 response = self._client.converse_stream(
                     modelId=self.model_id,
@@ -57,6 +58,17 @@ class BedrockLLM:
                     text = event.get("contentBlockDelta", {}).get("delta", {}).get("text")
                     if text:
                         send("text", text)
+                    if "messageStop" in event:
+                        stop_reason = event["messageStop"].get("stopReason")
+                    if "metadata" in event:
+                        usage = event["metadata"].get("usage")
+                        if usage:
+                            send(
+                                "usage",
+                                TokenUsage(
+                                    usage["inputTokens"], usage["outputTokens"], stop_reason
+                                ),
+                            )
                 send("end", None)
             except Exception as exc:  # botocore, réseau, événement d'erreur
                 send("error", exc)
@@ -70,6 +82,8 @@ class BedrockLLM:
             while True:
                 kind, value = await queue.get()
                 if kind == "text":
+                    yield value
+                elif kind == "usage":
                     yield value
                 elif kind == "end":
                     return

@@ -8,7 +8,7 @@ import pytest
 from botocore.exceptions import ClientError, EventStreamError
 
 from ask_my_cv.aws.bedrock import BedrockEmbedder, BedrockLLM
-from ask_my_cv.llm import LLMError, LLMProvider
+from ask_my_cv.llm import Chunk, LLMError, LLMProvider, TokenUsage
 
 
 def delta(text: str) -> dict:
@@ -43,7 +43,7 @@ class FakeRuntime:
         return {"body": io.BytesIO(json.dumps({"embedding": [0.5] * dims}).encode())}
 
 
-async def collect(llm: BedrockLLM) -> list[str]:
+async def collect(llm: BedrockLLM) -> list[Chunk]:
     return [piece async for piece in llm.stream("système", "question")]
 
 
@@ -67,6 +67,39 @@ async def test_stream_yields_text_deltas_and_sends_a_converse_request() -> None:
     assert call["system"] == [{"text": "système"}]
     assert call["messages"] == [{"role": "user", "content": [{"text": "question"}]}]
     assert call["inferenceConfig"]["temperature"] == 0.0
+
+
+async def test_stream_yields_reported_usage_after_metadata() -> None:
+    runtime = FakeRuntime(
+        [
+            {"messageStart": {"role": "assistant"}},
+            delta("Bon"),
+            delta("jour [1]"),
+            {"messageStop": {"stopReason": "max_tokens"}},
+            {
+                "metadata": {
+                    "usage": {"inputTokens": 812, "outputTokens": 57, "totalTokens": 869},
+                    "metrics": {"latencyMs": 900},
+                }
+            },
+        ]
+    )
+    llm = BedrockLLM(id="bedrock:haiku", model_id="m", client=runtime)
+    pieces = await collect(llm)
+    assert pieces == ["Bon", "jour [1]", TokenUsage(812, 57, "max_tokens")]
+
+
+async def test_stream_without_metadata_reports_no_usage() -> None:
+    runtime = FakeRuntime(
+        [
+            delta("Bon"),
+            {"messageStop": {"stopReason": "end_turn"}},
+        ]
+    )
+    llm = BedrockLLM(id="bedrock:haiku", model_id="m", client=runtime)
+    pieces = await collect(llm)
+    assert pieces == ["Bon"]
+    assert not any(isinstance(p, TokenUsage) for p in pieces)
 
 
 async def test_client_error_becomes_llm_error() -> None:

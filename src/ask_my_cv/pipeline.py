@@ -12,7 +12,7 @@ from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
 from ask_my_cv.events import Answer, Done, LLMProgress
 from ask_my_cv.input_guard import InjectionDetector, check_input
-from ask_my_cv.llm import LLMError, LLMProvider, estimate_tokens
+from ask_my_cv.llm import LLMError, LLMProvider, TokenUsage, estimate_tokens
 from ask_my_cv.output_guard import check_output
 from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
@@ -61,7 +61,7 @@ class Usage:
     cost_usd: float = 0.0
 
 
-Account = Callable[[LLMProvider, str], None]
+Account = Callable[[LLMProvider, str, TokenUsage | None], None]
 
 
 async def _stream_llm(
@@ -72,30 +72,37 @@ async def _stream_llm(
     settings: Settings,
     recorder: StageRecorder,
     account: Account,
-) -> tuple[LLMProvider, str]:
+) -> tuple[LLMProvider, str, TokenUsage | None]:
     """Génère côté serveur. Aucun texte ne sort : on peut donc basculer à tout moment."""
     failed: list[str] = []
     chars = 0
     async with asyncio.timeout(settings.llm_deadline_s):
         for provider in chain:
             parts: list[str] = []
+            reported: TokenUsage | None = None
             stream = provider.stream(system, user)
             try:
                 async with asyncio.timeout(settings.first_token_timeout_s):
                     first = await anext(stream)
-                parts.append(first)
-                chars += len(first)
-                emit(LLMProgress(tokens=max(1, chars // 4)))
+                if isinstance(first, TokenUsage):
+                    reported = first
+                else:
+                    parts.append(first)
+                    chars += len(first)
+                    emit(LLMProgress(tokens=max(1, chars // 4)))
                 async for piece in stream:
+                    if isinstance(piece, TokenUsage):
+                        reported = piece
+                        continue
                     parts.append(piece)
                     chars += len(piece)
                     emit(LLMProgress(tokens=max(1, chars // 4)))
             except asyncio.CancelledError:
                 # délai global dépassé ou visiteur déconnecté : les tokens produits sont facturés
-                account(provider, "".join(parts))
+                account(provider, "".join(parts), reported)
                 raise
             except Exception:
-                account(provider, "".join(parts))
+                account(provider, "".join(parts), reported)
                 failed.append(provider.id)
                 recorder.set(failed=",".join(failed))
                 continue
@@ -105,7 +112,7 @@ async def _stream_llm(
             recorder.set(provider=provider.id)
             if failed:
                 recorder.fallback = True
-            return provider, "".join(parts)
+            return provider, "".join(parts), reported
     raise LLMError(f"tous les fournisseurs ont échoué : {failed}")
 
 
@@ -167,10 +174,16 @@ async def run_pipeline(
 
             async with stage("llm", emit) as st:
 
-                def account(provider: LLMProvider, text: str) -> None:
-                    if not text:
+                def account(provider: LLMProvider, text: str, reported: TokenUsage | None) -> None:
+                    if not text and reported is None:
                         return
-                    tokens_in, tokens_out = estimate_tokens(system + user), estimate_tokens(text)
+                    if reported is not None:
+                        tokens_in, tokens_out = reported.tokens_in, reported.tokens_out
+                        st.set(usage_source="reported", stop_reason=reported.stop_reason or "")
+                    else:
+                        tokens_in = estimate_tokens(system + user)
+                        tokens_out = estimate_tokens(text)
+                        st.set(usage_source="estimated")
                     cost = provider.pricing.cost(tokens_in, tokens_out)
                     try:
                         deps.ledger.record(provider.id, cost, now())
@@ -181,10 +194,10 @@ async def run_pipeline(
                     usage.cost_usd += cost
 
                 chain = _provider_chain(model_id, deps)
-                provider, answer = await _stream_llm(
+                provider, answer, reported = await _stream_llm(
                     chain, system, user, emit, settings, st, account
                 )
-                account(provider, answer)
+                account(provider, answer, reported)
                 st.set(
                     tokens_in=usage.tokens_in,
                     tokens_out=usage.tokens_out,

@@ -22,15 +22,27 @@ class ModelPricing:
 
 
 def estimate_tokens(text: str) -> int:
-    """Estimation grossière (~4 caractères par token), suffisante pour le suivi de budget."""
+    """Repli quand le fournisseur ne compte pas (flux coupé, FakeLLM)."""
     return max(1, len(text) // 4)
+
+
+@dataclass(frozen=True)
+class TokenUsage:
+    """Consommation comptée par le fournisseur, émise en dernier dans le flux."""
+
+    tokens_in: int
+    tokens_out: int
+    stop_reason: str | None = None
+
+
+Chunk = str | TokenUsage
 
 
 class LLMProvider(Protocol):
     id: str
     pricing: ModelPricing
 
-    def stream(self, system: str, user: str) -> AsyncGenerator[str, None]: ...
+    def stream(self, system: str, user: str) -> AsyncGenerator[Chunk, None]: ...
 
 
 DEFAULT_FAKE_REPLY = "D'après le CV [1], le candidat a une expérience concrète en MLOps."
@@ -45,19 +57,23 @@ class FakeLLM:
         pricing: ModelPricing | None = None,
         reply: str = DEFAULT_FAKE_REPLY,
         fail: bool = False,
+        usage: TokenUsage | None = None,
     ) -> None:
         self.id = id
         self.pricing = pricing or ModelPricing()
         self.reply = reply
         self.fail = fail
+        self.usage = usage
         self.calls = 0
 
-    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
+    async def stream(self, system: str, user: str) -> AsyncGenerator[Chunk, None]:
         self.calls += 1
         if self.fail:
             raise LLMError(f"{self.id} indisponible")
         for i, word in enumerate(self.reply.split(" ")):
             yield word if i == 0 else f" {word}"
+        if self.usage is not None:
+            yield self.usage
 
 
 class OllamaLLM:
@@ -80,7 +96,7 @@ class OllamaLLM:
     async def aclose(self) -> None:
         await self._client.aclose()
 
-    async def stream(self, system: str, user: str) -> AsyncGenerator[str, None]:
+    async def stream(self, system: str, user: str) -> AsyncGenerator[Chunk, None]:
         payload = {
             "model": self.model,
             "stream": True,
@@ -103,6 +119,12 @@ class OllamaLLM:
                     if text:
                         yield text
                     if chunk.get("done"):
+                        tokens_in, tokens_out = (
+                            chunk.get("prompt_eval_count"),
+                            chunk.get("eval_count"),
+                        )
+                        if tokens_in is not None and tokens_out is not None:
+                            yield TokenUsage(tokens_in, tokens_out, chunk.get("done_reason"))
                         break
         except httpx.HTTPError as exc:
             raise LLMError(f"{self.id} injoignable : {exc}") from exc

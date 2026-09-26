@@ -7,7 +7,7 @@ import pytest
 
 from ask_my_cv.budget import InMemoryLedger
 from ask_my_cv.events import Answer, Done, Event, LLMProgress, StageEnd
-from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing
+from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing, TokenUsage
 from ask_my_cv.output_guard import REFUSAL
 from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, Deps, run_pipeline
 
@@ -164,6 +164,33 @@ async def test_llm_span_carries_provider(make_deps, spans) -> None:
     await run(make_deps())
     llm_span = next(s for s in spans.get_finished_spans() if s.name == "llm")
     assert llm_span.attributes["xops.provider"] == "fake:echo"
+
+
+async def test_reported_usage_is_billed_instead_of_the_estimate(make_deps) -> None:
+    pricey = FakeLLM(
+        id="pricey",
+        pricing=ModelPricing(input_per_mtok=1.0, output_per_mtok=5.0),
+        usage=TokenUsage(tokens_in=1000, tokens_out=100, stop_reason="end_turn"),
+    )
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=10, window_s=3600)
+    events = await run(make_deps(providers={"pricey": pricey}, ledger=ledger))
+    result = done(events)
+    assert (result.tokens_in, result.tokens_out) == (1000, 100)
+    assert result.cost_usd == round((1000 * 1.0 + 100 * 5.0) / 1_000_000, 6)
+
+
+async def test_usage_source_and_stop_reason_are_traced(make_deps, spans) -> None:
+    llm = FakeLLM(id="fake:echo", usage=TokenUsage(10, 5, "max_tokens"))
+    await run(make_deps(providers={"fake:echo": llm}))
+    [llm_span] = [s for s in spans.get_finished_spans() if s.name == "llm"]
+    assert llm_span.attributes["xops.usage_source"] == "reported"
+    assert llm_span.attributes["xops.stop_reason"] == "max_tokens"
+
+
+async def test_without_reported_usage_the_estimate_is_kept(make_deps, spans) -> None:
+    await run(make_deps())
+    [llm_span] = [s for s in spans.get_finished_spans() if s.name == "llm"]
+    assert llm_span.attributes["xops.usage_source"] == "estimated"
 
 
 class Scripted:
