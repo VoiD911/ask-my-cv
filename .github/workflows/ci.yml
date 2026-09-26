@@ -48,3 +48,62 @@ jobs:
           done
           docker logs smoke
           exit 1
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "~1.16"
+      - run: terraform fmt -check -recursive infra
+      - run: |
+          for root in infra/bootstrap infra/prod; do
+            terraform -chdir=$root init -backend=false -input=false
+            terraform -chdir=$root validate
+          done
+
+  deploy:
+    needs: [test, terraform]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    concurrency: deploy-prod
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ca-central-1
+      ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
+      FUNCTION_NAME: ask-my-cv-api
+    steps:
+      - uses: actions/checkout@v4
+      - name: Récupérer et vérifier le modèle promu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(jq -r .version models/prod.json)
+          gh release download "model-$VERSION" -p model.onnx -p model.onnx.sigstore.json -D models
+          echo "$(jq -r .sha256 models/prod.json)  models/model.onnx" | sha256sum -c -
+      - uses: sigstore/cosign-installer@v4.1.2
+      - run: |
+          cosign verify-blob models/model.onnx \
+            --bundle models/model.onnx.sigstore.json \
+            --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/train.yml@refs/heads/main" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ca-central-1
+      - uses: aws-actions/amazon-ecr-login@v2
+      - name: Construire et pousser l'image
+        run: |
+          IMAGE="$ECR_REPOSITORY_URL:$GITHUB_SHA"
+          docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
+      - name: Déployer
+        run: |
+          aws lambda update-function-code --function-name "$FUNCTION_NAME" --image-uri "$IMAGE" >/dev/null
+          aws lambda wait function-updated-v2 --function-name "$FUNCTION_NAME"
+      - name: Test de fumée de production
+        run: python3 infra/scripts/smoke_prod.py "${{ vars.SITE_URL }}"
