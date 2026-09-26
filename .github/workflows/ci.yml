@@ -98,8 +98,14 @@ jobs:
       - name: Construire et pousser l'image
         run: |
           IMAGE="$ECR_REPOSITORY_URL:$GITHUB_SHA"
-          docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" .
-          docker push "$IMAGE"
+          # Le dépôt ECR est IMMUTABLE : un rejeu du déploiement pour le même commit ne doit
+          # pas échouer sur un push en doublon.
+          if aws ecr describe-images --repository-name ask-my-cv --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
+            echo "image déjà présente"
+          else
+            docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" .
+            docker push "$IMAGE"
+          fi
           echo "IMAGE=$IMAGE" >> "$GITHUB_ENV"
       - name: Déployer
         run: |

@@ -158,7 +158,7 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload",
       "ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart",
-      "ecr:GetDownloadUrlForLayer",
+      "ecr:GetDownloadUrlForLayer", "ecr:DescribeImages",
     ]
     resources = [aws_ecr_repository.api.arn]
   }
@@ -166,11 +166,6 @@ data "aws_iam_policy_document" "deploy" {
     sid       = "LambdaDeploy"
     actions   = ["lambda:UpdateFunctionCode", "lambda:GetFunction", "lambda:GetFunctionConfiguration"]
     resources = ["arn:aws:lambda:${var.region}:${local.account}:function:${local.function_name}"]
-  }
-  statement {
-    sid       = "SmokeTraces"
-    actions   = ["logs:FilterLogEvents"]
-    resources = ["arn:aws:logs:${var.region}:${local.account}:log-group:aws/spans:*"]
   }
 }
 

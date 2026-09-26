@@ -2,11 +2,22 @@ import hashlib
 import importlib.util
 from pathlib import Path
 
+import pytest
+
 _SCRIPT_PATH = Path(__file__).resolve().parents[1] / "infra" / "scripts" / "smoke_prod.py"
 spec = importlib.util.spec_from_file_location("smoke_prod", _SCRIPT_PATH)
 assert spec and spec.loader
 smoke = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(smoke)
+
+
+def test_check_raises_system_exit_with_message_when_not_ok() -> None:
+    with pytest.raises(SystemExit, match="ÉCHEC : motif"):
+        smoke.check(False, "motif")
+
+
+def test_check_does_nothing_when_ok() -> None:
+    smoke.check(True, "peu importe")
 
 
 def test_body_hash_matches_what_cloudfront_oac_requires() -> None:
