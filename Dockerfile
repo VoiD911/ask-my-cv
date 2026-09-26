@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0 /lambda-adapter /opt/extensions/lambda-adapter
+
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
 WORKDIR /app
 
@@ -18,11 +20,14 @@ COPY src ./src
 COPY prompts ./prompts
 COPY data ./data
 COPY settings.yaml ./
+COPY settings.aws.yaml ./
 COPY models ./models
 RUN uv sync --frozen --no-dev && .venv/bin/python -m ask_my_cv.ingest
 
 RUN useradd --system --no-create-home app && chown -R app /app
 ENV ASK_ENVIRONMENT=prod
+# Lambda Web Adapter (ignoré hors Lambda) : l'extension relaie l'invocation vers uvicorn.
+ENV AWS_LWA_PORT=8000 AWS_LWA_READINESS_CHECK_PATH=/healthz AWS_LWA_INVOKE_MODE=response_stream
 USER app
 
 EXPOSE 8000
