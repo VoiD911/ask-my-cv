@@ -20,6 +20,11 @@ resource "awscc_dynamodb_table" "chunks" {
       non_key_attributes = ["section", "text"] # lus par DynamoVectorStore.search
     }
   }]
+  tags = [
+    { key = "project", value = "ask-my-cv" },
+    { key = "managed-by", value = "terraform" },
+    { key = "stack", value = "prod" },
+  ]
 }
 
 resource "aws_dynamodb_table" "ledger" {

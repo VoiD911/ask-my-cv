@@ -46,7 +46,7 @@ data "aws_iam_policy_document" "api" {
   }
   statement {
     sid       = "VectorSearch"
-    actions   = ["dynamodb:SearchVectors", "dynamodb:GetItem"]
+    actions   = ["dynamodb:SearchVectors"]
     resources = [awscc_dynamodb_table.chunks.arn, "${awscc_dynamodb_table.chunks.arn}/index/*"]
   }
   statement {
@@ -56,7 +56,7 @@ data "aws_iam_policy_document" "api" {
   }
   statement {
     sid       = "Traces"
-    actions   = ["xray:PutSpans", "xray:PutSpansForIndexing", "xray:PutTraceSegments"]
+    actions   = ["xray:PutSpans", "xray:PutSpansForIndexing"]
     resources = ["*"]
   }
   statement {
@@ -64,7 +64,6 @@ data "aws_iam_policy_document" "api" {
     actions = ["ssm:GetParametersByPath"]
     resources = [
       "arn:aws:ssm:${var.region}:${local.account}:parameter${local.ssm_prefix}",
-      "arn:aws:ssm:${var.region}:${local.account}:parameter${local.ssm_prefix}/*",
     ]
   }
 }
