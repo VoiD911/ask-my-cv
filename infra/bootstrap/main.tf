@@ -32,6 +32,11 @@ locals {
 # --- État Terraform de la racine prod ---
 resource "aws_s3_bucket" "state" {
   bucket = "ask-my-cv-tfstate-${local.account}"
+
+  # Le bucket d'état est critique : on empêche sa destruction accidentelle.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_s3_bucket_versioning" "state" {
@@ -47,11 +52,53 @@ resource "aws_s3_bucket_public_access_block" "state" {
   restrict_public_buckets = true
 }
 
+# Interdit tout accès au bucket d'état qui ne serait pas chiffré en transit (TLS).
+resource "aws_s3_bucket_policy" "state" {
+  bucket = aws_s3_bucket.state.id
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{
+      Sid       = "DenyInsecureTransport",
+      Effect    = "Deny",
+      Principal = "*",
+      Action    = "s3:*",
+      Resource  = [aws_s3_bucket.state.arn, "${aws_s3_bucket.state.arn}/*"],
+      Condition = { Bool = { "aws:SecureTransport" = "false" } }
+    }]
+  })
+  depends_on = [aws_s3_bucket_public_access_block.state]
+}
+
+# Purge les anciennes versions et les uploads multipart abandonnés pour limiter les coûts.
+resource "aws_s3_bucket_lifecycle_configuration" "state" {
+  bucket = aws_s3_bucket.state.id
+
+  rule {
+    id     = "versions-anciennes"
+    status = "Enabled"
+
+    filter {}
+
+    noncurrent_version_expiration {
+      noncurrent_days = 90
+    }
+
+    abort_incomplete_multipart_upload {
+      days_after_initiation = 7
+    }
+  }
+}
+
 # --- Images de l'API ---
 resource "aws_ecr_repository" "api" {
   name                 = "ask-my-cv"
   image_tag_mutability = "IMMUTABLE"
   image_scanning_configuration { scan_on_push = true }
+
+  # Le registre d'images est critique : on empêche sa destruction accidentelle.
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "aws_ecr_lifecycle_policy" "api" {
@@ -67,6 +114,8 @@ resource "aws_ecr_lifecycle_policy" "api" {
 }
 
 # --- Déploiement depuis GitHub Actions (OIDC, sans clé longue durée) ---
+# Un seul fournisseur OIDC GitHub par compte AWS : s'il existe déjà, l'importer avec
+# `terraform import aws_iam_openid_connect_provider.github arn:aws:iam::<compte>:oidc-provider/token.actions.githubusercontent.com`
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -109,6 +158,7 @@ data "aws_iam_policy_document" "deploy" {
     actions = [
       "ecr:BatchCheckLayerAvailability", "ecr:BatchGetImage", "ecr:CompleteLayerUpload",
       "ecr:InitiateLayerUpload", "ecr:PutImage", "ecr:UploadLayerPart",
+      "ecr:GetDownloadUrlForLayer",
     ]
     resources = [aws_ecr_repository.api.arn]
   }
