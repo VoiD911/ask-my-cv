@@ -109,9 +109,16 @@ resource "aws_ecr_lifecycle_policy" "api" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "garder les 10 dernières images"
-      selection    = { tagStatus = "any", countType = "imageCountMoreThan", countNumber = 10 }
-      action       = { type = "expire" }
+      # Seules les images taguées (SHA git) comptent : signatures et attestations cosign sont
+      # des référents OCI sans tag, supprimés par ECR avec l'image qu'ils décrivent.
+      description = "garder les 10 dernières images taguées"
+      selection = {
+        tagStatus      = "tagged"
+        tagPatternList = ["*"]
+        countType      = "imageCountMoreThan"
+        countNumber    = 10
+      }
+      action = { type = "expire" }
     }]
   })
 }
