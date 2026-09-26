@@ -70,6 +70,11 @@ spans sont marqués `xops.eval=true`. Un jeton absent ou faux est traité comme 
 ordinaire — aucun raccourci n'existe pour contourner les quotas ou se faire reconnaître comme
 tel sans le secret.
 
+Le trafic d'évaluation **partage le plafond de dépense quotidien** avec les visiteurs
+(≈ 0,04 $ par nuit) : il n'a pas de budget à part. Si le plafond est atteint, les cas de nuit
+échouent au lieu de passer à vide (`evals/usable.js` : une requête arrêtée par le quota, le
+plafond ou une erreur ne prouve ni un refus, ni l'absence de fuite).
+
 **Dérive du classifieur** (job `drift` de `nightly.yml`, `ml/drift.py`) : les scores
 `xops.score` des spans `injection` des 7 derniers jours (hors trafic `xops.eval`) sont lus dans
 CloudWatch Logs Insights (`aws/spans`, rôle IAM `ask-my-cv-nightly`, lecture seule) et comparés,
