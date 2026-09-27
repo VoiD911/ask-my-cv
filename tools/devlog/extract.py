@@ -49,6 +49,7 @@ __all__ = [
     "load_agents",
     "load_commit_map",
     "load_published_shas",
+    "published_commit_refs",
     "role",
     "translate_shas",
 ]
@@ -459,3 +460,30 @@ def translate_shas(text: str, commit_map: Mapping[str, str], published: Iterable
         return token
 
     return _HEX_TOKEN.sub(replace, text)
+
+
+def published_commit_refs(text: str, published: Iterable[str]) -> list[str]:
+    """SHA complets des commits publiés cités dans `text`, dans l'ordre, sans doublon.
+
+    À appliquer à un texte déjà passé par `translate_shas`. Un SHA complet
+    (40 caractères) est retenu s'il est publié. Un SHA court (7 à 39
+    caractères, au moins une lettre a-f) n'est retenu que s'il ressemble à une
+    référence de commit (mêmes règles que `translate_shas` : contexte git
+    explicite ou bloc façon `git log --oneline`) **et** s'il est le préfixe
+    d'un seul SHA publié ; il est alors remplacé par ce SHA complet. Préfixe
+    ambigu, non publié, ou mot hexadécimal hors contexte : ignoré.
+    """
+    shas = {sha.lower() for sha in published}
+    found: list[str] = []
+    for match in _HEX_TOKEN.finditer(text):
+        token = match.group(1)
+        if len(token) == 40:
+            if token in shas:
+                found.append(token)
+            continue
+        if not _looks_like_commit_ref(text, match.start(), token):
+            continue
+        full = _unique_prefix(token, shas)
+        if full is not None:
+            found.append(full)
+    return list(dict.fromkeys(found))
