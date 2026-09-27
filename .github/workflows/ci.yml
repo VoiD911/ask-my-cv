@@ -215,6 +215,25 @@ jobs:
           path: web/out
           retention-days: 14
           if-no-files-found: error
+      # Lighthouse CI sur l'export statique (web/out) : lhci lance son propre serveur
+      # statique (staticDistDir), jamais l'API ni la CloudFront/CSP de prod. Chrome pour
+      # Testing est préinstallé sur ubuntu-latest, trouvé par chrome-launcher sans config.
+      # Budgets mesurés (3 runs, desktop puis mobile) fixés juste sous les scores obtenus ;
+      # accessibilité verrouillée à 0,95 (voir README, section Lighthouse).
+      - name: Lighthouse CI (desktop)
+        working-directory: web
+        run: npx --no-install lhci autorun --config=lighthouserc.desktop.json
+      - name: Lighthouse CI (mobile)
+        working-directory: web
+        run: npx --no-install lhci autorun --config=lighthouserc.mobile.json
+      - name: Rapport Lighthouse (artefact)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-report-${{ github.sha }}
+          path: web/lhci-report
+          retention-days: 14
+          if-no-files-found: ignore
 
   terraform:
     runs-on: ubuntu-latest

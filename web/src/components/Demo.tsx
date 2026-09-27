@@ -54,10 +54,15 @@ export function Demo() {
   const [model, setModel] = useState<string | null>(null);
   const controller = useRef<AbortController | null>(null);
   const nextId = useRef(1);
+  const modelsRequested = useRef(false);
 
-  useEffect(() => {
-    const ac = new AbortController();
-    fetchModels({ signal: ac.signal })
+  // Chargé à la première interaction plutôt qu'au montage : la page reste inerte tant que
+  // le visiteur n'a pas commencé à poser une question (Lighthouse sur l'export statique,
+  // sans API, ne doit pas voir de requête /api/models échouer dès le chargement).
+  const loadModels = useCallback(() => {
+    if (modelsRequested.current) return;
+    modelsRequested.current = true;
+    fetchModels()
       .then((res) => {
         setModels(res.models);
         setModel(res.default);
@@ -65,7 +70,6 @@ export function Demo() {
       .catch(() => {
         // Sélecteur masqué : l'API choisit son modèle par défaut.
       });
-    return () => ac.abort();
   }, []);
 
   useEffect(() => () => controller.current?.abort(), []);
@@ -75,6 +79,7 @@ export function Demo() {
 
   const onAsk = useCallback(
     async (question: string) => {
+      loadModels();
       const id = nextId.current++;
       const ac = new AbortController();
       controller.current = ac;
@@ -98,7 +103,7 @@ export function Demo() {
         if (controller.current === ac) controller.current = null;
       }
     },
-    [model, models.length],
+    [loadModels, model, models.length],
   );
 
   const onStop = useCallback(() => controller.current?.abort(), []);
@@ -111,6 +116,7 @@ export function Demo() {
           busy={busy}
           onAsk={(q) => void onAsk(q)}
           onStop={onStop}
+          onInteract={loadModels}
           models={models}
           model={model}
           onModelChange={setModel}

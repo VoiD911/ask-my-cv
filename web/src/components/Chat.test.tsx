@@ -25,6 +25,7 @@ function renderChat(exchanges: Exchange[] = [], overrides: Partial<Parameters<ty
     busy: false,
     onAsk: vi.fn(),
     onStop: vi.fn(),
+    onInteract: vi.fn(),
     models: [],
     model: null,
     onModelChange: vi.fn(),

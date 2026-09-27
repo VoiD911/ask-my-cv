@@ -169,12 +169,14 @@ type ChatProps = {
   busy: boolean;
   onAsk: (question: string) => void;
   onStop: () => void;
+  /** Première interaction du visiteur avec la saisie (charge `/api/models`, une seule fois). */
+  onInteract: () => void;
   models: readonly ModelInfo[];
   model: string | null;
   onModelChange: (id: string) => void;
 };
 
-export function Chat({ exchanges, busy, onAsk, onStop, models, model, onModelChange }: ChatProps) {
+export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model, onModelChange }: ChatProps) {
   const [draft, setDraft] = useState("");
   const [attacksOpen, setAttacksOpen] = useState(false);
   const threadRef = useRef<HTMLOListElement>(null);
@@ -327,6 +329,7 @@ export function Chat({ exchanges, busy, onAsk, onStop, models, model, onModelCha
           aria-describedby={`${ids}-count`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
+          onFocus={onInteract}
         />
         <div className="composer__row">
           <span id={`${ids}-count`} className="composer__count" data-full={draft.length >= MAX_QUESTION || undefined}>
