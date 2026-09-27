@@ -218,6 +218,31 @@ Même chose pour le SBOM avec `cosign verify-attestation --type cyclonedx` (mêm
 - **Provenance SLSA (`attest-build-provenance`) reportée** : les attestations GitHub exigent un dépôt public (ou GitHub Enterprise). La signature cosign et l'attestation SBOM, elles, fonctionnent sur un dépôt privé.
 - **Vérification publique par copier-coller** impossible tant que l'image est dans un ECR privé : à traiter avec la publication (miroir public).
 
+### Site
+
+Le site statique (export Next.js, `web/out`, job `web` de la CI) est publié dans un bucket S3
+privé (OAC), derrière le même CloudFront que l'API (comportement par défaut ; `/api/*` reste
+routé vers la Lambda). Il n'est pas encore déployé (infra du site : tâche 8, reste à appliquer).
+
+Le job `deploy`, après le déploiement de l'API et son test de fumée :
+
+1. Télécharge l'artefact `web-out-${{ github.sha }}` produit par le job `web` (déjà construit,
+   jamais reconstruit à ce stade).
+2. Publie `_next/static/**` avec `Cache-Control: public, max-age=31536000, immutable` (fichiers
+   hachés par contenu, jamais supprimés — un ancien build encore chargé par un visiteur continue
+   de trouver ses chunks), puis le reste (HTML compris) avec `Cache-Control: no-cache` et
+   `--delete` pour nettoyer ce qui a disparu du build, sans jamais toucher `_next/static/`
+   (exclu explicitement, donc protégé de cette suppression).
+3. Invalide tout le cache CloudFront (`create-invalidation --paths "/*"`) et attend sa fin
+   (`wait invalidation-completed`).
+4. Test de fumée du site : `GET /` contient « Interroge mon CV » ; `GET /api/healthz` inchangé
+   (script Python existant, `infra/scripts/smoke_prod.py`).
+
+Ces quatre étapes sont ignorées (avis `::notice::`, pas d'échec) tant que la variable CI
+`SITE_BUCKET` n'est pas définie : le pipeline reste vert avant que l'infra du site ne soit
+appliquée. Variables CI additionnelles : `SITE_BUCKET`, `DISTRIBUTION_ID` (avec `SITE_URL`, déjà
+utilisée par le test de fumée de l'API, qui deviendra `https://job.stevelang.net`).
+
 ### Coût
 
 ≈ 1 $/mois hors Bedrock (Lambda, CloudFront, DynamoDB, ECR, CloudWatch, S3, SSM). Une question ≈ 0,0009 $ (Bedrock).

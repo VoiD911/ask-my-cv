@@ -226,7 +226,7 @@ jobs:
           done
 
   deploy:
-    needs: [test, evals, terraform, security]
+    needs: [test, evals, terraform, security, web]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AWS_DEPLOY_ROLE_ARN != ''
     runs-on: ubuntu-latest
     concurrency: deploy-prod
@@ -237,6 +237,8 @@ jobs:
       AWS_REGION: ca-central-1
       ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
       FUNCTION_NAME: ask-my-cv-api
+      SITE_BUCKET: ${{ vars.SITE_BUCKET }}
+      DISTRIBUTION_ID: ${{ vars.DISTRIBUTION_ID }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -325,6 +327,44 @@ jobs:
         env:
           SITE_URL: ${{ vars.SITE_URL }}
         run: python3 infra/scripts/smoke_prod.py "$SITE_URL"
+      - name: Publication du site ignorée (SITE_BUCKET non défini)
+        if: env.SITE_BUCKET == ''
+        run: |
+          echo "::notice::SITE_BUCKET non défini : publication du site (S3 + CloudFront) ignorée."
+      - name: Récupérer l'export statique du site (job web)
+        if: env.SITE_BUCKET != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: web-out-${{ github.sha }}
+          path: web/out
+      - name: Publier le site (S3)
+        if: env.SITE_BUCKET != ''
+        run: |
+          # 1er passage : uniquement les fichiers hachés (_next/static/**), cache immuable 1 an.
+          # Pas de --delete ici : un chunk haché disparu d'un ancien build ne gêne personne
+          # (nom différent à chaque contenu) et le supprimer romprait un client en plein
+          # chargement d'une page encore servie avec l'ancien build.
+          aws s3 sync web/out/_next/static "s3://$SITE_BUCKET/_next/static" \
+            --cache-control "public, max-age=31536000, immutable"
+          # 2e passage : HTML et tout le reste, non caché ; --delete nettoie ce qui a disparu du
+          # build, sans jamais toucher _next/static (exclu ci-dessous, donc protégé du --delete).
+          aws s3 sync web/out "s3://$SITE_BUCKET" \
+            --cache-control "no-cache" \
+            --exclude "_next/static/*" \
+            --delete
+      - name: Invalider le cache CloudFront (site)
+        if: env.SITE_BUCKET != '' && env.DISTRIBUTION_ID != ''
+        run: |
+          ID=$(aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" \
+            --paths "/*" --query Invalidation.Id --output text)
+          aws cloudfront wait invalidation-completed --distribution-id "$DISTRIBUTION_ID" --id "$ID"
+      - name: Test de fumée du site statique
+        if: env.SITE_BUCKET != ''
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+        run: |
+          curl -fsS "${SITE_URL%/}/" | grep -q "Interroge mon CV"
+          curl -fsS "${SITE_URL%/}/api/healthz" | grep -q '"status"'
       - name: Retour arrière si le test de fumée échoue
         if: failure() && steps.smoke.outcome == 'failure' && env.PREVIOUS_IMAGE != ''
         env:
