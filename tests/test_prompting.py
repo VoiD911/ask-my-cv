@@ -49,3 +49,12 @@ def test_prompt_v2_asks_for_the_exact_refusal() -> None:
     template = load_template(Path("prompts/answer@v2.md"))
     assert template.version == "v2"
     assert REFUSAL in template.system and "{canary}" in template.system
+
+
+def test_prompt_v3_forbids_markdown_and_keeps_v2_rules() -> None:
+    from ask_my_cv.output_guard import REFUSAL
+
+    template = load_template(Path("prompts/answer@v3.md"))
+    assert template.version == "v3"
+    assert REFUSAL in template.system and "{canary}" in template.system
+    assert "pas de Markdown" in template.system

@@ -6,7 +6,7 @@ cors_origins: []
 
 cv_path: data/cv.md
 index_path: data/index.json
-prompt_path: prompts/answer@v2.md
+prompt_path: prompts/answer@v3.md
 embed_dim: 256
 
 default_model: fake:echo
