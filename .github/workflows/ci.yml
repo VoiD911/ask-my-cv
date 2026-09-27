@@ -199,9 +199,16 @@ jobs:
       - run: npm --prefix web run lint
       - run: npm --prefix web run typecheck
       - run: npm --prefix web test -- --run
+      - name: Tests de l'insertion CSP (scripts/csp.mjs)
+        run: node --test web/scripts/*.test.mjs
+      # postbuild : scripts/csp.mjs insère la meta CSP (hashes des scripts en ligne) dans web/out.
       - run: npm --prefix web run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+      - name: Meta CSP présente dans chaque page
+        run: |
+          missing=$(grep -rL --include='*.html' 'http-equiv="Content-Security-Policy"' web/out || true)
+          if [ -n "$missing" ]; then echo "::error::pages sans meta CSP : $missing"; exit 1; fi
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-out-${{ github.sha }}

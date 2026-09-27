@@ -224,6 +224,14 @@ gh attestation verify oci://ghcr.io/void911/ask-my-cv@sha256:<digest> -R VoiD911
   --source-ref refs/heads/main
 ```
 
+`--source-ref` et `--source-digest` demandent gh ≥ 2.70.
+
+Sans compte GitHub, la provenance se vérifie aussi anonymement avec cosign, qui lit l'attestation dans le registre et son inscription dans Rekor :
+
+```bash
+cosign verify-attestation ghcr.io/void911/ask-my-cv@sha256:<digest>   --type https://slsa.dev/provenance/v1   --certificate-identity https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
 Les modèles du classifieur publiés par `train.yml` portent eux aussi une provenance SLSA depuis que le dépôt est public (aucune provenance rétroactive pour les versions antérieures) : `gh attestation verify model.onnx -R VoiD911/ask-my-cv`.
 
 Le Lambda Web Adapter est tiré de `ghcr.io/void911/aws-lambda-adapter`, copie à l'identique (même digest, épinglé dans le `Dockerfile`) de `public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0` faite par `mirror.yml` : les tirages anonymes depuis `public.ecr.aws` échouaient par intermittence sur les exécuteurs GitHub.
@@ -258,6 +266,36 @@ Ces quatre étapes sont ignorées (avis `::notice::`, pas d'échec) tant que la 
 `SITE_BUCKET` n'est pas définie : le pipeline reste vert avant que l'infra du site ne soit
 appliquée. Variables CI additionnelles : `SITE_BUCKET`, `DISTRIBUTION_ID` (avec `SITE_URL`, déjà
 utilisée par le test de fumée de l'API, qui deviendra `https://job.stevelang.net`).
+
+#### CSP
+
+Scripts : aucun `'unsafe-inline'` effectif. L'export statique de Next.js contient des scripts en
+ligne (charge RSC `self.__next_f.push(...)`), différents d'une page à l'autre et d'un build à
+l'autre. Après `next build`, `web/scripts/csp.mjs` (`postbuild`) parcourt chaque page HTML de
+`web/out`, calcule le SHA-256 (base64) du texte exact de chacun de ses scripts en ligne et insère
+en **premier élément** du `<head>` (une CSP meta ne couvre que ce qui la suit) :
+
+```html
+<meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-…' 'sha256-…'">
+```
+
+Le build échoue si une page n'a pas de `<head>`, si un script précède le `<head>`, si un script a
+un attribut `src` vide ou si une meta CSP est déjà présente. `node --test web/scripts/*.test.mjs`
+teste ces cas ; la CI vérifie en outre que chaque page de `web/out` porte la meta.
+
+L'en-tête CloudFront (`site_csp`, `infra/prod/variables.tf`) porte le reste de la politique
+(`default-src`, `connect-src`, `frame-ancestors`, …) et garde `script-src 'self' 'unsafe-inline'`.
+Le navigateur applique l'en-tête **et** la meta : un script n'est exécuté que s'il satisfait les
+deux, donc un script en ligne dont le hash manque dans la meta est bloqué. `style-src` garde
+`'unsafe-inline'` (styles en ligne de React Flow). `next dev` n'est pas concerné (seul `web/out`
+est modifié).
+
+Vérification : le serveur e2e (`web/e2e/serve.mjs`) sert l'en-tête de production, lu dans
+`variables.tf`. Chaque test e2e écoute `securitypolicyviolation` dans chaque document ainsi que
+les messages console CSP : aucune violation tolérée. `web/e2e/csp.spec.ts` contrôle en plus, pour
+`/`, `/404.html`, `/_not-found/` et une page inexistante, que la meta est le premier élément du
+`<head>` et que le hash de chaque script en ligne du DOM y figure ; un témoin vérifie qu'un script
+en ligne non haché est bien bloqué et que la violation est détectée.
 
 ### Coût
 
