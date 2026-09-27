@@ -20,12 +20,13 @@ import pytest
 
 from tools.devlog.__main__ import main
 from tools.devlog.extract import AgentRecord, PlanWindow
-from tools.devlog.redact import RedactConfig, SecretDetected
+from tools.devlog.redact import RedactConfig, SecretDetected, Suspect
 from tools.devlog.render import (
     FINAL_REVIEW,
     OFF_TASK,
     PlanDoc,
     RenderResult,
+    _substitute_suspects,
     load_plan_docs,
     load_plan_windows,
     render,
@@ -732,3 +733,61 @@ def test_cli_null_assignment_counts_excluded(
     journal = (cli_env["repo"] / "docs" / "journal" / "9a.md").read_text(encoding="utf-8")
     assert "à écarter" not in journal
     assert json.loads(report.read_text(encoding="utf-8"))["unknown"] == []
+
+
+# --------------------------------------------------------------------------
+# Substitution des suspects (rapport local)
+# --------------------------------------------------------------------------
+
+# Caractères des zones suspectes : absents du texte hors zones et des aperçus.
+_RAW = "QWZVKJXYHGFDSRTUNMLPBC"
+
+
+def _spanned_text(length: int) -> tuple[str, int]:
+    prefix = "début : "
+    return prefix + _RAW[:length] + " : fin", len(prefix)
+
+
+def _suspect(start: int, end: int, preview: str) -> Suspect:
+    return Suspect(kind="jeton", start=start, end=end, preview=preview)
+
+
+@pytest.mark.parametrize(
+    ("spans", "expected_previews"),
+    [
+        pytest.param([(0, 4), (8, 12)], ["[a]", "[b]"], id="disjoints"),
+        pytest.param([(0, 16), (4, 8)], ["[a] [b]"], id="imbriques"),
+        pytest.param([(4, 8), (0, 16)], ["[b] [a]"], id="imbriques-ordre-inverse"),
+        pytest.param([(0, 10), (6, 16)], ["[a] [b]"], id="decales"),
+        pytest.param([(6, 16), (0, 10)], ["[b] [a]"], id="decales-ordre-inverse"),
+        pytest.param([(0, 8), (8, 16)], ["[a] [b]"], id="contigus"),
+        pytest.param([(2, 12), (2, 12)], ["[a] [b]"], id="identiques"),
+        pytest.param([(0, 6), (4, 10), (9, 16)], ["[a] [b] [c]"], id="chaine-decalee"),
+    ],
+)
+def test_substitute_suspects_leaves_no_raw_character(
+    spans: list[tuple[int, int]], expected_previews: list[str]
+) -> None:
+    text, offset = _spanned_text(16)
+    previews = ["[a]", "[b]", "[c]"]
+    suspects = [
+        _suspect(offset + start, offset + end, previews[i]) for i, (start, end) in enumerate(spans)
+    ]
+    result = _substitute_suspects(text, suspects)
+    covered = set().union(*(range(s.start, s.end) for s in suspects))
+    for index in covered:
+        assert text[index] not in result
+    assert result.startswith("début : ")
+    assert result.endswith(" : fin")
+    for preview in expected_previews:
+        assert preview in result
+    # Hors zones, le texte est intact (y compris un trou entre deux zones disjointes).
+    outside = "".join(ch for i, ch in enumerate(text) if i not in covered)
+    stripped = result
+    for preview in previews:
+        stripped = stripped.replace(preview, "")
+    assert stripped.replace(" ", "") == outside.replace(" ", "")
+
+
+def test_substitute_suspects_without_suspects_is_identity() -> None:
+    assert _substitute_suspects("rien à signaler", []) == "rien à signaler"

@@ -340,6 +340,32 @@ _FENCE_OPEN = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
 _CODE_SPAN = re.compile(r"(?<!`)(?P<ticks>`+)(?!`).*?(?<!`)(?P=ticks)(?!`)")
 
 
+def _substitute_suspects(text: str, suspects: Iterable[Suspect]) -> str:
+    """Remplace les zones suspectes de `text` par leurs aperçus opaques.
+
+    Sûr par construction : les zones sont triées puis fusionnées en
+    intervalles disjoints (chevauchantes, imbriquées, décalées, contiguës ou
+    identiques) ; chaque intervalle est remplacé **en entier** par les aperçus
+    des suspects qu'il couvre, joints par une espace. Aucun caractère d'une
+    zone suspecte ne peut donc subsister ; le texte hors zones est intact.
+    """
+    ordered = sorted(suspects, key=lambda s: (s.start, s.end))
+    merged: list[tuple[int, int, list[str]]] = []
+    for suspect in ordered:
+        if merged and suspect.start <= merged[-1][1]:
+            start, end, previews = merged[-1]
+            merged[-1] = (start, max(end, suspect.end), [*previews, suspect.preview])
+        else:
+            merged.append((suspect.start, suspect.end, [suspect.preview]))
+    parts: list[str] = []
+    last = 0
+    for start, end, previews in merged:
+        parts += [text[last:start], " ".join(dict.fromkeys(previews))]
+        last = end
+    parts.append(text[last:])
+    return "".join(parts)
+
+
 class _Publisher:
     """Applique la chaîne de publication et collecte les suspects."""
 
@@ -368,15 +394,7 @@ class _Publisher:
     def _opaque(self, masked: str) -> tuple[str, list[Suspect]]:
         """Remplace chaque suspect de `masked` par son aperçu opaque."""
         suspects = find_suspects(masked, self.config)
-        parts: list[str] = []
-        last = 0
-        for suspect in sorted(suspects, key=lambda s: (s.start, -s.end)):
-            if suspect.start < last:
-                continue  # chevauchement : déjà couvert par un aperçu
-            parts += [masked[last : suspect.start], suspect.preview]
-            last = suspect.end
-        parts.append(masked[last:])
-        return "".join(parts), suspects
+        return _substitute_suspects(masked, suspects), suspects
 
     def _context(self, record: AgentRecord, plan: str) -> str:
         """Description de l'agent pour le rapport local : chaîne complète, puis
