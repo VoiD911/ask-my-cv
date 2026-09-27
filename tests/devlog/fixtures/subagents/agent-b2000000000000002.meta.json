@@ -1,0 +1,8 @@
+{
+  "agentType": "demo:code-reviewer",
+  "description": "Check task 1",
+  "toolUseId": "toolu_demo",
+  "spawnDepth": 1,
+  "requestShape": "background",
+  "requestNonInteractive": true
+}
