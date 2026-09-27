@@ -293,11 +293,14 @@ def test_redact_does_not_truncate_a_longer_sibling_root() -> None:
 
 
 def test_redact_leading_separator_root_only_matches_at_path_start() -> None:
-    # P6 : une racine à séparateur de tête (`/d/some-project-root`) ne doit
-    # matcher qu'à un véritable début de chemin (début de chaîne, espace,
-    # guillemet, `(` ou `=`), jamais au milieu d'un segment relatif —
-    # `a/d/some-project-root/b` est un sur-masquage à éviter, pas un vrai
-    # chemin vers la racine configurée.
+    # P6/Q1 : une racine à séparateur de tête (`/d/some-project-root`) ne
+    # doit jamais matcher au milieu d'un segment relatif — précédée d'une
+    # lettre, d'un chiffre, d'un `.` ou d'un `-` (qui prolongeraient
+    # normalement un segment de chemin), comme `a/d/some-project-root/b` —
+    # mais DOIT matcher dans tout autre contexte, y compris la ponctuation
+    # Markdown courante dans un rapport (code inline, lien, tableau...) qui
+    # avait régressé avec une garde positive trop stricte (revue #18
+    # quinquies, Q1).
     config = RedactConfig(path_roots=("/d/some-project-root",))
 
     assert redact("a/d/some-project-root/b", config) == "a/d/some-project-root/b"
@@ -305,6 +308,28 @@ def test_redact_leading_separator_root_only_matches_at_path_start() -> None:
     assert redact(" /d/some-project-root/b", config) == " <poste>/b"
     assert redact("(/d/some-project-root/b)", config) == "(<poste>/b)"
     assert redact('="/d/some-project-root/b"', config) == '="<poste>/b"'
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("`/d/DEV/ecc`", "`<poste>/ecc`"),  # code inline Markdown
+        ("[/d/DEV/x](y)", "[<poste>/x](y)"),  # lien Markdown
+        ("PATH=/c/x:/d/DEV/bin", "PATH=/c/x:<poste>/bin"),  # variable d'environnement
+        ("cwd:/d/DEV/x", "cwd:<poste>/x"),  # champ YAML/JSON
+        ("*/d/DEV/x*", "*<poste>/x*"),  # emphase Markdown
+        ("</d/DEV/x>", "<<poste>/x>"),  # chevrons
+        (",/d/DEV", ",<poste>"),  # liste
+        ("|/d/DEV|", "|<poste>|"),  # tableau Markdown
+        ("file:///d/DEV/x", "file:<poste>/x"),  # URI de fichier
+    ],
+)
+def test_redact_leading_separator_root_masked_in_markdown_and_shell_contexts(
+    text: str, expected: str
+) -> None:
+    config = RedactConfig(path_roots=("/d/DEV",))
+
+    assert redact(text, config) == expected
 
 
 def test_redact_masks_configured_username_outside_users_path() -> None:
@@ -1202,6 +1227,19 @@ def test_redact_leading_separator_root_one_megabyte_is_fast() -> None:
         start = time.perf_counter()
         redact(text, config)
         assert time.perf_counter() - start < 2.0
+
+
+def test_redact_leading_separator_root_repeated_occurrences_is_linear() -> None:
+    # Q1 : la garde négative autorise une nouvelle tentative après un espace
+    # (contrairement à un autre séparateur, cf. la borne `{1,8}` du
+    # séparateur de tête) — vérifie que de nombreuses occurrences légitimes
+    # de la racine, séparées par un espace, restent linéaires.
+    config = RedactConfig(path_roots=("/d/DEV",))
+    text = " /d/DEV" * 100_000
+
+    start = time.perf_counter()
+    redact(text, config)
+    assert time.perf_counter() - start < 1.0
 
 
 # --------------------------------------------------------------------------

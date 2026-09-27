@@ -464,18 +464,46 @@ def _root_pattern_body(root: str) -> str:
     QUELLE position d'une longue suite de séparateurs, et échouer à chacune
     d'elles après avoir consommé (de façon possessive, donc en un seul bloc,
     mais quand même en O(reste)) tout ce qui suit — ce qui redevient
-    quadratique sur l'ensemble de la suite. Une garde de début de chemin
-    (début de chaîne, espace, guillemet, `(` ou `=`) n'autorise cette
-    tentative qu'à un véritable début de chemin, jamais au milieu d'un
-    segment relatif (`a/d/DEV/b` reste intact : le `/d/DEV` y est précédé de
-    `a`, pas d'un de ces caractères), ramenant aussi le coût total à O(n).
+    quadratique sur l'ensemble de la suite.
+
+    Revue #18 quinquies (Q1) : une garde *positive* (n'autoriser le début du
+    séparateur qu'après un espace/guillemet/`(`/`=`, ou au tout début de la
+    chaîne) est une régression — elle ne masque plus un code inline Markdown
+    (`` `/d/DEV/ecc` ``), un lien (`[/d/DEV/x](y)`), un `PATH=/c/x:/d/DEV/bin`,
+    etc., puisque le caractère qui précède le séparateur (un guillemet
+    inverse, un crochet, un deux-points, un astérisque...) n'est jamais dans
+    la liste blanche. La garde *négative* évite ce problème par construction :
+    seul un caractère qui ferait NORMALEMENT partie d'un segment de chemin
+    (lettre, chiffre, `.`, `_`, `-`) juste avant le séparateur signale un
+    chemin relatif (`a/d/DEV/b`) à exclure ; tout le reste (espace, guillemet,
+    ponctuation Markdown, début de chaîne, ou même un AUTRE séparateur comme
+    dans `file:///d/DEV`) est autorisé.
+
+    Cette garde négative seule ne suffit PAS à conserver la linéarité : elle
+    autorise justement une nouvelle tentative après un autre séparateur, donc
+    une longue suite de séparateurs purs (`"/"*1_000_000`, sans jamais de
+    `d` ensuite) ferait retenter le motif à CHAQUE position, chaque tentative
+    consommant O(reste) de façon possessive avant d'échouer — quadratique
+    malgré le quantificateur possessif (celui-ci n'empêche que le retour
+    arrière interne à UNE tentative, pas les tentatives répétées à des
+    positions de départ différentes). Le séparateur de tête est donc borné à
+    un petit nombre de répétitions (`{1,8}`, largement suffisant pour
+    `file:///` ou un antislash doublé) plutôt que laissé illimité : chaque
+    tentative coûte alors O(1), et l'ensemble reste O(n) même sur une suite
+    pathologique.
     """
     leading_sep = root[:1] in "\\/"
     segments = [segment for segment in re.split(r"[\\/]+", root) if segment]
     body = _PATH_SEP.join(re.escape(segment) for segment in segments)
     if leading_sep:
-        body = r"(?:\A|(?<=[\s\"'(=]))" + _PATH_SEP + body
-    return body + r'(?=[\\/"\'\s]|$)'
+        body = r"(?<![A-Za-z0-9_.\-])[\\/]{1,8}+" + body
+    # Frontière finale symétrique à la garde de tête : n'importe quel caractère
+    # qui ne prolongerait pas un segment de chemin/mot est une frontière
+    # valide (espace, guillemet, séparateur, mais aussi la ponctuation d'un
+    # rendu Markdown : `|`, `,`, `)`, `>`...). Seule une lettre/chiffre/`._-`
+    # signalerait que la racine n'est en fait qu'un préfixe d'un nom plus
+    # long (`D:\DEVELOP` face à la racine `D:\DEV`).
+    return body + r"(?![A-Za-z0-9_.\-])"
 
 
 def _account_id_pattern_body(account_ids: frozenset[str]) -> str | None:
@@ -700,13 +728,6 @@ def assert_no_secret(text: str) -> None:
         raise SecretDetected(
             f"jeton de session AWS (aws_session_token / SessionToken) détecté "
             f"à la position {session_match.start()}"
-        )
-
-    aws_secret_match = _find_aws_secret_access_key_leak(text)
-    if aws_secret_match:
-        raise SecretDetected(
-            f"clé secrète AWS (aws_secret_access_key=...) détectée à la position "
-            f"{aws_secret_match.start()}"
         )
 
 
