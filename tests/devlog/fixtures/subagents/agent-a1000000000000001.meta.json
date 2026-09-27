@@ -1,0 +1,9 @@
+{
+  "agentType": "general-purpose",
+  "description": "Implement demo-a task 1: widget parser",
+  "toolUseId": "toolu_demo",
+  "spawnDepth": 1,
+  "requestShape": "background",
+  "requestNonInteractive": true,
+  "model": "demo-model-large"
+}

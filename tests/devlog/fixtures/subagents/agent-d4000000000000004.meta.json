@@ -1,0 +1,9 @@
+{
+  "agentType": "general-purpose",
+  "description": "Explore repository layout",
+  "toolUseId": "toolu_demo",
+  "spawnDepth": 1,
+  "requestShape": "background",
+  "requestNonInteractive": true,
+  "model": "demo-model-small"
+}

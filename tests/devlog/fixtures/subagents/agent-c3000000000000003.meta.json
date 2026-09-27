@@ -1,0 +1,9 @@
+{
+  "agentType": "general-purpose",
+  "description": "Address review findings on demo-b",
+  "toolUseId": "toolu_demo",
+  "spawnDepth": 1,
+  "requestShape": "background",
+  "requestNonInteractive": true,
+  "model": "demo-model-large"
+}
