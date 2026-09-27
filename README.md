@@ -265,3 +265,11 @@ Puis, sur `infra/bootstrap` : retirer `prevent_destroy` sur le bucket d'état et
 - `requests` n'était qu'une dépendance transitive de dev : l'image démarrait puis plantait au premier appel (import manquant). Elle est maintenant déclarée explicitement, et les imports sont vérifiés à l'intérieur de l'image construite (pas seulement dans l'environnement de dev).
 - L'export OTLP vers X-Ray exige `xray:PutTraceSegments` en plus de `xray:PutSpans` / `PutSpansForIndexing` : sans elle, l'export échoue en 403.
 - GitHub émet désormais des sujets OIDC immuables : `repo:<propriétaire>@<id>/<dépôt>@<id>:ref:...` (à relever avec `gh api repos/<o>/<r>/actions/oidc/customization/sub`) ; la politique de confiance du rôle de déploiement a été mise à jour en conséquence.
+
+## Gouvernance
+
+- **PR obligatoires sur `main`**, avec vérifications requises avant fusion : `security`, `test`, `evals`, `web`, `terraform` (jobs de `.github/workflows/ci.yml`). Le ruleset GitHub correspondant est activé juste après la fusion de la présente PR.
+- **Environnements protégés** `production` (job `deploy`, `.github/workflows/ci.yml`) et `nightly` (jobs `redteam` et `drift`, `.github/workflows/nightly.yml`), tous deux limités à la branche `main` (politique de déploiement personnalisée côté GitHub).
+- **Sujets OIDC par environnement** : la politique de confiance des rôles AWS (`infra/bootstrap`) est restreinte au sujet immuable `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:production` pour le déploiement, et `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:nightly` pour la dérive de nuit — en plus du sujet `:ref:refs/heads/main` déjà en place. Aucun autre déclencheur (PR, branche, environnement) ne peut assumer ces rôles.
+- **`EVAL_TOKEN`** est stocké comme secret de l'environnement `nightly` (et non un secret du dépôt) : seul le job `redteam`, qui référence cet environnement, peut le lire.
+- **Revues** : postées en commentaire de la PR par un agent de revue, jamais en tant qu'« approval » GitHub ; la fusion reste décidée par le contrôleur humain.

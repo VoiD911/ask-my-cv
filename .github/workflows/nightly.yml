@@ -16,6 +16,7 @@ jobs:
   # d'évaluation (compartiment de quota séparé, plafond de dépense conservé).
   redteam:
     runs-on: ubuntu-latest
+    environment: nightly
     env:
       PROMPTFOO_DISABLE_TELEMETRY: "1"
       PROMPTFOO_DISABLE_UPDATE: "1"
@@ -49,6 +50,7 @@ jobs:
   # Insights, aws/spans) contre l'histogramme de référence du domaine (modèle promu).
   drift:
     runs-on: ubuntu-latest
+    environment: nightly
     permissions:
       contents: read
       id-token: write
