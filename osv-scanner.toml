@@ -1,0 +1,9 @@
+[[IgnoredVulns]]
+id = "GHSA-7pqw-9j4j-h8q3"
+reason = "extract-zip (dépendance transitive de @lhci/cli -> lighthouse -> puppeteer-core -> @puppeteer/browsers, web/package-lock.json) : écriture arbitraire via un lien symbolique dans une archive zip. Code jamais atteint dans notre usage : lhci ne télécharge ni n'extrait de navigateur (Chrome pour Testing est déjà installé sur le runner, trouvé par chrome-launcher via CHROME_PATH), donc `@puppeteer/browsers` sert uniquement à localiser un exécutable existant, jamais à extraire une archive. Garde-fou en CI (job web) : PUPPETEER_SKIP_DOWNLOAD / PUPPETEER_SKIP_CHROMIUM_DOWNLOAD interdisent tout téléchargement, et une étape échoue avant Lighthouse si aucun Chrome n'est déjà présent sur le runner — le chemin vulnérable ne peut donc pas s'exécuter. Dépendance de dev, jamais publiée ni exécutée en production. Aucun correctif publié en amont (dernière version : 2.0.1)."
+ignoreUntil = 2026-11-27
+
+[[IgnoredVulns]]
+id = "GHSA-jmr9-qjv8-65gv"
+reason = "extract-zip (même chaîne de dépendance que GHSA-7pqw-9j4j-h8q3 ci-dessus) : traversée de chemin par lien symbolique non validé lors de l'extraction d'une archive zip. Même justification : chemin de code jamais exécuté (aucun téléchargement/extraction de navigateur dans notre usage de lhci), et même garde-fou en CI (job web) interdisant tout téléchargement de navigateur et faisant échouer le job si aucun Chrome n'est déjà présent. Dépendance de dev non publiée. Aucun correctif publié en amont."
+ignoreUntil = 2026-11-27

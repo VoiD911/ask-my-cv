@@ -29,6 +29,7 @@ jobs:
       - name: Dépendances (osv-scanner)
         run: |
           docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:v2.6.0@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa scan source \
+            --config /src/osv-scanner.toml \
             --lockfile /src/uv.lock --lockfile /src/web/package-lock.json --lockfile /src/evals/package-lock.json
       - name: IaC (trivy config)
         run: |
@@ -215,6 +216,44 @@ jobs:
           path: web/out
           retention-days: 14
           if-no-files-found: error
+      # Lighthouse CI sur l'export statique (web/out) : lhci lance son propre serveur
+      # statique (staticDistDir), jamais l'API ni la CloudFront/CSP de prod. Chrome pour
+      # Testing est préinstallé sur ubuntu-latest, trouvé par chrome-launcher sans config.
+      # Budgets mesurés (3 runs, desktop puis mobile) avec marge sous les scores obtenus
+      # (runner partagé, plus bruité qu'un poste local) ; accessibilité verrouillée à 0,95.
+      # aggregationMethod: median-run limite le bruit intra-exécution. Voir README, section
+      # Lighthouse.
+      # Garde-fou (revue #11) : le chemin extract-zip ignoré dans osv-scanner.toml (téléchargement
+      # de navigateur par @puppeteer/browsers) ne doit jamais s'exécuter. On échoue si aucun
+      # Chrome n'est déjà présent sur le runner, et on interdit tout téléchargement à puppeteer.
+      - name: Chrome préinstallé (garde-fou anti-téléchargement)
+        run: |
+          CHROME=$(command -v google-chrome || command -v google-chrome-stable) || {
+            echo "::error::Chrome absent du runner : Lighthouse ne doit pas télécharger de navigateur"
+            exit 1
+          }
+          "$CHROME" --version
+          echo "CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+      - name: Lighthouse CI (desktop)
+        working-directory: web
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+        run: npx --no-install lhci autorun --config=lighthouserc.desktop.json
+      - name: Lighthouse CI (mobile)
+        working-directory: web
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+          PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
+        run: npx --no-install lhci autorun --config=lighthouserc.mobile.json
+      - name: Rapport Lighthouse (artefact)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: lighthouse-report-${{ github.sha }}
+          path: web/lhci-report
+          retention-days: 14
+          if-no-files-found: ignore
 
   terraform:
     runs-on: ubuntu-latest

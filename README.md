@@ -303,6 +303,55 @@ les messages console CSP : aucune violation tolérée. `web/e2e/csp.spec.ts` con
 avant tout `<script>`, et que le hash de chaque script en ligne du DOM y figure ; un témoin vérifie qu'un script
 en ligne non haché est bien bloqué et que la violation est détectée.
 
+#### Lighthouse
+
+Le job `web` de la CI lance `@lhci/cli` 0.15.1 sur l'export statique (`staticDistDir: web/out`,
+serveur intégré de lhci — jamais l'API, jamais la CSP/l'en-tête CloudFront de prod) : 3 exécutions
+Lighthouse desktop, puis 3 en mobile (`web/lighthouserc.desktop.json`,
+`web/lighthouserc.mobile.json`). `upload.target: filesystem` écrit les rapports HTML/JSON dans
+`web/lhci-report/{desktop,mobile}` (gitignorés), publiés comme artefact CI (`if: always()`, donc
+même en échec).
+
+Scores mesurés (3 runs identiques, Chrome pour Testing sur `ubuntu-latest`) :
+
+| Catégorie      | Desktop | Mobile |
+| -------------- | ------- | ------ |
+| Performance    | 1.00    | 0.95   |
+| Accessibilité  | 1.00    | 1.00   |
+| Best Practices | 1.00    | 0.96   |
+| SEO            | 1.00    | 1.00   |
+
+Budgets (`assert.assertions`, `minScore`) : accessibilité verrouillée à 0,95 (non négociable,
+indépendamment du score mesuré), les autres avec une marge large sous la mesure plutôt que
+« juste en dessous » — `ubuntu-latest` est un runner partagé, plus bruité qu'un poste local
+(CPU/IO variables d'une exécution à l'autre), et Performance est la catégorie la plus sensible à ce
+bruit (LCP, TBT). Fixer le budget à un point sous une mesure unique locale aurait rendu la CI
+flaky. `assert.aggregationMethod: "median-run"` réduit déjà une partie du bruit intra-exécution
+en évaluant les assertions sur l'exécution (parmi les 3) la plus proche de la médiane plutôt que
+sur une agrégation par métrique :
+
+| Catégorie      | Desktop | Mobile |
+| -------------- | ------- | ------ |
+| Performance    | 0.90    | 0.80   |
+| Accessibilité  | 0.95    | 0.95   |
+| Best Practices | 0.95    | 0.90   |
+| SEO            | 0.95    | 0.95   |
+
+**Écart réel corrigé plutôt que budgété** : la page appelait `GET /api/models` dès le montage
+(`Demo.tsx`) pour peupler le sélecteur de modèle. Servi seul (sans l'API, comme dans ce job),
+`web/out` répond 404 à cet appel, et Chrome journalise l'échec réseau en erreur console — audit
+`errors-in-console` (Best Practices) en échec, indépendamment du `catch` déjà en place (qui masque
+le sélecteur mais n'empêche pas Chrome de journaliser la requête réseau ratée). Corrigé en
+différant l'appel à la première interaction avec la saisie (focus, ou premier envoi de question)
+plutôt qu'au chargement : la page reste inerte tant qu'aucune question n'est amorcée, conforme à
+l'hypothèse de départ (`Demo.interact.test.tsx`). Un `favicon.ico` manquant causait la même erreur
+(`errors-in-console`) ; `src/app/icon.svg` (convention de métadonnées de Next.js) le remplace.
+
+Écart mesuré non corrigé : en mobile, Best Practices reste à 0,96 (`font-size` — quelques libellés
+du bandeau de circuit sous 12px) et Performance à 0,95 (LCP ≈ 2,97 s). Budgétés tels quels
+(0,95 / 0,94) plutôt que « corrigés » : hors périmètre de cette tâche (CI Lighthouse), à traiter
+séparément si le confort de lecture mobile ou le LCP doivent être améliorés.
+
 ### Coût
 
 ≈ 1 $/mois hors Bedrock (Lambda, CloudFront, DynamoDB, ECR, CloudWatch, S3, SSM). Une question ≈ 0,0009 $ (Bedrock).
