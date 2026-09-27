@@ -15,7 +15,7 @@ variable "region" {
 # Un dépôt recréé sous le même nom n'hérite donc pas du rôle.
 variable "github_oidc_sub_prefix" {
   type    = string
-  default = "repo:VoiD911@15268916/ask-my-cv@1387821326"
+  default = "repo:VoiD911@15268916/ask-my-cv@1389934708"
 }
 
 # ARN de la distribution CloudFront (sortie distribution_arn de infra/prod). La distribution est
