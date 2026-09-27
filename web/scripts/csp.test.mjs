@@ -56,15 +56,28 @@ describe("inlineScriptHashes", () => {
 });
 
 describe("injectCsp", () => {
-  test("balise meta en premier élément du <head>", () => {
+  test("balise meta juste après <meta charSet>, avant tout script", () => {
     const html = page(`<script src="/a.js"></script>`, `<script>alert(1)</script>`);
     const out = injectCsp(html);
     assert.deepEqual(out.hashes, [ALERT]);
     assert.ok(
       out.html.startsWith(
-        `<!DOCTYPE html><html lang="fr"><head><meta http-equiv="Content-Security-Policy" content="script-src 'self' '${ALERT}'"/><meta charSet="utf-8"/>`,
+        `<!DOCTYPE html><html lang="fr"><head><meta charSet="utf-8"/><meta http-equiv="Content-Security-Policy" content="script-src 'self' '${ALERT}'"/><script src="/a.js">`,
       ),
     );
+  });
+  test("premier élément du <head> si <meta charset> n'est pas en tête", () => {
+    const out = injectCsp(`<html><head><title>t</title><meta charset="utf-8"></head></html>`);
+    assert.match(
+      out.html,
+      /^<html><head><meta http-equiv="Content-Security-Policy" content="script-src 'self'"\/><title>/,
+    );
+  });
+  test("beaucoup de scripts : <meta charSet> reste au début du document", () => {
+    const scripts = Array.from({ length: 40 }, (_, i) => `<script>${i}</script>`).join("");
+    const out = injectCsp(page("", scripts));
+    assert.equal(out.hashes.length, 40);
+    assert.ok(out.html.indexOf("<meta charSet") < 100);
   });
   test("<head> avec attributs", () => {
     const out = injectCsp(`<html><head data-x="1>2"><title>t</title></head></html>`);
@@ -74,14 +87,14 @@ describe("injectCsp", () => {
     assert.throws(() => injectCsp("<html><body><script>x</script></body></html>"), /aucune balise <head>/);
   });
   test("échoue si un script précède le <head>", () => {
-    assert.throws(() => injectCsp("<script>x</script><html><head></head></html>"), /précède le <head>/);
+    assert.throws(() => injectCsp("<script>x</script><html><head></head></html>"), /précède l'emplacement/);
   });
   test("échoue si une meta CSP est déjà présente (double passage)", () => {
     const once = injectCsp(page("", "<script>alert(1)</script>")).html;
     assert.throws(() => injectCsp(once), /déjà présente/);
   });
-  test("échoue si la meta charset sort des 1024 premiers octets", () => {
-    const html = `<html class="${"x".repeat(900)}"><head><meta charset="utf-8"></head><body>${Array.from(
+  test("échoue si une meta charset hors tête du <head> sort des 1024 premiers octets", () => {
+    const html = `<html class="${"x".repeat(900)}"><head><title>t</title><meta charset="utf-8"></head><body>${Array.from(
       { length: 10 },
       (_, i) => `<script>${i}</script>`,
     ).join("")}</body></html>`;

@@ -224,12 +224,16 @@ gh attestation verify oci://ghcr.io/void911/ask-my-cv@sha256:<digest> -R VoiD911
   --source-ref refs/heads/main
 ```
 
-`--source-ref` et `--source-digest` demandent gh ≥ 2.70.
+`--source-ref` et `--source-digest` demandent gh ≥ 2.68.
 
-Sans compte GitHub, la provenance se vérifie aussi anonymement avec cosign, qui lit l'attestation dans le registre et son inscription dans Rekor :
+Sans compte GitHub, la provenance se vérifie aussi anonymement avec cosign ≥ 3 (signatures et attestations rangées en bundles Sigstore, lus comme référents OCI), qui lit l'attestation dans le registre et son inscription dans Rekor :
 
 ```bash
-cosign verify-attestation ghcr.io/void911/ask-my-cv@sha256:<digest>   --type https://slsa.dev/provenance/v1   --certificate-identity https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main   --certificate-oidc-issuer https://token.actions.githubusercontent.com
+cosign verify-attestation ghcr.io/void911/ask-my-cv@sha256:<digest> \
+  --type https://slsa.dev/provenance/v1 \
+  --certificate-identity https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha <sha du commit>
 ```
 
 Les modèles du classifieur publiés par `train.yml` portent eux aussi une provenance SLSA depuis que le dépôt est public (aucune provenance rétroactive pour les versions antérieures) : `gh attestation verify model.onnx -R VoiD911/ask-my-cv`.
@@ -271,15 +275,17 @@ utilisée par le test de fumée de l'API, qui deviendra `https://job.stevelang.n
 
 Scripts : aucun `'unsafe-inline'` effectif. L'export statique de Next.js contient des scripts en
 ligne (charge RSC `self.__next_f.push(...)`), différents d'une page à l'autre et d'un build à
-l'autre. Après `next build`, `web/scripts/csp.mjs` (`postbuild`) parcourt chaque page HTML de
-`web/out`, calcule le SHA-256 (base64) du texte exact de chacun de ses scripts en ligne et insère
-en **premier élément** du `<head>` (une CSP meta ne couvre que ce qui la suit) :
+l'autre. `npm run build` enchaîne `next build` et `web/scripts/csp.mjs` (dans le script `build`
+lui-même, pas en `postbuild`, qu'un `ignore-scripts=true` ferait sauter). Ce script parcourt
+chaque page HTML de `web/out`, calcule le SHA-256 (base64) du texte exact de chacun de ses scripts
+en ligne et insère en tête du `<head>`, juste après `<meta charset>` (une CSP meta ne couvre que
+ce qui la suit : aucun script ne la précède) :
 
 ```html
 <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'sha256-…' 'sha256-…'">
 ```
 
-Le build échoue si une page n'a pas de `<head>`, si un script précède le `<head>`, si un script a
+Le build échoue si une page n'a pas de `<head>`, si un script précède la meta, si un script a
 un attribut `src` vide ou si une meta CSP est déjà présente. `node --test web/scripts/*.test.mjs`
 teste ces cas ; la CI vérifie en outre que chaque page de `web/out` porte la meta.
 
@@ -293,8 +299,8 @@ est modifié).
 Vérification : le serveur e2e (`web/e2e/serve.mjs`) sert l'en-tête de production, lu dans
 `variables.tf`. Chaque test e2e écoute `securitypolicyviolation` dans chaque document ainsi que
 les messages console CSP : aucune violation tolérée. `web/e2e/csp.spec.ts` contrôle en plus, pour
-`/`, `/404.html`, `/_not-found/` et une page inexistante, que la meta est le premier élément du
-`<head>` et que le hash de chaque script en ligne du DOM y figure ; un témoin vérifie qu'un script
+`/`, `/404.html`, `/_not-found/` et une page inexistante, que la meta est en tête du `<head>`,
+avant tout `<script>`, et que le hash de chaque script en ligne du DOM y figure ; un témoin vérifie qu'un script
 en ligne non haché est bien bloqué et que la violation est détectée.
 
 ### Coût

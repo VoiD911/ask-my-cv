@@ -11,7 +11,7 @@ const PAGES = [
 ];
 
 for (const { path, status } of PAGES) {
-  test(`${path} : meta CSP en tête du <head>, chaque script en ligne haché, aucune violation`, async ({
+  test(`${path} : meta CSP en tête du <head> avant tout script, chaque script en ligne haché, aucune violation`, async ({
     page,
   }) => {
     const response = await page.goto(path);
@@ -19,8 +19,18 @@ for (const { path, status } of PAGES) {
     expect(response?.headers()["content-security-policy"]).toContain("script-src 'self' 'unsafe-inline'");
 
     const audit = await page.evaluate(async () => {
+      const metas = document.querySelectorAll('meta[http-equiv="Content-Security-Policy" i]');
+      const meta = metas[0];
+      const policy = meta?.getAttribute("content") ?? "";
+      // En tête du <head> : premier élément, ou deuxième juste après <meta charset>.
       const first = document.head.firstElementChild;
-      const policy = first?.getAttribute("content") ?? "";
+      const atTop =
+        !!meta &&
+        (first === meta || (first?.matches("meta[charset]") === true && first.nextElementSibling === meta));
+      // Une CSP meta ne couvre que ce qui la suit : aucun <script> ne doit la précéder.
+      const scriptsBefore = [...document.scripts].filter(
+        (s) => !!meta && !!(s.compareDocumentPosition(meta) & Node.DOCUMENT_POSITION_FOLLOWING),
+      ).length;
       const missing: string[] = [];
       const inline = [...document.querySelectorAll("script:not([src])")];
       for (const script of inline) {
@@ -29,13 +39,17 @@ for (const { path, status } of PAGES) {
         if (!policy.includes(`'sha256-${hash}'`)) missing.push((script.textContent ?? "").slice(0, 60));
       }
       return {
-        firstIsCspMeta: first?.getAttribute("http-equiv")?.toLowerCase() === "content-security-policy",
+        metas: metas.length,
+        atTop,
+        scriptsBefore,
         policy,
         inline: inline.length,
         missing,
       };
     });
-    expect(audit.firstIsCspMeta).toBe(true);
+    expect(audit.metas).toBe(1);
+    expect(audit.atTop).toBe(true);
+    expect(audit.scriptsBefore).toBe(0);
     expect(audit.policy).toMatch(/^script-src 'self'( 'sha256-[A-Za-z0-9+/]+={0,2}')+$/);
     expect(audit.policy).not.toContain("unsafe-inline");
     expect(audit.inline).toBeGreaterThan(0);
@@ -53,7 +67,16 @@ test("témoin : un script en ligne non haché est bloqué et la violation est d�
     return (window as unknown as { __cspCanary?: boolean }).__cspCanary === true;
   });
   expect(ran).toBe(false);
-  await expect.poll(() => csp.violations()).toContainEqual(expect.stringMatching(/^event script-src-elem /));
+  // Attendre l'événement ET le message console avant `reset` : un rapport arrivé après
+  // ferait échouer la fixture par intermittence.
+  await expect
+    .poll(() => csp.violations())
+    .toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^event script-src-elem /),
+        expect.stringMatching(/^console error : .*Content Security Policy/),
+      ]),
+    );
   // Violation attendue ici seulement : on la retire pour la vérification finale de la fixture.
   await csp.reset();
 });

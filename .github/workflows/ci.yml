@@ -201,7 +201,7 @@ jobs:
       - run: npm --prefix web test -- --run
       - name: Tests de l'insertion CSP (scripts/csp.mjs)
         run: node --test web/scripts/*.test.mjs
-      # postbuild : scripts/csp.mjs insère la meta CSP (hashes des scripts en ligne) dans web/out.
+      # build = next build puis scripts/csp.mjs, qui insère la meta CSP (hashes des scripts en ligne) dans web/out.
       - run: npm --prefix web run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
