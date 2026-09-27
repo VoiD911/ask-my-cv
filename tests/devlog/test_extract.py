@@ -357,3 +357,109 @@ def test_load_published_shas_reads_this_repository() -> None:
         text=True,
     ).stdout.strip()
     assert head in load_published_shas(repo)
+
+
+# --------------------------------------------------------------------------
+# Revue #19 : prudence accrue
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- 1737532800 tâches restantes",
+        "1737532800 premier\n1234567 second",
+        "commit 1737532800",  # numérique : jamais marqué, même en contexte
+        "port 12345678",
+    ],
+)
+def test_pure_digit_tokens_are_never_tagged(text: str, commit_map: dict[str, str]) -> None:
+    assert translate_shas(text, commit_map) == text
+
+
+def test_pure_digit_prefix_translated_only_in_commit_context() -> None:
+    cmap = {"1234567000000000000000000000000000000001": "abcdef0000000000000000000000000000000001"}
+    assert translate_shas("commit 1234567", cmap) == "commit abcdef0"
+    assert translate_shas("compteur 1234567", cmap) == "compteur 1234567"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "at the head deadbeef of the list",
+        "head of the queue: cafe123",
+        "Head cafe123",
+    ],
+)
+def test_lowercase_head_is_not_a_commit_context(text: str, commit_map: dict[str, str]) -> None:
+    assert translate_shas(text, commit_map) == text
+
+
+@pytest.mark.parametrize(
+    "prefix", ["HEAD ", "HEAD is now at ", "rebased onto ", "merge ", "sha-1 "]
+)
+def test_git_contexts_mark_unknown_commits(prefix: str, commit_map: dict[str, str]) -> None:
+    assert translate_shas(f"{prefix}cafe123", commit_map) == (
+        f"{prefix}cafe123{UNPUBLISHED_SUFFIX}"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "deadbeef est un mot de remplissage\nqui ouvre une ligne de prose.",
+        "- cafe123 est une couleur\n- autre point",
+        "cafe123\nfaded00",  # jetons seuls, sans texte après : pas du `--oneline`
+        "cafe123 une ligne\n\nfaded00 un autre paragraphe",
+    ],
+)
+def test_line_start_hex_word_in_prose_is_left_alone(text: str, commit_map: dict[str, str]) -> None:
+    assert translate_shas(text, commit_map) == text
+
+
+def test_oneline_block_marks_unknown_commits(commit_map: dict[str, str]) -> None:
+    log = "Historique :\n\n- `cafe123` feat: ajout\n- `faded00` fix: typo"
+    assert translate_shas(log, commit_map) == (
+        f"Historique :\n\n- `cafe123{UNPUBLISHED_SUFFIX}` feat: ajout\n"
+        f"- `faded00{UNPUBLISHED_SUFFIX}` fix: typo"
+    )
+
+
+@pytest.mark.parametrize(
+    ("description", "expected"),
+    [
+        ("Fixed the parser reported in review", "fix"),
+        ("Fixes for task 3", "fix"),
+        ("Addressed review comments", "fix"),
+        ("Address review on task 3", "fix"),
+        ("Correctif du parseur", "fix"),
+        ("Corrige le parseur après revue", "fix"),
+        ("Parseur corrigé après revue", "fix"),
+        ("Re-review of the fixes", "review"),
+    ],
+)
+def test_role_fix_variants(description: str, expected: str) -> None:
+    assert role(_record(description=description)) == expected
+
+
+def test_invalid_meta_json_names_the_file(tmp_path: Path) -> None:
+    src = SUBAGENTS / "agent-c3000000000000003.jsonl"
+    (tmp_path / "agent-e5.jsonl").write_text(src.read_text(encoding="utf-8"), encoding="utf-8")
+    meta = tmp_path / "agent-e5.meta.json"
+    meta.write_text("{oops", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"agent-e5\.meta\.json:1: métadonnées JSON invalides"):
+        load_agent(tmp_path / "agent-e5.jsonl")
+    meta.write_text("[]", encoding="utf-8")
+    with pytest.raises(ValueError, match=r"agent-e5\.meta\.json: objet JSON attendu, list"):
+        load_agent(tmp_path / "agent-e5.jsonl")
+
+
+def test_load_published_shas_fails_loudly_outside_a_repo(tmp_path: Path) -> None:
+    with pytest.raises(RuntimeError, match="dépôt git illisible"):
+        load_published_shas(tmp_path / "absent")
+
+
+def test_load_published_shas_fails_on_empty_repo(tmp_path: Path) -> None:
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)  # noqa: S603, S607
+    with pytest.raises(RuntimeError, match="aucun commit"):
+        load_published_shas(tmp_path)

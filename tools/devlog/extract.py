@@ -124,8 +124,17 @@ def _read_entries(path: Path) -> list[dict[str, Any]]:
 def _read_meta(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return data if isinstance(data, dict) else {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(
+            f"{path.name}:{exc.lineno}: métadonnées JSON invalides ({exc.msg})"
+        ) from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ValueError(f"{path.name}: métadonnées illisibles ({exc})") from exc
+    if not isinstance(data, dict):
+        raise ValueError(f"{path.name}: objet JSON attendu, {type(data).__name__} trouvé")
+    return data
 
 
 def _first_prompt(entries: Iterable[dict[str, Any]]) -> str:
@@ -211,7 +220,8 @@ _ROLE_KEYWORDS: tuple[tuple[Role, re.Pattern[str]], ...] = (
     (
         "fix",
         re.compile(
-            r"\b(?:fix(?:es|ing|er)?|address(?:es|ing)?|correct(?:if|ifs|ion|ions)?|corrige[rz]?)\b",
+            r"\b(?:fix(?:e[ds]|ing|er)?|address(?:e[ds]|ing)?"
+            r"|correct(?:if|ifs|ion|ions)?|corrig(?:e|é|ée|és|ées|er|ez|es))\b",
             re.IGNORECASE,
         ),
     ),
@@ -310,12 +320,21 @@ def assign_plan(record: AgentRecord, plans: Sequence[PlanWindow]) -> str:
 
 _NULL_SHA = "0" * 40
 _HEX_TOKEN = re.compile(r"(?<![0-9A-Za-z_:@.\-])([0-9a-f]{7,40})(?![0-9A-Za-z_\-])")
+_HAS_HEX_LETTER = re.compile(r"[a-f]")
+# Contexte git explicite juste avant le jeton. « HEAD » n'est reconnu qu'en
+# majuscules : « head » (tête de liste, de file…) est un mot anglais courant.
 _COMMIT_CONTEXT = re.compile(
-    r"(?:\bcommits?|\bsha|\bhead|\bmerge[sd]?|\bcherry-pick(?:ed)?|\brevert(?:ed)?"
-    r"|\bgit\s+(?:show|log|diff|checkout|reset))\b\W{0,8}$",
+    r"(?:(?-i:\bHEAD)|\bcommits?|\bsha(?:-?1)?|\bmerge[sd]?|\bcherry-pick(?:ed)?"
+    r"|\brevert(?:ed)?|\brebased?|\bgit\s+(?:show|log|diff|checkout|reset|revert|rebase))"
+    r"\b(?:\s+(?:is\s+now\s+)?(?:onto|at|to|on|from|of|de|du))?\W{0,8}$",
     re.IGNORECASE,
 )
-_LINE_PREFIX = re.compile(r"[ \t]*(?:[-*]\s+)?`?")
+# Ligne de `git log --oneline` : SHA court (avec au moins une lettre a-f),
+# espace, puis du texte ; puce ou accent grave facultatifs.
+_ONELINE = re.compile(
+    r"^[ \t]*(?:[-*][ \t]+)?`?(?=[0-9a-f]*[a-f])[0-9a-f]{7,40}`?[ \t]+\S", re.MULTILINE
+)
+_ONELINE_MIN_LINES = 2
 
 
 def load_commit_map(path: Path) -> dict[str, str]:
@@ -340,13 +359,38 @@ def _unique_prefix(token: str, shas: Iterable[str]) -> str | None:
     return found[0] if len(found) == 1 else None
 
 
-def _looks_like_commit_ref(text: str, start: int, token: str) -> bool:
-    if len(token) == 40:
-        return True
-    line_prefix = text[text.rfind("\n", 0, start) + 1 : start]
-    if _LINE_PREFIX.fullmatch(line_prefix):
-        return True  # début de ligne, comme dans `git log --oneline`
+def _paragraph_around(text: str, start: int) -> tuple[int, int]:
+    """Bornes du paragraphe (bloc sans ligne vide) contenant `start`."""
+    before = text.rfind("\n\n", 0, start)
+    after = text.find("\n\n", start)
+    return (0 if before < 0 else before + 2, len(text) if after < 0 else after)
+
+
+def _in_oneline_log(text: str, start: int) -> bool:
+    """Vrai si le jeton ouvre une ligne d'un bloc façon `git log --oneline`.
+
+    La ligne doit avoir la forme `<sha> <texte>` et son paragraphe contenir au
+    moins `_ONELINE_MIN_LINES` lignes de cette forme : un mot hexadécimal isolé
+    en tête d'une ligne de prose n'est pas une référence de commit.
+    """
+    line_start = text.rfind("\n", 0, start) + 1
+    line_end = text.find("\n", start)
+    line = text[line_start : len(text) if line_end < 0 else line_end]
+    match = _ONELINE.match(line)
+    if match is None or line_start + match.end() <= start:
+        return False
+    lo, hi = _paragraph_around(text, start)
+    return len(_ONELINE.findall(text[lo:hi])) >= _ONELINE_MIN_LINES
+
+
+def _in_commit_context(text: str, start: int) -> bool:
     return bool(_COMMIT_CONTEXT.search(text[max(0, start - 40) : start]))
+
+
+def _looks_like_commit_ref(text: str, start: int, token: str) -> bool:
+    if not _HAS_HEX_LETTER.search(token):
+        return False  # purement numérique : horodatage, compteur, port…
+    return len(token) == 40 or _in_oneline_log(text, start) or _in_commit_context(text, start)
 
 
 def load_published_shas(repo: Path) -> set[str]:
@@ -355,13 +399,22 @@ def load_published_shas(repo: Path) -> set[str]:
     Sert à reconnaître les commits postérieurs à la réécriture, absents de la
     table de correspondance mais bien publiés.
     """
-    result = subprocess.run(  # noqa: S603
-        ["git", "-C", str(repo), "rev-list", "--all"],  # noqa: S607
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    return {line.strip().lower() for line in result.stdout.splitlines() if line.strip()}
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["git", "-C", str(repo), "rev-list", "--all"],  # noqa: S607
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError("commande `git` introuvable") from exc
+    except subprocess.CalledProcessError as exc:
+        reason = (exc.stderr or "").strip() or f"code de sortie {exc.returncode}"
+        raise RuntimeError(f"dépôt git illisible : {repo} ({reason})") from exc
+    shas = {line.strip().lower() for line in result.stdout.splitlines() if line.strip()}
+    if not shas:
+        raise RuntimeError(f"aucun commit dans le dépôt : {repo}")
+    return shas
 
 
 def translate_shas(text: str, commit_map: Mapping[str, str], published: Iterable[str] = ()) -> str:
@@ -371,10 +424,14 @@ def translate_shas(text: str, commit_map: Mapping[str, str], published: Iterable
       nouveau SHA, tronqué à la même longueur.
     - Un préfixe d'un SHA déjà publié (nouveau SHA de la table, ou SHA de
       `published`, cf. `load_published_shas`) est laissé tel quel.
-    - Un jeton qui ressemble à une référence de commit (40 caractères, ou
-      précédé de « commit », « SHA », « HEAD »… ou en début de ligne comme
-      dans `git log --oneline`) mais absent de la table est suivi de
-      `UNPUBLISHED_SUFFIX`.
+    - Un jeton qui ressemble à une référence de commit mais absent de la
+      table est suivi de `UNPUBLISHED_SUFFIX`. « Ressemble » = au moins une
+      lettre a-f **et** (40 caractères, ou précédé d'un contexte git —
+      « commit », « SHA », « HEAD » en majuscules, « merge », « cherry-pick »,
+      « rebase »… — ou ligne d'un bloc d'au moins deux lignes façon
+      `git log --oneline`).
+    - Un jeton purement numérique n'est traduit qu'après un contexte git, et
+      n'est jamais marqué (horodatages, compteurs, ports).
     - Tout le reste (empreintes `sha256:…`, UUID, identifiants hexadécimaux
       quelconques, préfixes ambigus) est laissé intact.
 
@@ -386,6 +443,9 @@ def translate_shas(text: str, commit_map: Mapping[str, str], published: Iterable
     def replace(match: re.Match[str]) -> str:
         token = match.group(1)
         if text.startswith(UNPUBLISHED_SUFFIX, match.end()):
+            return token
+        numeric = not _HAS_HEX_LETTER.search(token)
+        if numeric and not _in_commit_context(text, match.start()):
             return token
         old = _unique_prefix(token, old_shas)
         if old is not None:
