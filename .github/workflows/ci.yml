@@ -29,6 +29,7 @@ jobs:
       - name: Dépendances (osv-scanner)
         run: |
           docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:v2.6.0@sha256:afd838850ac1a0fcc15ff4a041dc9ba11123c3f0d2666217a5f0fcf9222b55fa scan source \
+            --config /src/osv-scanner.toml \
             --lockfile /src/uv.lock --lockfile /src/web/package-lock.json --lockfile /src/evals/package-lock.json
       - name: IaC (trivy config)
         run: |
