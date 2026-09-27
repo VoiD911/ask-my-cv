@@ -1,0 +1,48 @@
+name: mirror
+
+# Copie à l'identique (même digest d'index multi-architecture) du Lambda Web Adapter vers
+# GHCR : les tirages anonymes depuis public.ecr.aws échouent par intermittence sur les
+# exécuteurs GitHub. Même digest = mêmes octets : le Dockerfile épingle ce digest, donc
+# l'intégrité ne dépend pas du registre d'où l'image est tirée.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lambda-adapter:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      SRC: public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0@sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1
+      DST: ghcr.io/void911/aws-lambda-adapter:1.1.0
+      EXPECTED: sha256:17cfd08eff1dfea3f6a9a1e9c65fdac80aa4919b6085e746615530f43f57d2f1
+      CRANE: gcr.io/go-containerregistry/crane:v0.22.1@sha256:1f968817b95790bed063f71175aa6b8ff879fa17064020415f3e18bb6e6a36e1
+    steps:
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Copier (crane copy, digest préservé)
+        run: |
+          # crane lit les identifiants écrits par docker/login-action (~/.docker/config.json,
+          # mode 600) : il tourne donc sous l'utilisateur de l'exécuteur.
+          crane() {
+            docker run --rm --user "$(id -u):$(id -g)" -e DOCKER_CONFIG=/docker -v "$HOME/.docker:/docker:ro" "$CRANE" "$@"
+          }
+          for attempt in 1 2 3 4 5; do
+            if crane copy "$SRC" "$DST"; then break; fi
+            if [ "$attempt" = 5 ]; then echo "::error::copie impossible après 5 essais"; exit 1; fi
+            echo "::warning::essai $attempt en échec, nouvel essai dans $((attempt * 15)) s"
+            sleep $((attempt * 15))
+          done
+          GOT=$(crane digest "$DST")
+          if [ "$GOT" != "$EXPECTED" ]; then
+            echo "::error::digest GHCR $GOT différent de la source $EXPECTED"
+            exit 1
+          fi
+          echo "$DST@$GOT copié à l'identique"
