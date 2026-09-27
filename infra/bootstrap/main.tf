@@ -149,7 +149,18 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
-data "aws_iam_policy_document" "deploy_trust" {
+# Confiance OIDC par environnement GitHub protégé (limité à main). Transition (plan 1e-2a) :
+# l'ancien sujet `ref:refs/heads/main` reste accepté le temps que les workflows passent aux
+# environnements ; il sera retiré à la tâche 5.
+locals {
+  github_oidc_subjects = {
+    deploy  = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main", "${var.github_oidc_sub_prefix}:environment:production"]
+    nightly = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main", "${var.github_oidc_sub_prefix}:environment:nightly"]
+  }
+}
+
+data "aws_iam_policy_document" "github_trust" {
+  for_each = local.github_oidc_subjects
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
     principals {
@@ -164,14 +175,14 @@ data "aws_iam_policy_document" "deploy_trust" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main"]
+      values   = each.value
     }
   }
 }
 
 resource "aws_iam_role" "deploy" {
   name                 = "ask-my-cv-deploy"
-  assume_role_policy   = data.aws_iam_policy_document.deploy_trust.json
+  assume_role_policy   = data.aws_iam_policy_document.github_trust["deploy"].json
   max_session_duration = 3600
 }
 
@@ -220,11 +231,10 @@ resource "aws_iam_role_policy" "deploy" {
 }
 
 # --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
-# Même confiance OIDC que le rôle de déploiement (sujet immuable, branche main) : réutilise le
-# même document plutôt que d'en dupliquer un identique.
+# Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
-  assume_role_policy   = data.aws_iam_policy_document.deploy_trust.json
+  assume_role_policy   = data.aws_iam_policy_document.github_trust["nightly"].json
   max_session_duration = 3600
 }
 
