@@ -107,6 +107,7 @@ masqués.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -169,22 +170,33 @@ _MIN_PATH_ROOT_LENGTH = 2
 def _make_broad_pattern_probes() -> tuple[str, ...]:
     """Jetons fictifs de forme réaliste, utilisés pour vérifier qu'une entrée
     de `secret_allowlist` n'est pas trop permissive (voir
-    `_compile_allowlist_pattern`). Sans espace ni ponctuation « rare » — une
-    classe de caractères comme `\\S+`, `[^ ]+` ou `[\\w+/-]+` doit les
-    reconnaître entièrement pour être rejetée.
-    """
-    cycle = "Ab3Cd5Ef7Gh9+/_-"  # mélange lettres/chiffres/+//_/- délibéré
-    repeated = cycle * 10
+    `_compile_allowlist_pattern`).
 
-    def _take(length: int) -> str:
-        return repeated[:length]
+    Plusieurs alphabets sont couverts séparément (pas seulement un mélange
+    avec `_`/`-`) : une classe qui exclut `_`/`-` (`[A-Za-z0-9+/=]+`,
+    `[0-9a-f]+`, `[A-Za-z0-9]+`) doit quand même être rejetée si elle
+    reconnaît un jeton en base64 pur, en hexadécimal pur, ou alphanumérique
+    pur — pas seulement le mélange le plus général.
+    """
+    mixed_cycle = "Ab3Cd5Ef7Gh9+/_-"  # mélange lettres/chiffres/+//_/- délibéré
+    base64_cycle = "Ab3Cd5Ef7Gh9+/"  # base64 pur : sans `_` ni `-`
+    alnum_cycle = "Ab3Cd5Ef7Gh9"  # alphanumérique pur : sans `_`, `-`, `+`, `/`
+    hex_cycle = "ab12cd34ef56"  # hexadécimal pur (minuscules)
+
+    def _take(cycle: str, length: int) -> str:
+        return (cycle * (length // len(cycle) + 1))[:length]
 
     return (
         "aB3-x_/9.zK8 Q7" * 20,  # texte arbitraire diversifié (avec espaces/points)
-        _take(40),  # base64 « clé » de 40 caractères
-        _take(43),  # base64url de 43 caractères (jeton urlsafe sans bourrage)
-        _take(44) + "=",  # base64 de 44 caractères avec bourrage
-        _take(64),  # hex/b64 de 64 caractères
+        _take(mixed_cycle, 40),  # base64 « clé » de 40 caractères, avec _/-
+        _take(mixed_cycle, 43),  # base64url de 43 caractères (jeton urlsafe)
+        _take(mixed_cycle, 44) + "=",  # base64 de 44 caractères avec bourrage
+        _take(mixed_cycle, 64),  # hex/b64 de 64 caractères, avec _/-
+        _take(base64_cycle, 40),  # clé base64 PURE (sans _/-) de 40 caractères
+        _take(base64_cycle, 44) + "=",  # digest base64 PUR de 44 caractères
+        _take(alnum_cycle, 40),  # jeton alphanumérique PUR de 40 caractères
+        _take(hex_cycle, 48),  # hexadécimal PUR de 48 caractères
+        _take(hex_cycle, 64),  # hexadécimal PUR de 64 caractères (digest sha256)
     )
 
 
@@ -452,15 +464,17 @@ def _root_pattern_body(root: str) -> str:
     QUELLE position d'une longue suite de séparateurs, et échouer à chacune
     d'elles après avoir consommé (de façon possessive, donc en un seul bloc,
     mais quand même en O(reste)) tout ce qui suit — ce qui redevient
-    quadratique sur l'ensemble de la suite. Le lookbehind
-    `(?<![\\/])` avant le séparateur de tête n'autorise cette tentative qu'à
-    la toute première position de la suite, ramenant le coût total à O(n).
+    quadratique sur l'ensemble de la suite. Une garde de début de chemin
+    (début de chaîne, espace, guillemet, `(` ou `=`) n'autorise cette
+    tentative qu'à un véritable début de chemin, jamais au milieu d'un
+    segment relatif (`a/d/DEV/b` reste intact : le `/d/DEV` y est précédé de
+    `a`, pas d'un de ces caractères), ramenant aussi le coût total à O(n).
     """
     leading_sep = root[:1] in "\\/"
     segments = [segment for segment in re.split(r"[\\/]+", root) if segment]
     body = _PATH_SEP.join(re.escape(segment) for segment in segments)
     if leading_sep:
-        body = r"(?<![\\/])" + _PATH_SEP + body
+        body = r"(?:\A|(?<=[\s\"'(=]))" + _PATH_SEP + body
     return body + r'(?=[\\/"\'\s]|$)'
 
 
@@ -597,24 +611,54 @@ _BLOCKING_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"(?<![A-Za-z0-9_-])(?:sk|pk)-(?:lf|proj|ant)-[A-Za-z0-9_-]+"),
     ),
     (
+        "clé d'API OpenAI historique (sk-...)",
+        # "sk-" suivi de 40+ caractères alphanumériques SANS tiret ni tiret bas :
+        # ne recoupe jamais sk-lf-/sk-proj-/sk-ant- (qui ont un `-` juste après
+        # le sous-préfixe, donc moins de 40 caractères alphanumériques d'affilée).
+        re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9]{40,}(?![A-Za-z0-9_-])"),
+    ),
+    (
+        "jeton Slack (xox...)",
+        re.compile(r"(?<![A-Za-z0-9_-])xox[abprs]-[0-9A-Za-z-]{10,}(?![A-Za-z0-9_-])"),
+    ),
+    (
+        "clé d'API Google (AIza...)",
+        re.compile(r"(?<![A-Za-z0-9_-])AIza[A-Za-z0-9_-]{35}(?![A-Za-z0-9_-])"),
+    ),
+    (
         "JWT",
         re.compile(r"(?<![A-Za-z0-9_-])eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+(?![A-Za-z0-9_-])"),
     ),
 )
 
-# `aws_secret_access_key=...` : traité à part (pas dans `_BLOCKING_PATTERNS`)
-# car le mélange majuscule/minuscule/chiffre de la valeur est vérifié en
-# Python (`_looks_random`), jamais par une classe de caractères imbriquée
-# dans la regex — ça évite tout risque de retour arrière ambigu tout en
-# gardant le motif lui-même simple et borné (16-100 caractères base64).
-_AWS_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i:aws_secret_access_key)\s*[:=]\s*[\"']?([A-Za-z0-9+/]{16,100}={0,2})"
+# Formats de secrets AWS propres à ce projet : traités à part (pas dans
+# `_BLOCKING_PATTERNS`) car la valeur n'est vérifiée qu'en Python, jamais par
+# une classe de caractères imbriquée dans la regex (ça évite tout risque de
+# retour arrière ambigu) — le motif lui-même reste simple et borné.
+#
+# Le séparateur `(?:[:=]|\s)` couvre à la fois `aws_secret_access_key=...`
+# (env/.ini), `"SecretAccessKey": "..."` (JSON de sts/get-session-token/
+# export-credentials) et `aws configure set aws_secret_access_key ...` (CLI,
+# séparateur espace). La valeur n'a besoin QUE d'être plausible dans ce
+# contexte explicite (pas tout en minuscules — un vrai secret aléatoire l'est
+# rarement, un gabarit répété l'est presque toujours) : contrairement au
+# niveau heuristique, on n'exige pas ici le mélange des trois classes.
+_AWS_SECRET_KEY_VALUE_RE = re.compile(
+    r"(?i:aws_?secret_?access_?key|secretaccesskey)[\"']?\s*(?:[:=]|\s)\s*[\"']?"
+    r"([A-Za-z0-9+/]{40})(?![A-Za-z0-9+/=])"
+)
+# Jeton de session AWS : toujours beaucoup plus long qu'une clé secrète (au
+# moins une centaine de caractères base64 en pratique). Détecté par sa seule
+# présence dans ce contexte, sans exigence de contenu supplémentaire.
+_AWS_SESSION_TOKEN_RE = re.compile(
+    r"(?i:aws_?session_?token|sessiontoken)[\"']?\s*(?:[:=]|\s)\s*[\"']?"
+    r"[A-Za-z0-9+/]{100,4000}={0,2}(?![A-Za-z0-9+/=])"
 )
 
 
 def _find_aws_secret_access_key_leak(text: str) -> re.Match[str] | None:
-    for match in _AWS_SECRET_ASSIGNMENT_RE.finditer(text):
-        if _looks_random(match.group(1)):
+    for match in _AWS_SECRET_KEY_VALUE_RE.finditer(text):
+        if not match.group(1).islower():
             return match
     return None
 
@@ -622,8 +666,10 @@ def _find_aws_secret_access_key_leak(text: str) -> re.Match[str] | None:
 def assert_no_secret(text: str) -> None:
     """Lève `SecretDetected` si `text` contient une chaîne ressemblant à un
     secret vivant **à haute confiance** : clé privée PEM, identifiant de clé
-    d'accès AWS, affectation `aws_secret_access_key=`, jeton GitHub, clé
-    Langfuse/OpenAI/Anthropic (`sk-`/`pk-lf-`, `sk-proj-`, `sk-ant-`), ou JWT.
+    d'accès AWS, clé/jeton de session `aws_secret_access_key`/
+    `aws_session_token` (env, JSON de `sts`, ou CLI `aws configure set`),
+    jeton GitHub, clé Langfuse/OpenAI (actuelle ou historique)/Anthropic,
+    jeton Slack, clé Google, ou JWT.
 
     Volontairement restreinte à des motifs qui ne se produisent
     essentiellement jamais dans du code ou de la prose ordinaires : c'est le
@@ -641,6 +687,20 @@ def assert_no_secret(text: str) -> None:
         match = pattern.search(text)
         if match:
             raise SecretDetected(f"{label} détectée à la position {match.start()}")
+
+    aws_secret_match = _find_aws_secret_access_key_leak(text)
+    if aws_secret_match:
+        raise SecretDetected(
+            f"clé secrète AWS (aws_secret_access_key / SecretAccessKey) détectée "
+            f"à la position {aws_secret_match.start()}"
+        )
+
+    session_match = _AWS_SESSION_TOKEN_RE.search(text)
+    if session_match:
+        raise SecretDetected(
+            f"jeton de session AWS (aws_session_token / SessionToken) détecté "
+            f"à la position {session_match.start()}"
+        )
 
     aws_secret_match = _find_aws_secret_access_key_leak(text)
     if aws_secret_match:
@@ -669,10 +729,15 @@ class Suspect:
 
 
 def _make_preview(value: str) -> str:
+    """Aperçu totalement opaque : ni le début ni la fin de `value`
+    n'apparaissent (aucune sous-chaîne de la valeur, si courte soit-elle).
+    Seules la longueur et une empreinte sha256 (8 caractères hexadécimaux)
+    figurent, pour recouper deux occurrences de la même valeur sans jamais
+    exposer un seul de ses caractères.
+    """
     length = len(value)
-    if length <= 6:
-        return f"…({length})…"
-    return f"{value[:2]}…({length})…{value[-2:]}"
+    fingerprint = hashlib.sha256(value.encode("utf-8", errors="surrogatepass")).hexdigest()[:8]
+    return f"…({length})… #{fingerprint}"
 
 
 # Digests connus, de longueur exacte, dans leur contexte précis : jamais des
@@ -804,9 +869,16 @@ _ASSIGNMENT_KEYWORD_WINDOW = 40
 # hors espace), ou nu sans caractère de déréférencement/expression
 # (`(`, `[`, `.`, `$`, `/`, `{`) — ce qui exclut par construction
 # `request.headers[...]`, `get_password_from_vault()`, `${...}`,
-# `settings.SECRET_KEY`, `os.environ.get(...)`, `/etc/...`.
+# `settings.SECRET_KEY`, `os.environ.get(...)`, `/etc/...`. Bornée à 256
+# caractères (P2) : sans borne haute, la branche nue — qui n'excluait pas
+# `=` — rebalayait tout le reste d'une suite comme `"secret="*n` à CHAQUE
+# opérateur trouvé, ce qui devenait quadratique. `=` est désormais exclu de
+# la classe nue (un littéral ne contient normalement pas le caractère
+# d'affectation lui-même), ce qui suffit à elle seule à borner le travail à
+# quelques caractères sur ce cas précis ; la borne haute protège aussi les
+# autres suites pathologiques (`token=aB1aB1...`).
 _ASSIGNMENT_VALUE_RE = re.compile(
-    r"""\s*(?:"([^"\s]{16,})"|'([^'\s]{16,})'|([^\s"'()\[\]{}<>$./,;]{16,}))"""
+    r"""\s*(?:"([^"\s]{16,256})"|'([^'\s]{16,256})'|([^\s"'()\[\]{}<>$./,;=]{16,256}))"""
 )
 
 

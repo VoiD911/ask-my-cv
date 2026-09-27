@@ -292,6 +292,21 @@ def test_redact_does_not_truncate_a_longer_sibling_root() -> None:
     assert result == text  # racine configurée non suivie d'une frontière : intacte
 
 
+def test_redact_leading_separator_root_only_matches_at_path_start() -> None:
+    # P6 : une racine à séparateur de tête (`/d/some-project-root`) ne doit
+    # matcher qu'à un véritable début de chemin (début de chaîne, espace,
+    # guillemet, `(` ou `=`), jamais au milieu d'un segment relatif —
+    # `a/d/some-project-root/b` est un sur-masquage à éviter, pas un vrai
+    # chemin vers la racine configurée.
+    config = RedactConfig(path_roots=("/d/some-project-root",))
+
+    assert redact("a/d/some-project-root/b", config) == "a/d/some-project-root/b"
+    assert redact("/d/some-project-root/b", config) == "<poste>/b"
+    assert redact(" /d/some-project-root/b", config) == " <poste>/b"
+    assert redact("(/d/some-project-root/b)", config) == "(<poste>/b)"
+    assert redact('="/d/some-project-root/b"', config) == '="<poste>/b"'
+
+
 def test_redact_masks_configured_username_outside_users_path() -> None:
     result = redact(r"\\host\c$\Users\bob\shared", CONFIGURED)
     assert "bob" not in result
@@ -624,6 +639,31 @@ def test_assert_no_secret_raises_on_anthropic_style_key() -> None:
         assert_no_secret(f"ANTHROPIC_API_KEY={fake_key}")
 
 
+def test_assert_no_secret_raises_on_legacy_openai_key() -> None:
+    # P5 : ancien format OpenAI, "sk-" + 40+ caractères alphanumériques SANS
+    # tiret ni tiret bas (ne recoupe pas sk-lf-/sk-proj-/sk-ant-).
+    fake_key = "sk-" + "Ab1" * 16  # 48 caractères après le préfixe
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"OPENAI_API_KEY={fake_key}")
+
+
+def test_assert_no_secret_raises_on_slack_token() -> None:
+    # Construit par concaténation (jamais en clair) pour ne pas ressembler à
+    # une véritable fuite aux yeux d'un scanner comme gitleaks.
+    fake_token = "xox" + "b-" + "123456789012-1234567890123-" + "AbCdEfGhIjKlMnOpQrStUvWx"
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"SLACK_BOT_TOKEN={fake_token}")
+
+
+def test_assert_no_secret_raises_on_google_api_key() -> None:
+    fake_key = "AI" + "za" + "SyA1b2C3d4E5f6G7h8I9j0KlMnOpQrStUvW"
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"GOOGLE_API_KEY={fake_key}")
+
+
 def test_assert_no_secret_raises_on_aws_access_key_id() -> None:
     fake_access_key = "AK" + "IA" + "X" * 16
 
@@ -639,18 +679,62 @@ def test_assert_no_secret_raises_on_aws_temporary_session_key_id() -> None:
 
 
 def test_assert_no_secret_raises_on_aws_secret_access_key_mixed_value() -> None:
-    fake_secret = "wJalrXUtnFEMI" + "K7MDENGbPxRfiCY" + "EXAMPLE"  # majuscule+minuscule+chiffre
+    fake_secret = "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEYab"  # 40 caractères exactement
+    assert len(fake_secret) == 40
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"aws_secret_access_key = {fake_secret}")
+
+
+def test_assert_no_secret_raises_on_aws_secret_access_key_without_a_digit() -> None:
+    # P1 : le niveau bloquant AWS n'exige plus le mélange des trois classes
+    # (majuscule+minuscule+chiffre), seulement « pas tout en minuscules » —
+    # une clé secrète AWS réelle sans chiffre a ~0,1 % de chances d'exister
+    # mais doit quand même être détectée dans ce contexte explicite.
+    fake_secret = "wJalrXUtnFEMIKxMDENGbPxRfiCYEXAMPLEKEYab"
+    assert len(fake_secret) == 40
 
     with pytest.raises(SecretDetected):
         assert_no_secret(f"aws_secret_access_key = {fake_secret}")
 
 
 def test_assert_no_secret_allows_aws_secret_access_key_placeholder() -> None:
-    # Une valeur qui ne mélange pas majuscule+minuscule+chiffre (gabarit,
-    # espace réservé) n'est pas un vrai secret — évite un faux positif
-    # bloquant sur un exemple de documentation.
+    # Une valeur toute en minuscules (gabarit, espace réservé répété) n'est
+    # pas un vrai secret — évite un faux positif bloquant sur un exemple de
+    # documentation. `<redacted>` ne matche même pas la forme attendue.
     assert_no_secret("aws_secret_access_key = <redacted>")
     assert_no_secret("aws_secret_access_key = changeme")
+    assert_no_secret("aws_secret_access_key = " + "a" * 40)
+
+
+def test_assert_no_secret_raises_on_aws_secret_access_key_json_field() -> None:
+    # P1 : sortie JSON de sts/get-session-token/export-credentials.
+    fake_secret = "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEYab"
+    assert len(fake_secret) == 40
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret('{"SecretAccessKey": "' + fake_secret + '"}')
+
+
+def test_assert_no_secret_raises_on_aws_configure_set_cli_form() -> None:
+    # P1 : séparateur espace (CLI), pas `:`/`=`.
+    fake_secret = "wJalrXUtnFEMIK7MDENGbPxRfiCYEXAMPLEKEYab"
+    assert len(fake_secret) == 40
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"aws configure set aws_secret_access_key {fake_secret}")
+
+
+def test_assert_no_secret_raises_on_aws_session_token_without_asia_nearby() -> None:
+    # P1 : un jeton de session AWS est détecté par sa seule présence dans ce
+    # contexte, même sans ASIA... à proximité.
+    fake_token = "Ab1" * 40  # bien plus long qu'une clé secrète (120 caractères)
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret('{"SessionToken": "' + fake_token + '"}')
+
+    with pytest.raises(SecretDetected):
+        assert_no_secret(f"aws_session_token={fake_token}")
 
 
 @pytest.mark.parametrize("infix", ["p", "o", "s", "u", "r"])
@@ -780,8 +864,24 @@ def test_find_suspects_preview_format() -> None:
     fake_hex64 = "c" * 64
     suspects = find_suspects(f"SECRET={fake_hex64}")
 
-    assert any(s.preview.startswith("cc") and s.preview.endswith("cc") for s in suspects)
     assert any("(64)" in s.preview for s in suspects)
+    fingerprint = hashlib.sha256(fake_hex64.encode()).hexdigest()[:8]
+    assert any(fingerprint in s.preview for s in suspects)
+
+
+def test_find_suspects_preview_never_contains_any_substring_of_the_value() -> None:
+    # P4 : ni le début, ni la fin, ni aucun fragment interne de la valeur —
+    # seuls le type, la longueur et une empreinte sha256 tronquée.
+    value = "R3alS3cretValueForPreviewTest99"
+    suspects = find_suspects(f"SECRET={value}")
+
+    assert suspects
+    for suspect in suspects:
+        for start in range(len(value) - 1):
+            fragment = value[start : start + 2]
+            assert fragment not in suspect.preview, (
+                f"fragment {fragment!r} de la valeur trouvé dans l'aperçu {suspect.preview!r}"
+            )
 
 
 # --- Politique hexadécimale (R4) ---------------------------------------
@@ -1014,6 +1114,28 @@ def test_find_suspects_assignment_performance_is_linear() -> None:
         assert time.perf_counter() - start < 1.0
 
 
+def test_find_suspects_repeated_keyword_equals_is_linear_p2() -> None:
+    # P2 : la valeur nue n'excluait pas `=`, donc chaque opérateur d'un texte
+    # comme "secret="*n rebalayait tout le reste de la suite — quadratique
+    # (23,5 s pour 140 k caractères mesurés en revue). Bornée à 256
+    # caractères et sans `=`, chaque tentative est désormais O(1).
+    for text in ("secret=" * (1_000_000 // 7), "aws_secret_access_key=" * (1_000_000 // 22)):
+        start = time.perf_counter()
+        find_suspects(text)
+        assert time.perf_counter() - start < 1.0
+
+
+def test_assert_no_secret_repeated_aws_keyword_is_linear() -> None:
+    # Le niveau bloquant AWS (P1) doit rester rapide sur la même suite
+    # adversariale : le motif est à longueur FIXE (40 ou 100-4000 bornée),
+    # donc chaque occurrence du mot-clé ne coûte qu'un travail constant.
+    text = "aws_secret_access_key=" * (1_000_000 // 22)
+
+    start = time.perf_counter()
+    assert_no_secret(text)  # aucune valeur valide de 40 caractères présente
+    assert time.perf_counter() - start < 1.0
+
+
 # --------------------------------------------------------------------------
 # Allowlist trop permissive (R2)
 # --------------------------------------------------------------------------
@@ -1028,6 +1150,12 @@ def test_find_suspects_assignment_performance_is_linear() -> None:
         r"[A-Za-z0-9+/_-]{40,}={0,2}",
         r".*",
         r".+",
+        # P3 : classes sans `_` ni `-`, qui échappaient aux anciennes sondes.
+        r"[A-Za-z0-9]+",
+        r"[A-Za-z0-9+/=]+",
+        r"(?i)[a-z0-9+/]+=*",
+        r"[0-9a-f]+",
+        r"[^\s]{16,}",
     ],
 )
 def test_load_config_rejects_broad_allowlist_classes(
