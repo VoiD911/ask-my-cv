@@ -95,7 +95,8 @@ jobs:
           exit 1
 
   # Garanties du pipeline prouvées de bout en bout sur l'API locale : faux LLM
-  # (settings.ci.yaml), classifieur ONNX promu, suite promptfoo evals/pr.yaml.
+  # (settings.ci.yaml), classifieur ONNX promu, suite promptfoo evals/pr.yaml, puis
+  # parcours e2e du site (web/out servi par web/e2e/serve.mjs, /api relayé vers l'API).
   evals:
     runs-on: ubuntu-latest
     env:
@@ -137,13 +138,36 @@ jobs:
         with:
           node-version: 24
           cache: npm
-          cache-dependency-path: evals/package-lock.json
+          cache-dependency-path: |
+            evals/package-lock.json
+            web/package-lock.json
       # --ignore-scripts : aucun script d'installation des dépendances n'est exécuté
       - run: npm ci --prefix evals --ignore-scripts --no-audit --no-fund
       - name: Tests du lecteur SSE et des assertions
         run: node --test evals/*.test.js
       - name: Suite promptfoo (PR)
         run: npx --prefix evals promptfoo eval -c evals/pr.yaml --no-cache --no-write --no-progress-bar --no-table -o evals/output/pr.json
+      # Parcours e2e du site dans ce job plutôt que dans `web` : l'API locale (modèle promu
+      # vérifié, index du CV, faux LLM) y tourne déjà ; un job dédié referait tout cela.
+      - name: Site statique pour l'e2e
+        run: |
+          npm ci --prefix web --ignore-scripts --no-audit --no-fund
+          npm --prefix web run build
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+      - name: Navigateur Playwright (chromium)
+        run: npx --prefix web playwright install --with-deps chromium
+      - name: Parcours e2e (Playwright, API locale)
+        run: npm --prefix web run e2e
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure()
+        with:
+          name: e2e-report-${{ github.sha }}
+          path: |
+            web/playwright-report
+            web/test-results
+          retention-days: 14
+          if-no-files-found: ignore
       - name: Journal de l'API
         if: failure()
         run: cat api.log

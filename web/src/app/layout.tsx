@@ -18,10 +18,22 @@ const martian = Martian_Mono({
   display: "swap",
 });
 
+const DESCRIPTION =
+  "Pose tes questions au CV de Steve Lang, architecte principal en hyperautomatisation, IA générative et cloud, et suis en direct chaque étape du pipeline qui prépare la réponse.";
+
 export const metadata: Metadata = {
+  metadataBase: new URL("https://job.stevelang.net"),
   title: "Interroge mon CV — Steve Lang",
-  description:
-    "Posez vos questions au CV de Steve Lang et suivez en direct chaque étape du pipeline qui prépare la réponse.",
+  description: DESCRIPTION,
+  openGraph: {
+    type: "website",
+    locale: "fr_CA",
+    url: "/",
+    siteName: "Interroge mon CV",
+    title: "Interroge mon CV — Steve Lang",
+    description: DESCRIPTION,
+  },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {
