@@ -41,15 +41,33 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _load_assignments(path: Path | None) -> dict[str, str]:
+def _load_assignments(path: Path | None) -> dict[str, str | None]:
+    """`{"<identifiant d'agent>": "<plan>" | null}` ; `null` écarte l'agent."""
     if path is None:
         return {}
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or not all(
-        isinstance(k, str) and isinstance(v, str) for k, v in data.items()
+        isinstance(k, str) and (v is None or isinstance(v, str)) for k, v in data.items()
     ):
-        raise ValueError(f"{path.name} : objet JSON {{identifiant d'agent: plan}} attendu")
+        raise ValueError(f"{path.name} : objet JSON {{identifiant d'agent: plan ou null}} attendu")
     return data
+
+
+def _write_output(out: Path, files: dict[str, str]) -> None:
+    """Remplace le journal de `out` : supprime les `*.md` (sauf `README.md`) et
+    `index.json` d'un rendu précédent, puis écrit les nouveaux fichiers.
+
+    Appelée seulement après un rendu réussi en mémoire : un rendu en échec
+    laisse `out` intact.
+    """
+    out.mkdir(parents=True, exist_ok=True)
+    stale = [path for path in out.glob("*.md") if path.name != "README.md"]
+    if (out / "index.json").exists():
+        stale.append(out / "index.json")
+    for path in stale:
+        path.unlink()
+    for name, content in files.items():
+        (out / name).write_text(content, encoding="utf-8", newline="\n")
 
 
 def _render_command(args: argparse.Namespace) -> int:
@@ -90,13 +108,11 @@ def _render_command(args: argparse.Namespace) -> int:
         print(f"erreur : {exc}", file=sys.stderr)
         return 1
 
-    out = args.out
-    out.mkdir(parents=True, exist_ok=True)
-    for name, content in result.files.items():
-        (out / name).write_text(content, encoding="utf-8", newline="\n")
+    _write_output(args.out, result.files)
     report_path.parent.mkdir(parents=True, exist_ok=True)
     report = {
         "unknown": [asdict(u) for u in result.unknown],
+        "excluded": result.excluded,
         "suspects": [asdict(s) for s in result.suspects],
     }
     report_path.write_text(
@@ -110,6 +126,7 @@ def _render_command(args: argparse.Namespace) -> int:
     for plan_id, count in counts.items():
         print(f"{plan_id} : {count} agent(s)")
     print(f"non rattachés : {len(result.unknown)}")
+    print(f"exclus : {len(result.excluded)}")
     print(f"suspects : {len(result.suspects)} (détail dans {report_path})")
     return 0
 

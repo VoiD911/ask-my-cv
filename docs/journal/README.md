@@ -38,9 +38,14 @@ python -m tools.devlog render \
   dépôt) liste les agents non rattachés à un plan (identifiant, description,
   date) et les suspects (type, aperçu opaque, champ, plan, tâche, agent) —
   jamais la valeur suspecte en clair.
-- `--assignments` : objet JSON `{"<identifiant d'agent>": "<plan>"}` qui prime
-  sur le rattachement automatique, pour résoudre localement les agents
-  « inconnu ». Un agent non rattaché est exclu du journal.
+- `--assignments` : objet JSON `{"<identifiant d'agent>": "<plan>" | null}`
+  qui prime sur le rattachement automatique, pour résoudre localement les
+  agents « inconnu ». `null` écarte délibérément un agent (ni publié, ni
+  signalé comme inconnu, compté parmi les « exclus »). Un plan inexistant est
+  une erreur. Un agent non rattaché est exclu du journal.
+- Après un rendu réussi en mémoire, les `*.md` de `--out` (sauf `README.md`)
+  et `index.json` d'un rendu précédent sont supprimés avant l'écriture ; un
+  rendu en échec laisse `--out` intact.
 - `--github-flow-plans` : plans pour lesquels les mentions explicites
   `PR #N` / `issue #N` deviennent des liens ; les plans plus anciens précèdent
   la numérotation actuelle du dépôt.
@@ -56,7 +61,7 @@ Un fichier par plan ayant au moins un agent rattaché :
   `Corrections`, `Autres` ;
 - pour chaque agent : date de début (UTC, `AAAA-MM-JJ HH:MM`), type d'agent,
   modèle, description, verdict (revues), commits publiés cités par le rapport
-  (liens vers GitHub), liens de PR/issue le cas échéant, et le rapport masqué
+  (SHA complets ou courts non ambigus, liens vers GitHub), liens de PR/issue le cas échéant, et le rapport masqué
   dans un bloc `<details>` replié. Les agents sont triés par date de début,
   puis par identifiant.
 
@@ -115,5 +120,5 @@ mêmes données produisent le même octet pour octet.
 | `events[].agent_type`, `events[].model` | Type d'agent et modèle. |
 | `events[].description` | Description courte de l'agent, masquée. |
 | `events[].verdict` | Revues seulement : `approuvé`, `corrections demandées` ou `non déterminé` ; `null` sinon. |
-| `events[].commits` | SHA complets (40 caractères) de commits publiés cités par le rapport. |
+| `events[].commits` | SHA complets (40 caractères) des commits publiés cités par le rapport : SHA complet, ou SHA court (7 à 39 caractères) en contexte de commit et préfixe d'un seul SHA publié. |
 | `events[].links` | URL de PR/issue explicitement citées (plans en flux GitHub seulement). |

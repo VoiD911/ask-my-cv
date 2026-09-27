@@ -40,6 +40,7 @@ from tools.devlog.extract import (
     PlanWindow,
     Role,
     assign_plan,
+    published_commit_refs,
     role,
     translate_shas,
 )
@@ -298,6 +299,7 @@ class RenderResult:
     files: dict[str, str]
     unknown: list[UnknownAgent] = field(default_factory=list)
     suspects: list[SuspectEntry] = field(default_factory=list)
+    excluded: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -320,7 +322,6 @@ _SECTIONS: tuple[tuple[Role, str], ...] = (
     ("fix", "Corrections"),
     ("other", "Autres"),
 )
-_FULL_SHA = re.compile(r"(?<![0-9A-Za-z])[0-9a-f]{40}(?![0-9A-Za-z])")
 _REF_RE = re.compile(r"\b(?P<kind>PR|issue)\s*#(?P<num>\d+)\b", re.IGNORECASE)
 _FENCE = re.compile(r"^\s*(```|~~~)", re.MULTILINE)
 
@@ -462,14 +463,16 @@ def render(
     published: Iterable[str],
     config: RedactConfig,
     *,
-    assignments: Mapping[str, str] | None = None,
+    assignments: Mapping[str, str | None] | None = None,
     github_flow_plans: frozenset[str] = frozenset(),
 ) -> RenderResult:
     """Construit en mémoire `<plan>.md` (par plan ayant au moins un agent) et
     `index.json`. Aucune écriture ; `SecretDetected` interrompt tout.
 
     `assignments` (identifiant d'agent → plan) prime sur `assign_plan` : c'est
-    ainsi que le contrôleur résout localement les agents « inconnu ». Les
+    ainsi que le contrôleur résout localement les agents « inconnu ». Une
+    valeur `None` écarte délibérément l'agent : ni publié, ni signalé comme
+    inconnu, seulement listé dans `RenderResult.excluded`. Les
     liens de PR/issue ne sont produits que pour les plans de
     `github_flow_plans` (les plus anciens précèdent la numérotation actuelle
     du dépôt).
@@ -479,15 +482,23 @@ def render(
     windows = [doc.window for doc in docs]
     overrides = dict(assignments or {})
     for agent_id, plan_id in sorted(overrides.items()):
-        if plan_id not in doc_by_id:
+        if plan_id is not None and plan_id not in doc_by_id:
             raise ValueError(f"assignation de l'agent {agent_id} à un plan inconnu : {plan_id}")
 
     publisher = _Publisher(commit_map, published, config)
     unknown: list[UnknownAgent] = []
+    excluded: list[str] = []
     by_plan: dict[str, list[_Event]] = {}
 
     for record in sorted(agents, key=lambda r: (r.started, r.id)):
-        plan_id = overrides.get(record.id) or assign_plan(record, windows)
+        if record.id in overrides:
+            assigned = overrides[record.id]
+            if assigned is None:
+                excluded.append(record.id)
+                continue
+            plan_id = assigned
+        else:
+            plan_id = assign_plan(record, windows)
         if plan_id == UNKNOWN or plan_id not in doc_by_id:
             unknown.append(
                 UnknownAgent(
@@ -509,7 +520,7 @@ def render(
                 (record.model, "modèle"),
             )
         )
-        commits = _dedupe(sha for sha in _FULL_SHA.findall(report) if sha in publisher.known)
+        commits = tuple(published_commit_refs(report, publisher.known))
         links = _links((description, report)) if plan_id in github_flow_plans else ()
         by_plan.setdefault(plan_id, []).append(
             _Event(
@@ -556,4 +567,6 @@ def render(
 
     index = {"version": _INDEX_VERSION, "repository": REPOSITORY, "plans": index_plans}
     files["index.json"] = json.dumps(index, ensure_ascii=False, indent=2, sort_keys=False) + "\n"
-    return RenderResult(files=files, unknown=unknown, suspects=publisher.suspects)
+    return RenderResult(
+        files=files, unknown=unknown, suspects=publisher.suspects, excluded=excluded
+    )

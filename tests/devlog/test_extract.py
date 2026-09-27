@@ -26,6 +26,7 @@ from tools.devlog.extract import (
     load_agents,
     load_commit_map,
     load_published_shas,
+    published_commit_refs,
     role,
     translate_shas,
 )
@@ -463,3 +464,18 @@ def test_load_published_shas_fails_on_empty_repo(tmp_path: Path) -> None:
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)  # noqa: S603, S607
     with pytest.raises(RuntimeError, match="aucun commit"):
         load_published_shas(tmp_path)
+
+
+def test_published_commit_refs_resolves_unique_short_prefixes() -> None:
+    first = "ab12cd3" + "0" * 33
+    second = "ef45ab6" + "1" * 33
+    twin = "ab12cd3" + "2" * 33
+    text = (
+        f"Voir commit {first[:10]}.\n\n"
+        f"{second[:7]} feat: un\n{first[:7]} fix: deux\n\n"
+        f"Couleur #{second[:7]}, commit {second}, commit {first[:10]}."
+    )
+    assert published_commit_refs(text, {first, second}) == [first, second]
+    assert published_commit_refs(f"commit {first[:7]}", {first, twin}) == []
+    assert published_commit_refs(f"commit {first[:12]}", {first, twin}) == [first]
+    assert published_commit_refs(f"couleur #{second[:7]}", {second}) == []

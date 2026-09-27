@@ -266,12 +266,59 @@ def test_assignment_to_an_unknown_plan_is_rejected() -> None:
         _render([_record()], assignments={"a0": "zz"})
 
 
+def test_null_assignment_excludes_the_agent_deliberately() -> None:
+    lost = _record(id="lost", description="Implement Task 2", started=_dt("2025-01-01T00:00:00"))
+    dropped = _record(id="dropped", description="Implement Task 7 (hors sujet)")
+    kept = _record(id="kept")
+    result = _render([lost, dropped, kept], assignments={"lost": None, "dropped": None})
+    assert result.unknown == []
+    assert result.excluded == ["lost", "dropped"]
+    journal = result.files["9a.md"]
+    assert "Tâche 7" not in journal
+    assert "hors sujet" not in result.files["index.json"]
+    assert "## Tâche 1" in journal
+
+
 def test_old_sha_is_translated_and_linked() -> None:
     report = f"Commit {OLD_SHA} poussé, puis {LATER_SHA}."
     journal = _render([_record(report=report)]).files["9a.md"]
     assert OLD_SHA not in journal
     assert f"{REPO_URL}/commit/{NEW_SHA}" in journal
     assert f"{REPO_URL}/commit/{LATER_SHA}" in journal
+
+
+def _commits_of(report: str, published: frozenset[str] = PUBLISHED) -> list[str]:
+    result = render([_record(report=report)], DOCS, COMMIT_MAP, published, CONFIG)
+    return json.loads(result.files["index.json"])["plans"][0]["tasks"][0]["events"][0]["commits"]
+
+
+def test_short_sha_unique_prefix_is_linked_to_full_sha() -> None:
+    assert _commits_of(f"Fix poussé en commit {LATER_SHA[:9]}.") == [LATER_SHA]
+    # Un ancien SHA court est d'abord traduit, puis relié au nouveau SHA complet.
+    assert _commits_of(f"commit {OLD_SHA[:8]} fusionné") == [NEW_SHA]
+    journal = _render([_record(report=f"commit {LATER_SHA[:7]}")]).files["9a.md"]
+    assert f"{REPO_URL}/commit/{LATER_SHA}" in journal
+
+
+def test_ambiguous_short_sha_is_not_linked() -> None:
+    twin_a = "abcdef1" + _sha("jumeau-a")[:33]
+    twin_b = "abcdef1" + _sha("jumeau-b")[:33]
+    published = frozenset({twin_a, twin_b})
+    assert _commits_of("commit abcdef1 poussé", published) == []
+    assert _commits_of(f"commit {twin_a[:12]} poussé", published) == [twin_a]
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        "couleur #{short} sur le bouton",
+        "digest sha256:{short} de l'image",
+        "identifiant {short} sans contexte",
+        "commit {short}0000000 inconnu",
+    ],
+)
+def test_hex_words_outside_commit_context_are_not_linked(report: str) -> None:
+    assert _commits_of(report.format(short=LATER_SHA[:8])) == []
 
 
 def test_pr_links_only_for_github_flow_plans() -> None:
@@ -498,3 +545,52 @@ def test_cli_secret_exits_2_without_echo_or_files(
     assert fake_key not in captured.out + captured.err
     assert not (cli_env["repo"] / "docs").exists()
     assert not report.exists()
+
+
+def _seed_out(env: dict[str, Path]) -> Path:
+    out = env["repo"] / "docs" / "journal"
+    out.mkdir(parents=True)
+    (out / "README.md").write_text("schéma\n", encoding="utf-8")
+    (out / "ancien-plan.md").write_text("périmé\n", encoding="utf-8")
+    (out / "index.json").write_text("{}\n", encoding="utf-8")
+    (out / "notes.txt").write_text("autre\n", encoding="utf-8")
+    return out
+
+
+def test_cli_removes_stale_journal_files(cli_env: dict[str, Path]) -> None:
+    out = _seed_out(cli_env)
+    assert main(_cli_args(cli_env, cli_env["private"] / "r.json")) == 0
+    assert sorted(p.name for p in out.iterdir()) == [
+        "9a.md",
+        "README.md",
+        "index.json",
+        "notes.txt",
+    ]
+    assert (out / "README.md").read_text(encoding="utf-8") == "schéma\n"
+    assert json.loads((out / "index.json").read_text(encoding="utf-8"))["version"] == 1
+
+
+def test_cli_failed_render_leaves_out_untouched(cli_env: dict[str, Path]) -> None:
+    out = _seed_out(cli_env)
+    before = {p.name: p.read_text(encoding="utf-8") for p in out.iterdir()}
+    fake_key = "sk-" + "lf-" + "0a1b2c3d4e5f6a7b" * 2
+    _write_agent(cli_env["subagents"], "a2", "Implement Task 2", f"clé {fake_key}")
+    assert main(_cli_args(cli_env, cli_env["private"] / "r.json")) == 2
+    assert {p.name: p.read_text(encoding="utf-8") for p in out.iterdir()} == before
+
+
+def test_cli_null_assignment_counts_excluded(
+    cli_env: dict[str, Path], capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    _write_agent(cli_env["subagents"], "a2", "Implement Task 2 (à écarter)", "rapport")
+    assignments = tmp_path / "assignments.json"
+    assignments.write_text(json.dumps({"a2": None}), encoding="utf-8")
+    report = cli_env["private"] / "r.json"
+    args = [*_cli_args(cli_env, report), "--assignments", str(assignments)]
+    assert main(args) == 0
+    printed = capsys.readouterr().out
+    assert "exclus : 1" in printed
+    assert "9a : 1 agent(s)" in printed
+    journal = (cli_env["repo"] / "docs" / "journal" / "9a.md").read_text(encoding="utf-8")
+    assert "à écarter" not in journal
+    assert json.loads(report.read_text(encoding="utf-8"))["unknown"] == []
