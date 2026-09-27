@@ -377,8 +377,8 @@ Puis, sur `infra/bootstrap` : retirer `prevent_destroy` sur le bucket d'état et
 
 ## Gouvernance
 
-- **PR obligatoires sur `main`**, avec vérifications requises avant fusion : `security`, `test`, `evals`, `web`, `terraform` (jobs de `.github/workflows/ci.yml`). Ruleset GitHub à activer après la fusion de la PR #7.
+- **PR obligatoires sur `main`**, avec vérifications requises avant fusion : `security`, `test`, `evals`, `web`, `terraform` (jobs de `.github/workflows/ci.yml`). Ensemble de règles « main protégée » actif : ni push direct, ni push forcé, ni suppression ; contournement réservé à l’administrateur et uniquement par PR.
 - **Environnements protégés** `production` (job `deploy`, `.github/workflows/ci.yml`) et `nightly` (jobs `redteam` et `drift`, `.github/workflows/nightly.yml`), tous deux limités à la branche `main` (politique de déploiement personnalisée côté GitHub).
-- **Sujets OIDC par environnement** : la politique de confiance des rôles AWS (`infra/bootstrap`) est acceptée pour le sujet immuable `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:production` (déploiement) et `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:nightly` (nuit), avec le sujet `:ref:refs/heads/main` conservé à titre transitoire (voir PR #2) ; il sera retiré à la tâche 5 du plan 1e-2a.
-- **`EVAL_TOKEN`** est un secret de l'environnement `nightly`, lu uniquement par le job `redteam`. La copie au niveau du dépôt reste en place jusqu'à la tâche 5 du plan 1e-2a ; ensuite, seul ce job pourra le lire.
+- **Sujets OIDC par environnement** : le rôle de déploiement n'accepte que le sujet immuable `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:production`, le rôle de nuit que `…:environment:nightly` (`infra/bootstrap`). Un job de `main` sans environnement, une autre branche, un fork ou une PR ne peuvent prendre aucun des deux rôles.
+- **`EVAL_TOKEN`** est uniquement un secret de l'environnement `nightly`, lu par le job `redteam` (aucune copie au niveau du dépôt).
 - **Revues** : postées en commentaire de la PR par un agent de revue, jamais en tant qu'« approval » GitHub ; la fusion reste décidée par le contrôleur humain.

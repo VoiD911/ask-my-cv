@@ -149,13 +149,12 @@ resource "aws_iam_openid_connect_provider" "github" {
   client_id_list = ["sts.amazonaws.com"]
 }
 
-# Confiance OIDC par environnement GitHub protégé (limité à main). Transition (plan 1e-2a) :
-# l'ancien sujet `ref:refs/heads/main` reste accepté le temps que les workflows passent aux
-# environnements ; il sera retiré à la tâche 5.
+# Confiance OIDC par environnement GitHub protégé (limité à main) : le rôle de déploiement
+# n'accepte que `environment:production`, le rôle de nuit que `environment:nightly`.
 locals {
   github_oidc_subjects = {
-    deploy  = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main", "${var.github_oidc_sub_prefix}:environment:production"]
-    nightly = ["${var.github_oidc_sub_prefix}:ref:refs/heads/main", "${var.github_oidc_sub_prefix}:environment:nightly"]
+    deploy  = ["${var.github_oidc_sub_prefix}:environment:production"]
+    nightly = ["${var.github_oidc_sub_prefix}:environment:nightly"]
   }
 }
 
@@ -231,8 +230,7 @@ resource "aws_iam_role_policy" "deploy" {
 }
 
 # --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
-# Confiance distincte : environnement `nightly` (après la transition, le rôle de déploiement
-# n'acceptera que `production` ; l'ancien sujet `ref:refs/heads/main` est retiré à la tâche 5).
+# Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
   assume_role_policy   = data.aws_iam_policy_document.github_trust["nightly"].json
