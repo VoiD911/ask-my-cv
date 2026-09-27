@@ -10,12 +10,36 @@ optionnelle pour les identifiants propres à ce dépôt.
 
 Toutes les valeurs (compte, adresses, chemins) sont masquées en une seule
 passe (une unique expression régulière alternée) : cela évite qu'un masquage
-en corrompe un autre déjà appliqué (ex. un nom d'utilisateur masqué après
-coup à l'intérieur d'une adresse e-mail déjà jugée sûre). Chaque motif est
-écrit sans quantificateurs imbriqués (`[\\/]+`, jamais `(?:\\+|/)+`) et les
-motifs non ancrés (adresse e-mail) portent une garde de début (lookbehind) :
-c'est ce qui garantit un temps linéaire même sur une entrée pathologique
-(longue suite d'antislashs, texte d'un mégaoctet sans arobase...).
+en corrompe un autre déjà appliqué. Chaque motif est écrit sans
+quantificateur imbriqué ni ambigu (`[\\/]++`, possessif — jamais
+`(?:\\+|/)+` ni même `[\\/]+` répété en tête de motif) et les motifs non
+ancrés (adresse e-mail) portent une garde de début (lookbehind) : c'est ce
+qui garantit un temps linéaire même sur une entrée pathologique (longue
+suite d'antislashs, texte d'un mégaoctet sans arobase...).
+
+Deux niveaux de détection de secrets
+--------------------------------------
+`assert_no_secret(text)` (**bloquant**, lève `SecretDetected`) ne couvre que
+des motifs à haute confiance, qui ne se produisent essentiellement jamais
+dans du code ou de la prose ordinaires : clé privée PEM, identifiant de clé
+d'accès AWS (`AKIA`/`ASIA`/`AROA`/`AIDA`) et affectation
+`aws_secret_access_key=`, jeton GitHub (`ghp_`/`gho_`/`ghs_`/`ghu_`/`ghr_`/
+`github_pat_`), clé Langfuse (`sk-lf-`/`pk-lf-`), clé de style OpenAI/
+Anthropic (`sk-proj-`/`sk-ant-`), JWT (trois segments base64url avec un
+en-tête JSON `eyJ`). `secret_allowlist` ne peut **jamais** supprimer une
+détection de ce niveau.
+
+`find_suspects(text, config=None) -> list[Suspect]` (**non bloquant**, ne
+lève jamais) couvre les motifs heuristiques, plus sujets aux faux positifs
+sur du code ou de la prose réels : jeton opaque générique à forte entropie,
+hexadécimal long hors contexte de digest connu, affectation à un mot-clé
+sensible (secret/jeton/mot de passe/clé). Chaque `Suspect` porte uniquement
+un type, une position (`start`/`end`), et un aperçu masqué (`ab…(40)…yz`) —
+jamais la valeur en clair. `secret_allowlist` ne s'applique qu'ici. Ces
+suspects sont destinés à un rapport de relecture local (jamais publié tel
+quel), pas à faire échouer le rendu : avec des centaines de rapports, un
+détecteur heuristique bloquant produit trop de faux positifs pour être
+utilisable.
 
 Configuration
 --------------
@@ -40,11 +64,11 @@ l'une à la place de l'autre) :
      casse et le séparateur (`/`, `\\` ou `\\\\` échappé) utilisés dans le
      texte ;
    - `DEVLOG_REDACT_SECRET_ALLOWLIST` : expressions régulières supplémentaires
-     considérées comme sûres par `assert_no_secret` (ex. un identifiant public
-     propre au dépôt qui ressemblerait à un jeton). Une regex peut contenir
-     des virgules : cette variable n'est **jamais** découpée sur `,`. Elle
-     accepte soit un tableau JSON de chaînes (`["motif1", "motif2"]`), soit
-     une regex par ligne (séparateur `\n`).
+     considérées comme sûres par `find_suspects` (jamais par
+     `assert_no_secret`). Une regex peut contenir des virgules : cette
+     variable n'est **jamais** découpée sur `,`. Elle accepte soit un tableau
+     JSON de chaînes (`["motif1", "motif2"]`), soit une regex par ligne
+     (séparateur `\n`).
 2. un fichier JSON local, non suivi par git, dont le chemin est
    `DEVLOG_REDACT_CONFIG_PATH` ou par défaut
    `~/.claude/devlog-private/redact.json`, de la forme :
@@ -66,45 +90,19 @@ l'une à la place de l'autre) :
    fait pas exactement 12 chiffres, un nom d'utilisateur de moins de 3
    caractères, une racine de chemin de moins de 2 caractères, ou une entrée de
    `secret_allowlist` qui n'est pas une regex valide, qui accepte la chaîne
-   vide, ou qui accepte un texte arbitraire trop large (ex. `.*`, `.+`)
-   lèvent tous `ConfigError`. Un fichier JSON syntaxiquement invalide lève
-   `json.JSONDecodeError` (non interceptée). Si `DEVLOG_REDACT_CONFIG_PATH`
-   est défini explicitement et que le fichier est absent, `ConfigError` est
-   levée (on ne veut pas d'un masquage silencieusement incomplet quand la
-   configuration est censée exister) ; si aucune variable d'environnement
-   n'est définie et que le fichier par défaut est absent, la configuration
-   est simplement vide (seuls les motifs génériques agissent).
+   vide, ou qui accepte un texte arbitraire ou un jeton de forme réaliste
+   (base64/hex/base64url de longueur usuelle) trop large (ex. `.*`, `\\S+`,
+   `[\\w+/-]+`) lèvent tous `ConfigError`. Un fichier JSON syntaxiquement
+   invalide lève `json.JSONDecodeError` (non interceptée). Si
+   `DEVLOG_REDACT_CONFIG_PATH` est défini explicitement et que le fichier est
+   absent, `ConfigError` est levée ; si aucune variable d'environnement n'est
+   définie et que le fichier par défaut est absent, la configuration est
+   simplement vide (seuls les motifs génériques agissent).
 
 Sans configuration, seuls les motifs génériques (ARN, hôte ECR, compartiment
 `<préfixe-alpha>-<compte>`, champ `"Account": "<compte>"`, URL
 `<compte>.signin...`, forme d'adresse e-mail, chemin `Users/<nom>`) sont
 masqués.
-
-Garde-fou des secrets
-----------------------
-`assert_no_secret(text, config=None)` lève `SecretDetected` si `text`
-contient une chaîne ressemblant à un secret vivant : clé d'API à préfixe
-connu, identifiant de clé d'accès AWS (y compris temporaire `ASIA...`), jeton
-GitHub, JWT, clé privée PEM, affectation `SECRET=`/`TOKEN=`/`PASSWORD=`/
-`API_KEY=` à une valeur qui n'est pas un simple gabarit, jeton hexadécimal
-d'une longueur inhabituelle ou sans contexte de digest reconnu, ou tout jeton
-opaque de 40+ caractères mélangeant majuscules, minuscules et chiffres. Ces
-détecteurs explicites tournent **sur le texte brut, avant toute
-suppression de motif jugé sûr** : un préfixe `sha1-`/`sha256:` ne peut donc
-jamais servir à camoufler une clé `AKIA...` ou tout autre secret explicite.
-
-Elle ne déclenche jamais sur un identifiant public connu : un SHA de commit
-git (exactement 40 caractères hexadécimaux, casse indifférente), un digest
-hexadécimal de 64 ou 128 caractères **en contexte de digest** (`sha256:`,
-`sha512-`, `@sha256:`, le mot « digest », ou le champ `CodeSha256`), ou un
-identifiant CamelCase/snake_case/chemin sans mélange majuscule+minuscule+
-chiffre. `config.secret_allowlist` permet d'exempter, de façon explicite et
-testable, un jeton générique propre à un dépôt (ex. une URL contenant par
-coïncidence un identifiant mélangeant les trois classes de caractères) —
-jamais un détecteur explicite (PEM, clé AWS, jeton GitHub, JWT, préfixe
-`sk-`/`pk-`, affectation de mot de passe) : ceux-ci sont évalués avant toute
-prise en compte de l'allowlist et ne peuvent donc pas être contournés par
-elle.
 """
 
 from __future__ import annotations
@@ -119,14 +117,17 @@ __all__ = [
     "ConfigError",
     "RedactConfig",
     "SecretDetected",
+    "Suspect",
     "assert_no_secret",
+    "find_suspects",
     "load_config",
     "redact",
 ]
 
 
 class SecretDetected(Exception):
-    """Levée quand un texte contient une chaîne ressemblant à un secret vivant."""
+    """Levée quand un texte contient une chaîne ressemblant à un secret vivant
+    à haute confiance (voir `assert_no_secret`)."""
 
 
 class ConfigError(Exception):
@@ -164,10 +165,30 @@ _ACCOUNT_ID_RE = re.compile(r"^\d{12}$")
 _MIN_USERNAME_LENGTH = 3
 _MIN_PATH_ROOT_LENGTH = 2
 
-# Chaîne de test diversifiée (lettres, chiffres, séparateurs, ponctuation) :
-# une regex de `secret_allowlist` qui la reconnaît entièrement est jugée trop
-# permissive (elle accepterait à peu près n'importe quel texte arbitraire).
-_BROAD_PATTERN_PROBE = "aB3-x_/9.zK8 Q7" * 20
+
+def _make_broad_pattern_probes() -> tuple[str, ...]:
+    """Jetons fictifs de forme réaliste, utilisés pour vérifier qu'une entrée
+    de `secret_allowlist` n'est pas trop permissive (voir
+    `_compile_allowlist_pattern`). Sans espace ni ponctuation « rare » — une
+    classe de caractères comme `\\S+`, `[^ ]+` ou `[\\w+/-]+` doit les
+    reconnaître entièrement pour être rejetée.
+    """
+    cycle = "Ab3Cd5Ef7Gh9+/_-"  # mélange lettres/chiffres/+//_/- délibéré
+    repeated = cycle * 10
+
+    def _take(length: int) -> str:
+        return repeated[:length]
+
+    return (
+        "aB3-x_/9.zK8 Q7" * 20,  # texte arbitraire diversifié (avec espaces/points)
+        _take(40),  # base64 « clé » de 40 caractères
+        _take(43),  # base64url de 43 caractères (jeton urlsafe sans bourrage)
+        _take(44) + "=",  # base64 de 44 caractères avec bourrage
+        _take(64),  # hex/b64 de 64 caractères
+    )
+
+
+_BROAD_PATTERN_PROBES = _make_broad_pattern_probes()
 
 
 def _split_csv(value: str | None) -> tuple[str, ...]:
@@ -281,15 +302,18 @@ def _validate_semantic(config: RedactConfig) -> None:
 
 
 def _compile_allowlist_pattern(raw: str, *, strict: bool) -> re.Pattern[str] | None:
-    """Compile une entrée de `secret_allowlist`.
+    """Compile une entrée de `secret_allowlist` (utilisée uniquement par
+    `find_suspects`, jamais par `assert_no_secret`).
 
     `strict=True` (utilisé par `load_config`) lève `ConfigError` sur une
-    regex invalide ou trop permissive. `strict=False` (utilisé au moment de
-    `assert_no_secret`, en défense en profondeur pour une `RedactConfig`
-    construite directement sans passer par `load_config`) ignore silencieusement
-    une regex invalide plutôt que de faire planter le garde-fou — dans ce cas
-    au pire l'exemption n'a pas lieu, ce qui ne peut jamais faire fuiter un
-    secret.
+    regex invalide ou trop permissive — y compris une classe de caractères
+    générique comme `\\S+`, `[^ ]+` ou `[\\w+/-]+`, qui reconnaîtrait
+    n'importe quel jeton de forme réaliste (voir `_BROAD_PATTERN_PROBES`).
+    `strict=False` (utilisé par `find_suspects`, en défense en profondeur
+    pour une `RedactConfig` construite directement sans passer par
+    `load_config`) ignore silencieusement une regex invalide ou trop
+    permissive plutôt que de faire planter le garde-fou ou de neutraliser la
+    détection générique.
     """
     try:
         compiled = re.compile(raw)
@@ -297,18 +321,14 @@ def _compile_allowlist_pattern(raw: str, *, strict: bool) -> re.Pattern[str] | N
         if strict:
             raise ConfigError(f"secret_allowlist : regex invalide {raw!r} : {exc}") from exc
         return None
-    if compiled.fullmatch("") is not None:
-        if strict:
-            raise ConfigError(
-                f"secret_allowlist : regex trop permissive (accepte la chaîne vide) : {raw!r}"
-            )
-        return None
-    if compiled.fullmatch(_BROAD_PATTERN_PROBE) is not None:
-        if strict:
-            raise ConfigError(
-                f"secret_allowlist : regex trop permissive (accepte un texte arbitraire) : {raw!r}"
-            )
-        return None
+    for probe in ("", *_BROAD_PATTERN_PROBES):
+        if compiled.fullmatch(probe) is not None:
+            if strict:
+                raise ConfigError(
+                    f"secret_allowlist : regex trop permissive "
+                    f"(reconnaît un texte arbitraire ou un jeton de forme réaliste) : {raw!r}"
+                )
+            return None
     return compiled
 
 
@@ -371,9 +391,12 @@ _BUCKET_ACCOUNT = r"(?<=[a-z]{2}-)\d{12}(?!\d)"
 _ACCOUNT_FIELD_QUOTED = r'(?<="Account": ")\d{12}(?=")'
 _ACCOUNT_FIELD_PLAIN = r"(?<=Account: )\d{12}"
 
-# Séparateur de chemin : une seule classe quantifiée, jamais de quantificateur
-# imbriqué (`(?:\+|/)+` est exponentiel sur une longue suite d'antislashs).
-_PATH_SEP = r"[\\/]+"
+# Séparateur de chemin : une seule classe quantifiée de façon POSSESSIVE
+# (`++`, jamais `+` seul) : sans ça, une racine configurée commençant par un
+# séparateur (`/d/DEV`) redevient quadratique sur une longue suite de
+# séparateurs, le moteur réessayant `[\/]+` à chaque position plutôt que de
+# s'engager sur le plus long match trouvé.
+_PATH_SEP = r"[\\/]++"
 
 # Préfixe d'un chemin sous `Users` : lettre de lecteur (`C:`), lettre de lecteur
 # posix précédée de `/mnt` (`/mnt/c`), ou lettre de lecteur posix seule (`/c`).
@@ -422,12 +445,22 @@ def _root_pattern_body(root: str) -> str:
     est insensible à la casse (appliqué avec `re.IGNORECASE` par
     l'appelant). Une frontière finale évite qu'une racine plus longue
     (`D:\\DEVELOP`) ne soit tronquée par erreur (`D:\\DEV` configurée).
+
+    Le séparateur (`_PATH_SEP`) est possessif, mais ça ne suffit pas à soi
+    seul quand la racine commence PAR un séparateur (`/d/DEV`) : sans garde
+    supplémentaire, ce motif peut alors commencer à correspondre à N'IMPORTE
+    QUELLE position d'une longue suite de séparateurs, et échouer à chacune
+    d'elles après avoir consommé (de façon possessive, donc en un seul bloc,
+    mais quand même en O(reste)) tout ce qui suit — ce qui redevient
+    quadratique sur l'ensemble de la suite. Le lookbehind
+    `(?<![\\/])` avant le séparateur de tête n'autorise cette tentative qu'à
+    la toute première position de la suite, ramenant le coût total à O(n).
     """
     leading_sep = root[:1] in "\\/"
     segments = [segment for segment in re.split(r"[\\/]+", root) if segment]
     body = _PATH_SEP.join(re.escape(segment) for segment in segments)
     if leading_sep:
-        body = _PATH_SEP + body
+        body = r"(?<![\\/])" + _PATH_SEP + body
     return body + r'(?=[\\/"\'\s]|$)'
 
 
@@ -519,12 +552,12 @@ def redact(text: str, config: RedactConfig | None = None) -> str:
 
     Une seule expression régulière alternée traite comptes, chemins et
     adresses dans le même passage : chaque caractère n'est donc consommé
-    qu'une fois, ce qui élimine par construction tout risque qu'un masquage
-    (ex. nom d'utilisateur) n'altère un résultat déjà décidé par un autre
-    (ex. une adresse e-mail autorisée qui contiendrait ce nom). Aucun des
-    motifs ne comporte de quantificateur imbriqué ni de partie locale
-    d'adresse non ancrée : le temps d'exécution reste linéaire en la
-    longueur de `text`, y compris sur une entrée pathologique.
+    qu'une fois. Aucun des motifs ne comporte de quantificateur imbriqué, de
+    quantificateur non possessif en tête pouvant réessayer sur une longue
+    suite de séparateurs, ni de partie locale d'adresse non ancrée : le temps
+    d'exécution reste linéaire en la longueur de `text`, y compris sur une
+    entrée pathologique (longue suite d'antislashs, avec ou sans racine
+    configurée).
 
     Idempotente : `redact(redact(x)) == redact(x)`.
     """
@@ -534,23 +567,18 @@ def redact(text: str, config: RedactConfig | None = None) -> str:
 
 
 # --------------------------------------------------------------------------
-# Garde-fou : détection de secrets vivants
+# Niveau 1 — détecteurs à haute confiance (bloquants)
 # --------------------------------------------------------------------------
 
-# Champ Lambda CodeSha256 : base64 d'un digest sha256 (32 octets), toujours
-# exactement 44 caractères avec un `=` de bourrage. Format strict et lié à un
-# nom de champ précis : contrairement à un préfixe générique `sha256:`, il ne
-# peut pas servir à camoufler un secret arbitraire de longueur quelconque.
-_CODE_SHA256_FIELD_RE = re.compile(r'(?i)codesha256["\']?\s*[:=]\s*["\']?[A-Za-z0-9+/]{43}=')
-
-# Motifs explicites de secrets connus : indépendants de la longueur/l'entropie,
-# évalués sur le texte BRUT (jamais après suppression d'un motif « sûr », pour
-# qu'un préfixe comme `sha1-` ne puisse jamais servir à camoufler une clé
-# `AKIA...` ou un autre secret explicite : `sha1-AKIA...` doit être détecté).
-_DANGEROUS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
+# Motifs à haute confiance : ils ne se produisent essentiellement jamais dans
+# du code ou de la prose ordinaires. Évalués sur le texte BRUT (jamais après
+# suppression d'un motif « sûr », pour qu'un préfixe comme `sha1-` ne puisse
+# jamais servir à camoufler une clé `AKIA...`). `secret_allowlist` ne
+# s'applique JAMAIS à ce niveau.
+_BLOCKING_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
-        "clé d'API (préfixe sk-/pk-lf- ou sk-proj-)",
-        re.compile(r"(?<![A-Za-z0-9_-])(?:sk|pk)-(?:lf|proj)-[A-Za-z0-9_-]+"),
+        "clé privée PEM",
+        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
     ),
     (
         "identifiant de clé d'accès AWS",
@@ -565,54 +593,110 @@ _DANGEROUS_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
         re.compile(r"(?<![A-Za-z0-9_])github_pat_[A-Za-z0-9_]{22,}(?![A-Za-z0-9_])"),
     ),
     (
+        "clé d'API (préfixe sk-/pk-lf-, sk-proj- ou sk-ant-)",
+        re.compile(r"(?<![A-Za-z0-9_-])(?:sk|pk)-(?:lf|proj|ant)-[A-Za-z0-9_-]+"),
+    ),
+    (
         "JWT",
         re.compile(r"(?<![A-Za-z0-9_-])eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+(?![A-Za-z0-9_-])"),
     ),
-    (
-        "clé privée PEM",
-        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+)
+
+# `aws_secret_access_key=...` : traité à part (pas dans `_BLOCKING_PATTERNS`)
+# car le mélange majuscule/minuscule/chiffre de la valeur est vérifié en
+# Python (`_looks_random`), jamais par une classe de caractères imbriquée
+# dans la regex — ça évite tout risque de retour arrière ambigu tout en
+# gardant le motif lui-même simple et borné (16-100 caractères base64).
+_AWS_SECRET_ASSIGNMENT_RE = re.compile(
+    r"(?i:aws_secret_access_key)\s*[:=]\s*[\"']?([A-Za-z0-9+/]{16,100}={0,2})"
+)
+
+
+def _find_aws_secret_access_key_leak(text: str) -> re.Match[str] | None:
+    for match in _AWS_SECRET_ASSIGNMENT_RE.finditer(text):
+        if _looks_random(match.group(1)):
+            return match
+    return None
+
+
+def assert_no_secret(text: str) -> None:
+    """Lève `SecretDetected` si `text` contient une chaîne ressemblant à un
+    secret vivant **à haute confiance** : clé privée PEM, identifiant de clé
+    d'accès AWS, affectation `aws_secret_access_key=`, jeton GitHub, clé
+    Langfuse/OpenAI/Anthropic (`sk-`/`pk-lf-`, `sk-proj-`, `sk-ant-`), ou JWT.
+
+    Volontairement restreinte à des motifs qui ne se produisent
+    essentiellement jamais dans du code ou de la prose ordinaires : c'est le
+    niveau **bloquant**, qui ne doit jamais faire échouer le rendu d'un
+    rapport légitime. Les motifs heuristiques (jeton opaque générique,
+    hexadécimal long, affectation à un mot-clé sensible), plus sujets aux
+    faux positifs, sont couverts par `find_suspects` (non bloquant) — jamais
+    ici. Aucune configuration, aucune `secret_allowlist`, ne peut supprimer
+    une détection de ce niveau.
+
+    Le message d'erreur donne le type de secret détecté et sa position dans
+    `text`, jamais sa valeur.
+    """
+    for label, pattern in _BLOCKING_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            raise SecretDetected(f"{label} détectée à la position {match.start()}")
+
+    aws_secret_match = _find_aws_secret_access_key_leak(text)
+    if aws_secret_match:
+        raise SecretDetected(
+            f"clé secrète AWS (aws_secret_access_key=...) détectée à la position "
+            f"{aws_secret_match.start()}"
+        )
+
+
+# --------------------------------------------------------------------------
+# Niveau 2 — détecteurs heuristiques (suspects, non bloquants)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Suspect:
+    """Un signal heuristique trouvé par `find_suspects` : jamais la valeur en
+    clair, seulement son type, sa position dans le texte, et un aperçu masqué
+    (`ab…(40)…yz`).
+    """
+
+    kind: str
+    start: int
+    end: int
+    preview: str
+
+
+def _make_preview(value: str) -> str:
+    length = len(value)
+    if length <= 6:
+        return f"…({length})…"
+    return f"{value[:2]}…({length})…{value[-2:]}"
+
+
+# Digests connus, de longueur exacte, dans leur contexte précis : jamais des
+# secrets, quelle que soit leur apparence. Contrairement à un préfixe
+# générique non borné (l'ancienne source d'un contournement), la longueur
+# EXACTE empêche qu'un vrai secret plus long se fasse passer pour l'un
+# d'eux.
+_SAFE_DIGEST_PATTERNS: tuple[re.Pattern[str], ...] = (
+    # SHA256:<base64 43 ou 44> (empreinte SSH), sha256-<base64> (rare). Le
+    # verrou `(?![A-Za-z0-9+/=])` final est essentiel : sans lui, un secret
+    # plus long préfixé de "sha256:" ne perdrait que ses 43-44 premiers
+    # caractères (toujours ≥ 40 restants après troncature, donc toujours
+    # détecté) OU, pire, pourrait tomber sous le seuil après troncature —
+    # exactement le contournement que la longueur exacte doit empêcher.
+    re.compile(r"(?i)sha256[:=-][A-Za-z0-9+/]{43,44}=?(?![A-Za-z0-9+/=])"),
+    # sha512-<base64 86 ou 88> (intégrité npm)
+    re.compile(r"(?i)sha512[:=-][A-Za-z0-9+/]{86,88}={0,2}(?![A-Za-z0-9+/=])"),
+    # Terraform : source_code_hash = "<base64 43 ou 44>" (digest sha256 d'un zip Lambda)
+    re.compile(
+        r'(?i)source_code_hash["\']?\s*[:=]\s*["\']?[A-Za-z0-9+/]{43,44}=?(?![A-Za-z0-9+/=])'
     ),
+    # Lambda : "CodeSha256": "<base64 43 ou 44>"
+    re.compile(r'(?i)codesha256["\']?\s*[:=]\s*["\']?[A-Za-z0-9+/]{43,44}=?(?![A-Za-z0-9+/=])'),
 )
-
-# Placeholders usuels de documentation/exemple : une affectation à l'une de ces
-# valeurs (insensible à la casse) n'est jamais un vrai secret.
-_PLACEHOLDER_VALUES = frozenset(
-    {
-        "redacted",
-        "changeme",
-        "change_me",
-        "example",
-        "xxx",
-        "xxxxx",
-        "placeholder",
-        "todo",
-        "fixme",
-        "none",
-        "null",
-        "...",
-        "<redacted>",
-        "<changeme>",
-        "<placeholder>",
-        "<secret>",
-        "<value>",
-    }
-)
-
-# Affectation à un mot-clé sensible (SECRET, TOKEN, PASSWORD, PASS, PWD,
-# API[_-]KEY), quel que soit le nom exact de la variable (`DB_PASSWORD`,
-# `aws_secret_access_key`, `LANGFUSE_SECRET_KEY`...). La valeur exclut `<`
-# (donc un gabarit `<redacted>` ne correspond déjà pas à la classe de
-# caractères) et doit faire au moins 12 caractères pour écarter les valeurs
-# courtes usuelles (`true`, `xxx`, un nom de variable voisin).
-_SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b\w*(?:secret|token|passw(?:or)?d|pass|pwd|api[_-]?key)\w*"
-    r"\s*[:=]\s*[\"']?([^\s\"'<]{12,})"
-)
-
-
-def _is_placeholder_value(value: str) -> bool:
-    return value.strip().strip("'\"").lower() in _PLACEHOLDER_VALUES
-
 
 # Jeton opaque générique : 40+ caractères d'un alphabet base64url/base64, avec
 # padding `=` optionnel en fin. Frontières asymétriques : un jeton peut
@@ -622,46 +706,30 @@ def _is_placeholder_value(value: str) -> bool:
 # `_`/`-`, qui n'a pas de frontière `\b`).
 _LONG_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9+/_-])[A-Za-z0-9+/_-]{40,}={0,2}(?![A-Za-z0-9+/_-])")
 
-# Longueurs hexadécimales jamais suspectes en elles-mêmes (un SHA de commit
-# git fait toujours exactement 40 caractères) ou uniquement en contexte de
-# digest connu (64 = sha256, 128 = sha512).
-_HEX_ALWAYS_SAFE_LENGTH = 40
+# Politique hexadécimale : en dessous de 41 caractères, jamais suspect (un
+# ETag S3/md5, un UUID sans tirets, un RequestId AWS font tous 32 caractères).
+# 64 et 128 (longueurs de digest sha256/sha512) ne sont suspects que hors
+# contexte de digest reconnu. Toute autre longueur (41-63, 65-127, 129+) est
+# toujours suspecte : ce n'est ni un SHA de commit (40, exclu par le seuil
+# lui-même) ni une longueur de digest usuelle.
+_HEX_SUSPECT_MIN_LENGTH = 41
 _HEX_DIGEST_LENGTHS = (64, 128)
-_HEX_RUN_RE = re.compile(r"(?i)(?<![0-9a-f])[0-9a-f]{32,}(?![0-9a-f])")
-_DIGEST_CONTEXT_RE = re.compile(
+_HEX_RUN_RE = re.compile(rf"(?i)(?<![0-9a-f])[0-9a-f]{{{_HEX_SUSPECT_MIN_LENGTH},}}(?![0-9a-f])")
+_DIGEST_CONTEXT_BEHIND_RE = re.compile(
     r"(?i)(?:sha1|sha256|sha512)\s*[:=-]\s*$|@sha256:\s*$|digest\b.{0,10}$|"
     r"codesha256[\"']?\s*[:=]\s*[\"']?$"
 )
+# sha256sum/md5sum : "<hex>  fichier" (deux espaces puis un nom de fichier).
+_DIGEST_CONTEXT_AHEAD_RE = re.compile(r"^ {2}\S")
 _DIGEST_CONTEXT_WINDOW = 40
 
 
-def _has_digest_context(text: str, start: int) -> bool:
-    window = text[max(0, start - _DIGEST_CONTEXT_WINDOW) : start]
-    return bool(_DIGEST_CONTEXT_RE.search(window))
-
-
-def _check_hex_policy(text: str) -> None:
-    """Toute suite hexadécimale de 32+ caractères est suspecte, sauf :
-
-    - exactement 40 caractères (SHA de commit git, toujours accepté) ;
-    - exactement 64 ou 128 caractères **et** précédée d'un contexte de digest
-      reconnu (`sha256:`, `sha512-`, `@sha256:`, le mot « digest », ou un
-      champ `CodeSha256`).
-
-    Un jeton de 32, 48, 96 caractères (ex. `secrets.token_hex(16/24/48)`), ou
-    un hex de 64/128 caractères sans contexte de digest (`SECRET=<64 hex>`),
-    est donc toujours détecté.
-    """
-    for match in _HEX_RUN_RE.finditer(text):
-        run = match.group(0)
-        length = len(run)
-        if length == _HEX_ALWAYS_SAFE_LENGTH:
-            continue
-        if length in _HEX_DIGEST_LENGTHS and _has_digest_context(text, match.start()):
-            continue
-        raise SecretDetected(
-            f"jeton hexadécimal opaque ({length} caractères) détecté à la position {match.start()}"
-        )
+def _has_digest_context(text: str, start: int, end: int) -> bool:
+    behind = text[max(0, start - _DIGEST_CONTEXT_WINDOW) : start]
+    if _DIGEST_CONTEXT_BEHIND_RE.search(behind):
+        return True
+    ahead = text[end : end + _DIGEST_CONTEXT_WINDOW]
+    return bool(_DIGEST_CONTEXT_AHEAD_RE.match(ahead))
 
 
 def _looks_random(token: str) -> bool:
@@ -677,33 +745,6 @@ def _looks_random(token: str) -> bool:
     )
 
 
-def _looks_like_path_or_url(token: str) -> bool:
-    """Un chemin/URL décomposé en 3+ segments courts, dont AUCUN segment
-    individuel ne mélange lui-même majuscule+minuscule+chiffre, n'est pas un
-    jeton opaque — ex. `tools/devlog/redact`, `subagents/agent-a1b2`.
-
-    Volontairement conservateur (voir la discussion en revue de PR) : un vrai
-    secret base64 contenant un ou deux `/` peut répartir ses trois classes de
-    caractères sur plusieurs segments plutôt que les concentrer dans un seul,
-    et échapper à ce test — c'est voulu, la détection d'un vrai secret prime
-    toujours sur l'esthétique d'un rendu de journal. `secret_allowlist` reste
-    le mécanisme sanctionné pour exempter un cas de coïncidence connu et
-    précis (ex. une URL GitHub contenant un nom d'utilisateur mélangé).
-    """
-    segments = token.split("/")
-    if len(segments) < 3 or any(len(segment) >= 40 for segment in segments):
-        return False
-    if any(_looks_random(segment) for segment in segments):
-        return False
-    # Aucun segment n'est individuellement « aléatoire » : signal supplémentaire
-    # qu'il s'agit bien d'un chemin/URL composé de mots ou d'identifiants
-    # distincts, pas d'un secret dont les classes de caractères seraient
-    # réparties sur plusieurs segments (un vrai secret garde une densité de
-    # transitions de casse élevée y compris par segment ; un identifiant de
-    # type nom d'utilisateur ou mot-clé n'en a jamais plus d'une poignée).
-    return all(_case_transition_ratio(segment) <= 0.2 for segment in segments if len(segment) >= 4)
-
-
 def _case_transition_ratio(segment: str) -> float:
     if len(segment) < 2:
         return 0.0
@@ -715,69 +756,141 @@ def _case_transition_ratio(segment: str) -> float:
     return transitions / (len(segment) - 1)
 
 
+def _looks_like_path_or_url(token: str) -> bool:
+    """Un chemin/URL décomposé en 3+ segments courts, dont AUCUN segment
+    individuel ne mélange lui-même majuscule+minuscule+chiffre et n'a une
+    densité de transitions de casse élevée, n'est pas un jeton opaque — ex.
+    `tools/devlog/redact`, `subagents/agent-a1b2`.
+
+    Volontairement conservateur : un vrai secret base64 contenant un ou deux
+    `/` peut répartir ses trois classes de caractères sur plusieurs segments
+    plutôt que les concentrer dans un seul, et échapper à ce test — voulu, la
+    détection d'un vrai secret prime sur l'esthétique d'un rendu de journal.
+    `secret_allowlist` reste le mécanisme pour exempter un cas de coïncidence
+    connu et précis (ex. une URL GitHub avec un nom d'utilisateur mélangé).
+    """
+    segments = token.split("/")
+    if len(segments) < 3 or any(len(segment) >= 40 for segment in segments):
+        return False
+    if any(_looks_random(segment) for segment in segments):
+        return False
+    return all(_case_transition_ratio(segment) <= 0.2 for segment in segments if len(segment) >= 4)
+
+
 def _blank(pattern: re.Pattern[str], text: str) -> str:
     return pattern.sub(lambda m: " " * len(m.group(0)), text)
 
 
-def assert_no_secret(text: str, config: RedactConfig | None = None) -> None:
-    """Lève `SecretDetected` si `text` contient une chaîne ressemblant à un
-    secret vivant (clé d'API, jeton, identifiant de clé d'accès AWS, JWT, clé
-    privée PEM, affectation de mot de passe, jeton hexadécimal opaque...).
+# --- Affectation à un mot-clé sensible ---------------------------------
+#
+# Approche « repérer puis vérifier » (jamais un unique motif monolithique
+# avec un `\w*` en tête, qui redémarre son balayage à chaque caractère d'une
+# longue suite comme "secret_"*20000 et devient quadratique) : on énumère
+# d'abord chaque opérateur d'affectation (`:`/`=`, un caractère, linéaire),
+# puis on regarde en arrière dans une fenêtre BORNÉE si le mot-clé termine
+# immédiatement ce qui précède, et en avant si la valeur est un littéral
+# plausible. Chaque étape est O(1) par opérateur trouvé : l'ensemble reste
+# O(n).
+_ASSIGNMENT_OP_RE = re.compile(r"[:=]")
+# Le mot-clé doit TERMINER l'identifiant (pas de `\w*` final) : "tokens",
+# "passthrough_behavior", "secret_id" ne correspondent donc pas. « pass »
+# seul est exclu (trop de faux positifs : « passe », « passthrough »,
+# « bypass »...).
+_ASSIGNMENT_KEYWORD_RE = re.compile(
+    r"(?i)(?:secret(?:_access)?_key|secret|token|passw(?:or)?d|pwd|api[_-]?key)\s*\Z"
+)
+_ASSIGNMENT_KEYWORD_WINDOW = 40
+# La valeur doit être un littéral : entre guillemets (au moins 16 caractères
+# hors espace), ou nu sans caractère de déréférencement/expression
+# (`(`, `[`, `.`, `$`, `/`, `{`) — ce qui exclut par construction
+# `request.headers[...]`, `get_password_from_vault()`, `${...}`,
+# `settings.SECRET_KEY`, `os.environ.get(...)`, `/etc/...`.
+_ASSIGNMENT_VALUE_RE = re.compile(
+    r"""\s*(?:"([^"\s]{16,})"|'([^'\s]{16,})'|([^\s"'()\[\]{}<>$./,;]{16,}))"""
+)
 
-    Ne déclenche jamais sur un identifiant public connu (SHA de commit,
-    digest `sha256:`/`sha512-`/`CodeSha256` en contexte reconnu, identifiant
-    sans mélange de casse+chiffres, chemin/URL décomposable en segments
-    courts). `config.secret_allowlist` (regex, validées par `load_config`)
-    permet d'exempter explicitement d'autres jetons génériques propres à un
-    dépôt — jamais un détecteur explicite ci-dessus, ni un jeton hexadécimal
-    hors politique : l'allowlist n'est consultée que pour le détecteur
-    générique de jeton opaque, en `fullmatch` sur le jeton candidat.
 
-    Le message d'erreur donne le type de secret détecté et sa position dans
-    `text`, jamais sa valeur.
+def _iter_secret_assignment_values(text: str) -> list[tuple[int, int, str]]:
+    """Renvoie `(start, end, value)` pour chaque affectation à un mot-clé
+    sensible dont la valeur est un littéral opaque plausible (mélange
+    majuscule/minuscule/chiffre) — jamais une référence de code ni un
+    gabarit court.
+    """
+    found: list[tuple[int, int, str]] = []
+    for op_match in _ASSIGNMENT_OP_RE.finditer(text):
+        op_pos = op_match.start()
+        window = text[max(0, op_pos - _ASSIGNMENT_KEYWORD_WINDOW) : op_pos]
+        if not _ASSIGNMENT_KEYWORD_RE.search(window):
+            continue
+        value_match = _ASSIGNMENT_VALUE_RE.match(text, op_pos + 1)
+        if not value_match:
+            continue
+        quoted = value_match.group(1)
+        if quoted is None:
+            quoted = value_match.group(2)
+        value = quoted if quoted is not None else value_match.group(3)
+        if not _looks_random(value):
+            continue
+        found.append((op_pos, value_match.end(), value))
+    return found
+
+
+def find_suspects(text: str, config: RedactConfig | None = None) -> list[Suspect]:
+    """Renvoie les signaux heuristiques (non bloquants) trouvés dans `text` :
+    jeton opaque générique à forte entropie, hexadécimal long hors contexte
+    de digest connu, affectation à un mot-clé sensible.
+
+    Chaque `Suspect` ne porte qu'un type, une position, et un aperçu masqué —
+    jamais la valeur en clair. `config.secret_allowlist` (regex, validées par
+    `load_config`) exempte explicitement un motif propre à un dépôt ; une
+    regex construite hors `load_config` et invalide ou trop permissive est
+    ignorée sans erreur (au pire l'exemption n'a pas lieu). Destiné à un
+    rapport de relecture local, jamais publié tel quel — ces suspects ne
+    font jamais échouer le rendu (voir `assert_no_secret` pour les
+    détecteurs bloquants).
     """
     resolved = config if config is not None else RedactConfig.empty()
-
-    # 1. Détecteurs explicites sur le texte BRUT : rien ne peut les contourner,
-    # ni un préfixe « sûr » (sha1-, sha256:...), ni `secret_allowlist`.
-    for label, pattern in _DANGEROUS_PATTERNS:
-        match = pattern.search(text)
-        if match:
-            raise SecretDetected(f"{label} détectée à la position {match.start()}")
-
-    match = _SECRET_ASSIGNMENT_RE.search(text)
-    if match and not _is_placeholder_value(match.group(1)):
-        raise SecretDetected(
-            f"affectation à un mot-clé sensible (secret/token/password/pass/pwd/api_key) "
-            f"détectée à la position {match.start()}"
-        )
-
-    # 2. Politique hexadécimale (indépendante de l'entropie : un hex pur n'a
-    # jamais de majuscule, donc jamais capté par `_looks_random`).
-    _check_hex_policy(text)
-
-    # 3. Jeton opaque générique. `secret_allowlist` n'agit qu'ici, en
-    # fullmatch sur le jeton candidat — jamais avant les étapes 1 et 2.
-    scratch = _blank(_CODE_SHA256_FIELD_RE, text)
     allow_patterns = [
         compiled
         for raw in resolved.secret_allowlist
         if (compiled := _compile_allowlist_pattern(raw, strict=False)) is not None
     ]
 
+    def _is_allowlisted(value: str) -> bool:
+        return any(pattern.fullmatch(value) for pattern in allow_patterns)
+
+    suspects: list[Suspect] = []
+
+    for match in _HEX_RUN_RE.finditer(text):
+        run = match.group(0)
+        length = len(run)
+        if length in _HEX_DIGEST_LENGTHS and _has_digest_context(text, match.start(), match.end()):
+            continue
+        if _is_allowlisted(run):
+            continue
+        suspects.append(Suspect("hexadecimal", match.start(), match.end(), _make_preview(run)))
+
+    scratch = text
+    for safe_pattern in _SAFE_DIGEST_PATTERNS:
+        scratch = _blank(safe_pattern, scratch)
     pos = 0
     while True:
         match = _LONG_TOKEN_RE.search(scratch, pos)
         if match is None:
-            return
+            break
         token = match.group(0)
         if (
             not _looks_like_path_or_url(token)
             and _looks_random(token)
-            and not any(pattern.fullmatch(token) for pattern in allow_patterns)
+            and not _is_allowlisted(token)
         ):
-            raise SecretDetected(
-                f"jeton opaque non identifié ({len(token)} caractères) "
-                f"détecté à la position {match.start()}"
-            )
+            suspects.append(Suspect("jeton", match.start(), match.end(), _make_preview(token)))
         pos = match.end()
+
+    for start, end, value in _iter_secret_assignment_values(text):
+        if _is_allowlisted(value):
+            continue
+        suspects.append(Suspect("affectation", start, end, _make_preview(value)))
+
+    suspects.sort(key=lambda s: s.start)
+    return suspects
