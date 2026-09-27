@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -205,11 +206,15 @@ def test_verdict_prefers_the_verdict_sentence_over_the_body() -> None:
 
 def test_render_masks_account_ids_and_user_paths() -> None:
     report = f"Déployé sur le compte {FAKE_ACCOUNT_ID} depuis C:\\Users\\alice\\proj\\app.py."
-    result = _render([_record(report=report)])
+    description = f"Implement Task 1 on {FAKE_ACCOUNT_ID}"
+    result = _render([_record(report=report, description=description)])
     journal = result.files["9a.md"]
     assert FAKE_ACCOUNT_ID not in journal
+    assert FAKE_ACCOUNT_ID not in result.files["index.json"]
     assert "alice" not in journal
-    assert "<compte-aws>" in journal
+    # Hors code, `<` est échappé : le masque reste visible au lieu d'être pris pour une balise.
+    assert "&lt;compte-aws>" in journal
+    assert "<compte-aws>" in result.files["index.json"]
     assert "~\\proj\\app.py" in journal
 
 
@@ -405,6 +410,109 @@ def test_suspects_are_reported_without_raw_value() -> None:
     assert token not in json.dumps([s.__dict__ for s in result.suspects])
 
 
+def _opaque_token() -> str:
+    return "Zq8" + "xT2vLm9" * 7
+
+
+def test_suspect_in_description_is_never_copied_raw_into_the_report() -> None:
+    token = _opaque_token()
+    result = _render([_record(description=f"Implement Task 1 {token}", report=f"voir {token}")])
+    assert {s.field for s in result.suspects} == {"description", "rapport"}
+    dumped = json.dumps([s.__dict__ for s in result.suspects], ensure_ascii=False)
+    assert token not in dumped
+    for suspect in result.suspects:
+        assert suspect.description is not None
+        assert suspect.description.startswith("Implement Task 1 ")
+        assert suspect.preview in suspect.description
+
+
+def test_unknown_description_goes_through_the_whole_chain() -> None:
+    token = _opaque_token()
+    started = _dt("2025-01-01T00:00:00")
+    lost = _record(id="lost", description=f"Implement {token} {FAKE_ACCOUNT_ID}", started=started)
+    result = _render([_record(), lost])
+    (unknown,) = result.unknown
+    assert token not in unknown.description
+    assert FAKE_ACCOUNT_ID not in unknown.description
+    assert "<compte-aws>" in unknown.description
+    (suspect,) = [s for s in result.suspects if s.agent == "lost"]
+    assert suspect.plan == "inconnu"
+    assert suspect.preview in unknown.description
+    assert token not in json.dumps(suspect.__dict__, ensure_ascii=False)
+
+
+def test_secret_in_unknown_description_aborts() -> None:
+    fake_key = "AKIA" + "ABCDEFGH" + "IJKLMNOP"
+    lost = _record(id="lost", description=f"Deploy {fake_key}", started=_dt("2025-01-01T00:00:00"))
+    with pytest.raises(SecretDetected) as excinfo:
+        _render([_record(), lost])
+    assert fake_key not in str(excinfo.value)
+
+
+def _details_body(journal: str) -> str:
+    return journal.split("<details><summary>Rapport</summary>", 1)[1].rsplit("</details>", 1)[0]
+
+
+def test_raw_html_in_report_is_neutralized_outside_code() -> None:
+    report = (
+        "Fin prématurée </details>\n\n"
+        "<summary>faux</summary> et <script>alert(1)</script>\n\n"
+        "En ligne : `a < b` et ``x </details> y``.\n\n"
+        "```html\n<details>brut</details>\n```\n\n"
+        "~~~\n<b>tilde</b>\n~~~\n"
+    )
+    journal = _render([_record(report=report)]).files["9a.md"]
+    # Seule la balise du bloc replié reste une vraie ligne `</details>`.
+    assert [line for line in journal.splitlines() if "</details>" in line] == [
+        "En ligne : `a < b` et ``x </details> y``.",
+        "<details>brut</details>",
+        "</details>",
+    ]
+    body = _details_body(journal)
+    assert "Fin prématurée &lt;/details>" in body
+    assert "&lt;summary>faux&lt;/summary> et &lt;script>alert(1)&lt;/script>" in body
+    assert "`a < b`" in body
+    assert "``x </details> y``" in body
+    assert "```html\n<details>brut</details>\n```" in body
+    assert "~~~\n<b>tilde</b>\n~~~" in body
+    index = json.loads(_render([_record(report=report)]).files["index.json"])
+    assert index["plans"][0]["tasks"][0]["events"][0]["description"] == "Implement Task 1: demo"
+
+
+def test_unclosed_fence_keeps_html_inside_it_untouched() -> None:
+    journal = _render([_record(report="avant <i>\n```\n<b>code</b>\n")]).files["9a.md"]
+    body = _details_body(journal)
+    assert "avant &lt;i>" in body
+    assert "```\n<b>code</b>\n```" in body
+
+
+def test_metadata_newlines_cannot_inject_markdown() -> None:
+    record = _record(
+        type="general-purpose\n# faux titre",
+        model="demo\n## Tâche 99\n<details>",
+        description="Implement Task 1\n\n# autre titre <b>",
+    )
+    journal = _render([record]).files["9a.md"]
+    lines = journal.splitlines()
+    assert "# faux titre" not in lines
+    assert "## Tâche 99" not in lines
+    assert "# autre titre &lt;b>" not in lines
+    assert journal.count("<details>") == 1
+    (heading,) = [line for line in lines if line.startswith("#### ")]
+    assert heading.endswith("general-purpose # faux titre · demo ## Tâche 99 &lt;details>")
+    index = json.loads(_render([record]).files["index.json"])
+    event = index["plans"][0]["tasks"][0]["events"][0]
+    assert event["model"] == "demo ## Tâche 99 <details>"
+    assert event["agent_type"] == "general-purpose # faux titre"
+
+
+def test_plan_title_and_goal_are_single_line_and_escaped() -> None:
+    doc = _doc("9a", "2026-03-01T00:00:00", None, title="Titre\n## faux", goal="But <i>\n# x")
+    journal = render([_record()], [doc], COMMIT_MAP, PUBLISHED, CONFIG).files["9a.md"]
+    assert journal.startswith("# Titre ## faux\n")
+    assert "**Objectif :** But &lt;i> # x" in journal
+
+
 def test_index_json_schema() -> None:
     agents = [
         _record(id="a", description="Implement Task 1", report=f"commit {OLD_SHA}"),
@@ -532,6 +640,36 @@ def test_cli_refuses_report_inside_repo(cli_env: dict[str, Path]) -> None:
     assert main(_cli_args(cli_env, report)) != 0
     assert not report.exists()
     assert not (cli_env["repo"] / "docs").exists()
+
+
+def test_cli_refuses_relative_report_path_inside_repo(
+    cli_env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(cli_env["repo"])
+    args = _cli_args(cli_env, Path("sous-dossier") / "render-report.json")
+    args[args.index("--repo") + 1] = "."
+    assert main(args) == 1
+    assert not (cli_env["repo"] / "sous-dossier").exists()
+    assert not (cli_env["repo"] / "docs").exists()
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="casse des chemins ignorée sous Windows")
+def test_cli_refuses_report_path_with_different_case_inside_repo(cli_env: dict[str, Path]) -> None:
+    report = Path(str(cli_env["repo"]).upper()) / "render-report.json"
+    assert main(_cli_args(cli_env, report)) == 1
+    assert not (cli_env["repo"] / "render-report.json").exists()
+
+
+def test_cli_refuses_report_path_through_symlink_into_repo(
+    cli_env: dict[str, Path], tmp_path: Path
+) -> None:
+    link = tmp_path / "lien-vers-depot"
+    try:
+        link.symlink_to(cli_env["repo"], target_is_directory=True)
+    except OSError:
+        pytest.skip("création de lien symbolique impossible sur ce poste")
+    assert main(_cli_args(cli_env, link / "render-report.json")) == 1
+    assert not (cli_env["repo"] / "render-report.json").exists()
 
 
 def test_cli_secret_exits_2_without_echo_or_files(

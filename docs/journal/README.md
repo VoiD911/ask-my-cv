@@ -36,8 +36,11 @@ python -m tools.devlog render \
 - Le rapport local (`--report`, par défaut
   `~/.claude/devlog-private/render-report.json`, refusé s'il se trouve dans le
   dépôt) liste les agents non rattachés à un plan (identifiant, description,
-  date) et les suspects (type, aperçu opaque, champ, plan, tâche, agent) —
-  jamais la valeur suspecte en clair.
+  date) et les suspects (type, aperçu opaque, champ, plan, tâche, agent,
+  description de l'agent) — jamais la valeur suspecte en clair : les
+  descriptions qui y figurent passent par la même chaîne que le texte publié
+  (un secret y interrompt aussi le rendu), puis chaque suspect y est remplacé
+  par son aperçu opaque.
 - `--assignments` : objet JSON `{"<identifiant d'agent>": "<plan>" | null}`
   qui prime sur le rattachement automatique, pour résoudre localement les
   agents « inconnu ». `null` écarte délibérément un agent (ni publié, ni
@@ -61,15 +64,24 @@ Un fichier par plan ayant au moins un agent rattaché :
   `Corrections`, `Autres` ;
 - pour chaque agent : date de début (UTC, `AAAA-MM-JJ HH:MM`), type d'agent,
   modèle, description, verdict (revues), commits publiés cités par le rapport
-  (SHA complets ou courts non ambigus, liens vers GitHub), liens de PR/issue le cas échéant, et le rapport masqué
-  dans un bloc `<details>` replié. Les agents sont triés par date de début,
-  puis par identifiant.
+  (SHA complets ou courts non ambigus, liens vers GitHub), liens de PR/issue
+  le cas échéant, et le rapport masqué dans un bloc `<details>` replié. Les
+  agents sont triés par date de début, puis par identifiant.
+- Le HTML brut est neutralisé : hors blocs de code clôturés et portions de
+  code en ligne, `<` devient `&lt;` (un `</details>` ou un `<script>` dans un
+  rapport reste du texte) ; un bloc de code resté ouvert est refermé. Titre,
+  objectif, type d'agent, modèle et description tiennent sur une seule ligne
+  (sauts de ligne remplacés par des espaces).
 
 ## `index.json`
 
 Données structurées du journal, pour un rendu ou une analyse tiers. Le
 fichier est déterministe (aucun horodatage de génération) : deux rendus des
 mêmes données produisent le même octet pour octet.
+
+Contrat d'affichage : les chaînes d'`index.json` sont du texte brut, non
+échappé ; le site les affiche comme texte React, jamais comme HTML (aucun
+`dangerouslySetInnerHTML`, aucun rendu Markdown sans échappement).
 
 ```json
 {

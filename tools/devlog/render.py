@@ -17,6 +17,16 @@ objectif, type d'agent, modèle) :
 4. `find_suspects` — non bloquant, consigné dans un rapport **local** (type,
    aperçu opaque, plan, tâche, agent) qui n'est jamais publié.
 
+Le rapport local ne contient jamais la valeur d'un suspect : les descriptions
+qui y figurent (contexte d'un suspect, agents non rattachés) passent par la
+même chaîne (un secret interrompt aussi le rendu), puis chaque suspect y est
+remplacé par son aperçu opaque.
+
+Dans le Markdown publié, le HTML brut est neutralisé hors code (`<` → `&lt;`)
+et les champs courts tiennent sur une ligne : un rapport ne peut ni refermer
+le bloc `<details>` ni injecter de balise ou de titre. `index.json` garde le
+texte brut (le site l'affiche comme texte, jamais comme HTML).
+
 Les consignes des agents (`AgentRecord.prompt`) ne sont **jamais** publiées :
 ce sont des instructions du contrôleur, utilisées uniquement pour classer
 l'agent (rôle, plan, tâche). Les identifiants d'agent ne sont pas publiés non
@@ -47,6 +57,7 @@ from tools.devlog.extract import (
 from tools.devlog.redact import (
     RedactConfig,
     SecretDetected,
+    Suspect,
     assert_no_secret,
     find_suspects,
     redact,
@@ -323,7 +334,10 @@ _SECTIONS: tuple[tuple[Role, str], ...] = (
     ("other", "Autres"),
 )
 _REF_RE = re.compile(r"\b(?P<kind>PR|issue)\s*#(?P<num>\d+)\b", re.IGNORECASE)
-_FENCE = re.compile(r"^\s*(```|~~~)", re.MULTILINE)
+# Ouverture de bloc de code clôturé (CommonMark : 0 à 3 espaces, 3+ ``` ou ~~~).
+_FENCE_OPEN = re.compile(r"^ {0,3}(?P<fence>`{3,}|~{3,})")
+# Portion de code en ligne : suite de N accents graves, puis la même suite.
+_CODE_SPAN = re.compile(r"(?<!`)(?P<ticks>`+)(?!`).*?(?<!`)(?P=ticks)(?!`)")
 
 
 class _Publisher:
@@ -338,15 +352,8 @@ class _Publisher:
         self.config = config
         self.suspects: list[SuspectEntry] = []
 
-    def text(
-        self,
-        value: str,
-        *,
-        field_name: str,
-        plan: str,
-        record: AgentRecord | None = None,
-        task: str | None = None,
-    ) -> str:
+    def _masked(self, value: str, *, field_name: str, plan: str, record: AgentRecord | None) -> str:
+        """`translate_shas` → `redact` → `assert_no_secret` (message sans la valeur)."""
         translated = translate_shas(value, self.commit_map, self.published)
         masked = redact(translated, self.config)
         try:
@@ -356,7 +363,40 @@ class _Publisher:
             if record is not None:
                 where += f", agent {record.id}"
             raise SecretDetected(f"{exc} ({where})") from None
-        for suspect in find_suspects(masked, self.config):
+        return masked
+
+    def _opaque(self, masked: str) -> tuple[str, list[Suspect]]:
+        """Remplace chaque suspect de `masked` par son aperçu opaque."""
+        suspects = find_suspects(masked, self.config)
+        parts: list[str] = []
+        last = 0
+        for suspect in sorted(suspects, key=lambda s: (s.start, -s.end)):
+            if suspect.start < last:
+                continue  # chevauchement : déjà couvert par un aperçu
+            parts += [masked[last : suspect.start], suspect.preview]
+            last = suspect.end
+        parts.append(masked[last:])
+        return "".join(parts), suspects
+
+    def _context(self, record: AgentRecord, plan: str) -> str:
+        """Description de l'agent pour le rapport local : chaîne complète, puis
+        chaque suspect remplacé par son aperçu — jamais la valeur en clair."""
+        masked = self._masked(
+            record.description, field_name="description", plan=plan, record=record
+        )
+        return self._opaque(masked)[0]
+
+    def _report(
+        self,
+        suspects: Iterable[Suspect],
+        *,
+        field_name: str,
+        plan: str,
+        task: str | None,
+        record: AgentRecord | None,
+        context: str | None,
+    ) -> None:
+        for suspect in suspects:
             self.suspects.append(
                 SuspectEntry(
                     kind=suspect.kind,
@@ -365,12 +405,51 @@ class _Publisher:
                     plan=plan,
                     task=task,
                     agent=record.id if record is not None else None,
-                    description=(
-                        redact(record.description, self.config) if record is not None else None
-                    ),
+                    description=context,
                 )
             )
+
+    def text(
+        self,
+        value: str,
+        *,
+        field_name: str,
+        plan: str,
+        record: AgentRecord | None = None,
+        task: str | None = None,
+    ) -> str:
+        """Texte publié : chaîne complète ; les suspects vont au rapport local."""
+        masked = self._masked(value, field_name=field_name, plan=plan, record=record)
+        suspects = find_suspects(masked, self.config)
+        if suspects:
+            context = self._context(record, plan) if record is not None else None
+            self._report(
+                suspects,
+                field_name=field_name,
+                plan=plan,
+                task=task,
+                record=record,
+                context=context,
+            )
         return masked
+
+    def private_description(self, record: AgentRecord) -> str:
+        """Description d'un agent non publié (rapport local seulement) : même
+        chaîne que le texte publié (un secret interrompt tout), suspects
+        remplacés par leur aperçu et signalés."""
+        masked = self._masked(
+            record.description, field_name="description", plan=UNKNOWN, record=record
+        )
+        opaque, suspects = self._opaque(masked)
+        self._report(
+            suspects,
+            field_name="description",
+            plan=UNKNOWN,
+            task=None,
+            record=record,
+            context=opaque,
+        )
+        return opaque
 
 
 def _dedupe(items: Iterable[str]) -> tuple[str, ...]:
@@ -398,17 +477,59 @@ def _one_line(text: str) -> str:
     return " ".join(text.split())
 
 
-def _close_fences(text: str) -> str:
-    """Referme un bloc de code resté ouvert, pour ne pas avaler la suite."""
-    body = text.rstrip()
-    if len(_FENCE.findall(body)) % 2:
-        body += "\n```"
-    return body
+def _escape_inline(line: str) -> str:
+    """Échappe `<` en `&lt;` hors des portions de code en ligne : aucune balise
+    HTML brute (`</details>`, `<summary>`, `<script>`…) ne sort du texte."""
+    parts: list[str] = []
+    last = 0
+    for match in _CODE_SPAN.finditer(line):
+        parts += [line[last : match.start()].replace("<", "&lt;"), match.group(0)]
+        last = match.end()
+    parts.append(line[last:].replace("<", "&lt;"))
+    return "".join(parts)
+
+
+def _is_closing_fence(line: str, fence: str) -> bool:
+    stripped = line.strip()
+    indent = len(line) - len(line.lstrip(" "))
+    return indent <= 3 and len(stripped) >= len(fence) and stripped == fence[0] * len(stripped)
+
+
+def _safe_markdown(text: str) -> str:
+    """Rapport prêt à insérer dans le bloc `<details>` : HTML brut neutralisé
+    hors code (`_escape_inline`), blocs de code clôturés laissés intacts, et
+    bloc resté ouvert refermé pour ne pas avaler la suite du journal."""
+    lines: list[str] = []
+    fence: str | None = None
+    for line in text.rstrip().split("\n"):
+        if fence is None:
+            opening = _FENCE_OPEN.match(line)
+            if opening is not None:
+                fence = opening.group("fence")
+                lines.append(line)
+            else:
+                lines.append(_escape_inline(line))
+            continue
+        lines.append(line)
+        if _is_closing_fence(line, fence):
+            fence = None
+    if fence is not None:
+        lines.append(fence)
+    return "\n".join(lines)
+
+
+def _inline(text: str) -> str:
+    """Champ court publié sur une seule ligne Markdown : sauts de ligne
+    supprimés (aucune ligne injectée) et HTML brut neutralisé."""
+    return _escape_inline(_one_line(text))
 
 
 def _event_markdown(event: _Event) -> list[str]:
-    head = f"#### {_fmt_date(event.record.started)} · {event.agent_type} · {event.model}"
-    lines = [head, "", f"- Description : {_one_line(event.description) or '—'}"]
+    head = (
+        f"#### {_fmt_date(event.record.started)} · {_inline(event.agent_type)}"
+        f" · {_inline(event.model)}"
+    )
+    lines = [head, "", f"- Description : {_inline(event.description) or '—'}"]
     if event.verdict is not None:
         lines.append(f"- Verdict : {event.verdict}")
     if event.commits:
@@ -421,15 +542,15 @@ def _event_markdown(event: _Event) -> list[str]:
         )
         lines.append(f"- Liens : {refs}")
     lines += ["", "<details><summary>Rapport</summary>", ""]
-    lines.append(_close_fences(event.report) or "_(rapport vide)_")
+    lines.append(_safe_markdown(event.report) or "_(rapport vide)_")
     lines += ["", "</details>", ""]
     return lines
 
 
 def _plan_markdown(doc: PlanDoc, title: str, goal: str, tasks: list[tuple[str, list[_Event]]]):
-    lines = [f"# {title}", ""]
+    lines = [f"# {_inline(title)}", ""]
     if goal:
-        lines += [f"**Objectif :** {goal}", ""]
+        lines += [f"**Objectif :** {_inline(goal)}", ""]
     lines += [f"Plan : [{doc.filename}](../plans/{doc.filename})", ""]
     for label, events in tasks:
         lines += [f"## {label}", ""]
@@ -503,7 +624,7 @@ def render(
             unknown.append(
                 UnknownAgent(
                     agent=record.id,
-                    description=redact(record.description, config),
+                    description=publisher.private_description(record),
                     date=_fmt_date(record.started),
                 )
             )
@@ -527,8 +648,8 @@ def render(
                 record=record,
                 role=kind,
                 task=task,
-                agent_type=agent_type,
-                model=model,
+                agent_type=_one_line(agent_type),
+                model=_one_line(model),
                 description=description,
                 report=report,
                 verdict=verdict(record.report) if kind == "review" else None,
@@ -544,8 +665,8 @@ def render(
         events = by_plan.get(plan_id)
         if not events:
             continue
-        title = publisher.text(doc.title, field_name="titre", plan=plan_id)
-        goal = publisher.text(doc.goal, field_name="objectif", plan=plan_id)
+        title = _one_line(publisher.text(doc.title, field_name="titre", plan=plan_id))
+        goal = _one_line(publisher.text(doc.goal, field_name="objectif", plan=plan_id))
         grouped: dict[str, list[_Event]] = {}
         for event in events:
             grouped.setdefault(event.task, []).append(event)
