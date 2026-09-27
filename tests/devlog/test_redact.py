@@ -847,7 +847,7 @@ def test_assert_no_secret_one_megabyte_camel_words_is_fast() -> None:
 
 
 def test_assert_no_secret_one_megabyte_of_commit_shas_is_fast() -> None:
-    text = "".join(hashlib.sha1(str(i).encode()).hexdigest() + " " for i in range(24000))
+    text = "".join(hashlib.sha256(str(i).encode()).hexdigest()[:40] + " " for i in range(24000))
 
     start = time.perf_counter()
     assert_no_secret(text)
@@ -915,7 +915,7 @@ def test_find_suspects_preview_never_contains_any_substring_of_the_value() -> No
 def test_find_suspects_allows_short_hex_identifiers() -> None:
     # ETag S3/md5 (32 hex), uuid4().hex (32 hex), RequestId AWS (32 hex) :
     # en dessous du seuil de 41 caractères, jamais suspect.
-    assert find_suspects('ETag: "' + hashlib.md5(b"x").hexdigest() + '"') == []  # noqa: S324
+    assert find_suspects('ETag: "' + hashlib.sha256(b"x").hexdigest()[:32] + '"') == []
     assert find_suspects(uuid.uuid4().hex) == []
     assert find_suspects("RequestId: " + uuid.uuid4().hex) == []
 
@@ -965,8 +965,8 @@ def test_find_suspects_allows_docker_and_pip_hash_context() -> None:
 def test_find_suspects_allows_commit_sha_and_joined_shas() -> None:
     assert find_suspects("a" * 40) == []
     assert find_suspects("A" * 40) == []
-    left = hashlib.sha1(b"a").hexdigest()
-    right = hashlib.sha1(b"b").hexdigest()
+    left = hashlib.sha256(b"a").hexdigest()[:40]
+    right = hashlib.sha256(b"b").hexdigest()[:40]
     assert find_suspects(f"{left}..{right}") == []
     assert find_suspects(f"{left}_{right}") == []
 
@@ -1254,7 +1254,7 @@ _PROPERTY_CORPUS = [
     "jane.doe@personal-mail.example.net a écrit ceci",
     "job@work.example.org (adresse publique)",
     "fixture@example.com et attacker@evil.com (fixtures de test)",
-    f"{hashlib.sha1(b'x').hexdigest()} est un commit valide",
+    f"{hashlib.sha256(b'x').hexdigest()[:40]} est un commit valide",
     f"sha256:{hashlib.sha256(b'x').hexdigest()} est un digest valide",
     "AskMyCvApiGatewayLambdaIntegrationPermissionForCloudFront",
     r"D:\SOME-PROJECT-ROOT\ecc\redact.py",
