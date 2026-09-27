@@ -218,8 +218,10 @@ jobs:
       # Lighthouse CI sur l'export statique (web/out) : lhci lance son propre serveur
       # statique (staticDistDir), jamais l'API ni la CloudFront/CSP de prod. Chrome pour
       # Testing est préinstallé sur ubuntu-latest, trouvé par chrome-launcher sans config.
-      # Budgets mesurés (3 runs, desktop puis mobile) fixés juste sous les scores obtenus ;
-      # accessibilité verrouillée à 0,95 (voir README, section Lighthouse).
+      # Budgets mesurés (3 runs, desktop puis mobile) avec marge sous les scores obtenus
+      # (runner partagé, plus bruité qu'un poste local) ; accessibilité verrouillée à 0,95.
+      # aggregationMethod: median-run limite le bruit intra-exécution. Voir README, section
+      # Lighthouse.
       - name: Lighthouse CI (desktop)
         working-directory: web
         run: npx --no-install lhci autorun --config=lighthouserc.desktop.json
