@@ -1,15 +1,21 @@
 // Serveur de test : sert l'export statique (web/out) et relaie /api/* vers l'API locale
 // en retirant le préfixe /api, comme le comportement CloudFront `/api/*` (fonction strip-api).
-// Aucune dépendance : node:http seulement. Réservé aux tests e2e et à la vérification visuelle.
-import { createReadStream } from "node:fs";
+// Sert aussi l'en-tête CSP de production (valeur par défaut de `site_csp`, lue dans
+// infra/prod/variables.tf) : le navigateur applique l'intersection avec la CSP meta insérée
+// au build par scripts/csp.mjs, comme en production.
+// Aucune dépendance : node: seulement. Réservé aux tests e2e et à la vérification visuelle.
+import { createReadStream, readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { readSiteCsp } from "../scripts/csp.mjs";
+
 const ROOT = path.resolve(fileURLToPath(new URL("../out", import.meta.url)));
 const PORT = Number(process.env.E2E_PORT ?? 4173);
 const API = new URL(process.env.E2E_API ?? "http://127.0.0.1:8000");
+const SITE_CSP = readSiteCsp(readFileSync(new URL("../../infra/prod/variables.tf", import.meta.url), "utf8"));
 
 const TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -72,12 +78,15 @@ const server = http.createServer(async (req, res) => {
   const file = await resolveFile(url);
   if (!file) {
     const notFound = await resolveFile("/404.html");
-    res.writeHead(404, { "content-type": TYPES[".html"] });
+    res.writeHead(404, { "content-type": TYPES[".html"], "content-security-policy": SITE_CSP });
     if (notFound) createReadStream(notFound).pipe(res);
     else res.end("introuvable");
     return;
   }
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] ?? "application/octet-stream" });
+  res.writeHead(200, {
+    "content-type": TYPES[path.extname(file)] ?? "application/octet-stream",
+    "content-security-policy": SITE_CSP,
+  });
   if (req.method === "HEAD") res.end();
   else createReadStream(file).pipe(res);
 });

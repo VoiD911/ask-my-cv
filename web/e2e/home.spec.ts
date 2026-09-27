@@ -1,7 +1,10 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import type { Page, TestInfo } from "@playwright/test";
+
+import { expect, test } from "./csp-fixture";
 
 // Parcours de la page d'accueil contre l'API locale (faux LLM, classifieur ONNX promu).
+// La fixture CSP fait échouer tout parcours qui déclenche une violation CSP.
 
 const STAGES = [
   "reception",
