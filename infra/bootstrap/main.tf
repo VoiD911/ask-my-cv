@@ -231,7 +231,8 @@ resource "aws_iam_role_policy" "deploy" {
 }
 
 # --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
-# Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
+# Confiance distincte : environnement `nightly` (après la transition, le rôle de déploiement
+# n'acceptera que `production` ; l'ancien sujet `ref:refs/heads/main` est retiré à la tâche 5).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
   assume_role_policy   = data.aws_iam_policy_document.github_trust["nightly"].json
