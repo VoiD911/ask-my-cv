@@ -198,25 +198,41 @@ Le job `test` construit aussi l'image, vérifie que chaque module d'exécution s
 2. SBOM CycloneDX de l'image poussée, lu directement dans ECR par syft.
 3. Signature `cosign sign` et attestation du SBOM `cosign attest --type cyclonedx`, **sans clé** : le certificat Sigstore est émis pour l'identité OIDC du workflow GitHub et l'opération est inscrite au journal de transparence Rekor. cosign 3 range signature et attestation en *bundles* Sigstore, attachés à l'image comme référents OCI. Rekor est public : même si le dépôt est privé, le nom du dépôt, le chemin du workflow, le commit et le digest de l'image y sont visibles.
 4. `cosign verify` et `cosign verify-attestation` exigent l'identité exacte `…/.github/workflows/ci.yml@refs/heads/main` : une image signée par un autre workflow ou une autre branche est refusée. Lambda ne sait pas vérifier la signature d'une image conteneur : la vérification se fait donc en CI, juste avant le déploiement, sur le digest qui sera déployé.
-5. `update-function-code` avec `ecr/…@sha256:<digest>`, après avoir noté le digest en service.
-6. Test de fumée de production (`infra/scripts/smoke_prod.py`). S'il échoue, le digest précédent est remis en service automatiquement, puis `/api/healthz` est contrôlé ; le job reste en échec, et un retour arrière raté est signalé comme tel.
+5. Miroir public : `crane copy` de l'image ECR vers `ghcr.io/void911/ask-my-cv:<sha>` (octets du manifeste copiés tels quels, y compris au rejeu d'un déploiement), puis contrôle que le digest GHCR est celui d'ECR. L'image GHCR est signée par `cosign sign` et reçoit deux attestations GitHub poussées aussi dans le registre : provenance SLSA et SBOM CycloneDX (`actions/attest`). Signature et attestations sont vérifiées avant le déploiement et liées au commit déployé (`--certificate-github-workflow-sha`, `--source-digest`).
+   Rejeu d'un déploiement (tag ECR déjà présent) : rien n'est reconstruit, et l'image n'est acceptée que si elle porte déjà une signature de `ci.yml@main` émise pour ce commit ; sinon le job échoue (origine inconnue). Signatures et attestations ne sont émises que si aucune valide n'existe encore pour ce digest : pas de doublons. Contrepartie : une exécution interrompue entre le push ECR et la signature ne se rattrape pas par un rejeu (tag ECR immuable) ; il faut pousser un nouveau commit.
+6. `update-function-code` avec `ecr/…@sha256:<digest>`, après avoir noté le digest en service.
+7. Test de fumée de production (`infra/scripts/smoke_prod.py`). S'il échoue, le digest précédent est remis en service automatiquement, puis `/api/healthz` est contrôlé ; le job reste en échec, et un retour arrière raté est signalé comme tel.
 
-Vérifier soi-même une image (accès ECR requis tant que l'image est privée) :
+#### Vérifier l'image
+
+L'image construite pour chaque commit de `main` est publiée à l'identique (même digest) sur `ghcr.io/void911/ask-my-cv`, paquet public, vérifiable sans compte AWS. Elle y est publiée, signée et attestée avant le test de fumée de production : elle reste donc publiée même si un retour arrière suit, et une image présente sur GHCR n'est pas forcément celle en service. Le digest d'un commit s'obtient avec `docker buildx imagetools inspect ghcr.io/void911/ask-my-cv:<sha du commit>` (ligne `Digest:`).
+
+Signature Sigstore (émise par le workflow `ci.yml` de `main`, et lui seul, pour ce commit) :
 
 ```bash
-cosign verify <compte>.dkr.ecr.ca-central-1.amazonaws.com/ask-my-cv@sha256:<digest> \
+cosign verify ghcr.io/void911/ask-my-cv@sha256:<digest> \
   --certificate-identity https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-github-workflow-sha <sha du commit>
 ```
 
-Même chose pour le SBOM avec `cosign verify-attestation --type cyclonedx` (mêmes options).
+Provenance SLSA (et SBOM CycloneDX avec `--predicate-type https://cyclonedx.org/bom`). `gh attestation verify` interroge l'API GitHub : il faut être authentifié (`gh auth login` ou `GH_TOKEN`), même pour un dépôt public. Un compte GitHub suffit, pas besoin de compte AWS.
+
+```bash
+gh attestation verify oci://ghcr.io/void911/ask-my-cv@sha256:<digest> -R VoiD911/ask-my-cv \
+  --signer-workflow VoiD911/ask-my-cv/.github/workflows/ci.yml \
+  --source-ref refs/heads/main
+```
+
+Les modèles du classifieur publiés par `train.yml` portent eux aussi une provenance SLSA depuis que le dépôt est public (aucune provenance rétroactive pour les versions antérieures) : `gh attestation verify model.onnx -R VoiD911/ask-my-cv`.
+
+Le Lambda Web Adapter est tiré de `ghcr.io/void911/aws-lambda-adapter`, copie à l'identique (même digest, épinglé dans le `Dockerfile`) de `public.ecr.aws/awsguru/aws-lambda-adapter:1.1.0` faite par `mirror.yml` : les tirages anonymes depuis `public.ecr.aws` échouaient par intermittence sur les exécuteurs GitHub.
 
 **Décisions** (écarts assumés par rapport à la spec) :
 
 - **Pas de canary CodeDeploy à 10 %** : pour un trafic de démo, test de fumée de production + retour arrière automatique donnent la même garantie sans alias, CodeDeploy ni alarmes. À revoir si le trafic devient réel.
 - **`terraform apply` reste manuel** : les environnements GitHub avec approbation ne sont pas garantis sur un dépôt privé du plan gratuit, et un rôle CI capable d'`apply` aurait des droits d'administrateur. `terraform plan` en commentaire de PR est reporté : il faudrait un rôle de lecture incapable de lire les secrets SSM.
-- **Provenance SLSA (`attest-build-provenance`) reportée** : les attestations GitHub exigent un dépôt public (ou GitHub Enterprise). La signature cosign et l'attestation SBOM, elles, fonctionnent sur un dépôt privé.
-- **Vérification publique par copier-coller** impossible tant que l'image est dans un ECR privé : à traiter avec la publication (miroir public).
+- **Miroir GHCR plutôt qu'ECR public authentifié** pour le Lambda Web Adapter : pas de droits IAM supplémentaires (`ecr-public:GetAuthorizationToken`, `sts:GetServiceBearerToken`) pour le rôle de déploiement, et le digest épinglé garantit les mêmes octets.
 
 ### Site
 

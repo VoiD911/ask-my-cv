@@ -235,9 +235,17 @@ jobs:
       url: https://job.stevelang.net
     permissions:
       contents: read
-      id-token: write
+      id-token: write      # Sigstore keyless, OIDC AWS
+      packages: write      # miroir ghcr.io/void911/ask-my-cv
+      attestations: write  # provenance SLSA et SBOM (attestations GitHub)
     env:
       AWS_REGION: ca-central-1
+      GHCR_IMAGE: ghcr.io/void911/ask-my-cv
+      # Identité Sigstore exigée partout : ce workflow, sur main. Chaque vérification cosign
+      # y ajoute --certificate-github-workflow-sha "$GITHUB_SHA" (lien au commit déployé).
+      SIGNER_ID: https://github.com/${{ github.repository }}/.github/workflows/ci.yml@refs/heads/main
+      OIDC_ISSUER: https://token.actions.githubusercontent.com
+      CRANE: gcr.io/go-containerregistry/crane:v0.22.1@sha256:1f968817b95790bed063f71175aa6b8ff879fa17064020415f3e18bb6e6a36e1
       ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
       FUNCTION_NAME: ask-my-cv-api
       SITE_BUCKET: ${{ vars.SITE_BUCKET }}
@@ -266,6 +274,12 @@ jobs:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ca-central-1
       - uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      # Identifiants GHCR pour cosign et les actions d'attestation (push-to-registry).
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
       - name: Construire et pousser l'image
         run: |
           IMAGE="$ECR_REPOSITORY_URL:$GITHUB_SHA"
@@ -273,7 +287,9 @@ jobs:
           # pas échouer sur un push en doublon.
           if aws ecr describe-images --repository-name ask-my-cv --image-ids imageTag="$GITHUB_SHA" >/dev/null 2>&1; then
             echo "image déjà présente"
+            REPLAY=1
           else
+            REPLAY=0
             docker build --platform linux/amd64 --provenance=false --sbom=false -t "$IMAGE" .
             docker push "$IMAGE"
           fi
@@ -283,6 +299,54 @@ jobs:
             --query 'imageDetails[0].imageDigest' --output text)
           if [[ "$DIGEST" != sha256:* ]]; then echo "::error::digest introuvable : $DIGEST"; exit 1; fi
           echo "IMAGE_REF=$ECR_REPOSITORY_URL@$DIGEST" >> "$GITHUB_ENV"
+          echo "IMAGE_DIGEST=$DIGEST" >> "$GITHUB_ENV"
+          # Rejeu : l'image n'a pas été construite par cette exécution. On ne la signe ni ne
+          # l'atteste à l'aveugle : elle doit déjà porter une signature de ci.yml@main émise
+          # pour ce commit. Contrepartie assumée : une exécution morte entre le push ECR et la
+          # signature ne se rattrape pas par un rejeu (tag ECR immuable) ; il faut un nouveau
+          # commit.
+          if [ "$REPLAY" = 1 ] && ! cosign verify "$ECR_REPOSITORY_URL@$DIGEST" \
+              --certificate-identity "$SIGNER_ID" --certificate-oidc-issuer "$OIDC_ISSUER" \
+              --certificate-github-workflow-sha "$GITHUB_SHA" >/dev/null; then
+            echo "::error::image ECR $GITHUB_SHA préexistante sans signature de ci.yml@main pour ce commit : origine inconnue, rien n'est signé ni déployé. Pousser un nouveau commit."
+            exit 1
+          fi
+      - name: Miroir public sur GHCR (même digest)
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # crane copie de registre à registre les octets exacts du manifeste : le digest GHCR
+          # est celui d'ECR, que l'image vienne d'être construite ou non (rejeu). Pas de
+          # docker tag/push : docker recompresserait les couches, sans garantie de digest.
+          # Identifiants dans un DOCKER_CONFIG jetable, jamais affichés.
+          CFG="$RUNNER_TEMP/crane"
+          mkdir -m 700 "$CFG"
+          trap 'rm -rf "$CFG"' EXIT
+          crane() {
+            docker run --rm -i --user "$(id -u):$(id -g)" -e DOCKER_CONFIG=/cfg -v "$CFG:/cfg" "$CRANE" "$@"
+          }
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | crane auth login "${ECR_REPOSITORY_URL%%/*}" -u AWS --password-stdin
+          printf '%s' "$GHCR_TOKEN" | crane auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          TARGET="$GHCR_IMAGE:$GITHUB_SHA"
+          # Toute erreur de lecture (tag absent, mais aussi réseau ou 401) mène à la copie :
+          # sans danger, la copie depuis ECR par digest est idempotente et le digest obtenu est
+          # contrôlé ci-dessous.
+          if GOT=$(crane digest "$TARGET" 2>/dev/null); then
+            echo "image déjà présente sur GHCR"
+          else
+            for attempt in 1 2 3 4 5; do
+              if crane copy "$IMAGE_REF" "$TARGET" && GOT=$(crane digest "$TARGET"); then break; fi
+              if [ "$attempt" = 5 ]; then echo "::error::copie vers GHCR impossible après 5 essais"; exit 1; fi
+              echo "::warning::essai $attempt en échec"
+              sleep $((attempt * 15))
+            done
+          fi
+          if [ "$GOT" != "$IMAGE_DIGEST" ]; then
+            echo "::error::digest GHCR $GOT différent du digest ECR $IMAGE_DIGEST"
+            exit 1
+          fi
+          echo "GHCR_REF=$GHCR_IMAGE@$IMAGE_DIGEST" >> "$GITHUB_ENV"
       - name: SBOM de l'image poussée
         run: |
           # syft lit l'image dans ECR (mode registry:), donc le SBOM décrit exactement le digest
@@ -300,19 +364,63 @@ jobs:
             "registry:$IMAGE_REF" -o cyclonedx-json=/out/sbom.cdx.json
           test -s sbom.cdx.json
       - name: Signer l'image et attester le SBOM (Sigstore keyless)
+        id: sign
         # cosign 3 : bundles Sigstore poussés comme référents OCI (valeurs par défaut) ;
-        # identifiants ECR lus dans ~/.docker/config.json (amazon-ecr-login).
+        # identifiants ECR et GHCR lus dans ~/.docker/config.json (amazon-ecr-login,
+        # docker/login-action). Chaque signature ou attestation n'est émise que si aucune
+        # valide n'existe déjà pour ce digest et ce commit : pas de doublons au rejeu.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cosign sign --yes "$IMAGE_REF"
-          cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE_REF"
+          STRICT=(--certificate-identity "$SIGNER_ID" --certificate-oidc-issuer "$OIDC_ISSUER"
+            --certificate-github-workflow-sha "$GITHUB_SHA")
+          cosign verify "$IMAGE_REF" "${STRICT[@]}" >/dev/null 2>&1 \
+            || cosign sign --yes "$IMAGE_REF"
+          cosign verify-attestation "$IMAGE_REF" --type cyclonedx "${STRICT[@]}" >/dev/null 2>&1 \
+            || cosign attest --yes --type cyclonedx --predicate sbom.cdx.json "$IMAGE_REF"
+          cosign verify "$GHCR_REF" "${STRICT[@]}" >/dev/null 2>&1 \
+            || cosign sign --yes "$GHCR_REF"
+          GH_STRICT=(-R "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml"
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA")
+          if gh attestation verify "oci://$GHCR_REF" "${GH_STRICT[@]}" >/dev/null 2>&1; then
+            echo "provenance=present" >> "$GITHUB_OUTPUT"
+          fi
+          if gh attestation verify "oci://$GHCR_REF" "${GH_STRICT[@]}" \
+              --predicate-type https://cyclonedx.org/bom >/dev/null 2>&1; then
+            echo "sbom=present" >> "$GITHUB_OUTPUT"
+          fi
+      # Attestations GitHub (dépôt public) sur l'image GHCR, poussées aussi dans le registre :
+      # vérifiables par tous avec `gh attestation verify`.
+      - name: Provenance SLSA (GHCR)
+        if: steps.sign.outputs.provenance != 'present'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ env.IMAGE_DIGEST }}
+          push-to-registry: true
+      - name: Attestation du SBOM (GHCR)
+        if: steps.sign.outputs.sbom != 'present'
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ env.IMAGE_DIGEST }}
+          sbom-path: sbom.cdx.json
+          push-to-registry: true
       - name: Vérifier signature et attestation avant déploiement
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          ID="https://github.com/${GITHUB_REPOSITORY}/.github/workflows/ci.yml@refs/heads/main"
-          ISSUER=https://token.actions.githubusercontent.com
-          cosign verify "$IMAGE_REF" --certificate-identity "$ID" --certificate-oidc-issuer "$ISSUER" >/dev/null
-          cosign verify-attestation "$IMAGE_REF" --type cyclonedx \
-            --certificate-identity "$ID" --certificate-oidc-issuer "$ISSUER" >/dev/null
+          STRICT=(--certificate-identity "$SIGNER_ID" --certificate-oidc-issuer "$OIDC_ISSUER"
+            --certificate-github-workflow-sha "$GITHUB_SHA")
+          cosign verify "$IMAGE_REF" "${STRICT[@]}" >/dev/null
+          cosign verify-attestation "$IMAGE_REF" --type cyclonedx "${STRICT[@]}" >/dev/null
           echo "signature et SBOM vérifiés pour $IMAGE_REF"
+          cosign verify "$GHCR_REF" "${STRICT[@]}" >/dev/null
+          GH_STRICT=(-R "$GITHUB_REPOSITORY" --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/ci.yml"
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA")
+          gh attestation verify "oci://$GHCR_REF" "${GH_STRICT[@]}" >/dev/null
+          gh attestation verify "oci://$GHCR_REF" "${GH_STRICT[@]}" --predicate-type https://cyclonedx.org/bom >/dev/null
+          echo "signature, provenance SLSA et SBOM vérifiés pour $GHCR_REF"
       - name: Déployer (par digest)
         run: |
           # Digest actuellement servi (ResolvedImageUri), pour un retour arrière exact.
