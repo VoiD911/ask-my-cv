@@ -113,11 +113,11 @@ test("attaque : injection bloquée, rien n'atteint le LLM, message de l'API tel 
   await capture(page, info, "blocked");
 });
 
-test("saisie : 500 caractères au plus, compteur, envoi au clavier", async ({ page }) => {
-  const input = page.getByRole("textbox", { name: "Ta question" });
-  await input.fill("a".repeat(600));
-  await expect(input).toHaveValue("a".repeat(500));
-  await expect(page.getByText("500/500")).toBeVisible();
+test("saisie : 10 000 caractères au plus, compteur, envoi au clavier", async ({ page }) => {
+  const input = page.getByRole("textbox", { name: "Votre question ou annonce" });
+  await input.fill("a".repeat(10_050));
+  await expect(input).toHaveValue("a".repeat(10_000));
+  await expect(page.getByText("10000/10000")).toBeVisible();
 
   await input.fill("Quelles langues parle-t-il ?");
   await input.press("Enter");

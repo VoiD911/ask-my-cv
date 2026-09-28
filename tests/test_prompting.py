@@ -51,10 +51,12 @@ def test_prompt_v2_asks_for_the_exact_refusal() -> None:
     assert REFUSAL in template.system and "{canary}" in template.system
 
 
-def test_prompt_v3_forbids_markdown_and_keeps_v2_rules() -> None:
+def test_prompt_v4_forbids_markdown_and_explains_job_ads() -> None:
     from ask_my_cv.output_guard import REFUSAL
 
-    template = load_template(Path("prompts/answer@v3.md"))
-    assert template.version == "v3"
+    template = load_template(Path("prompts/answer@v4.md"))
+    assert template.version == "v4"
     assert REFUSAL in template.system and "{canary}" in template.system
     assert "pas de Markdown" in template.system
+    assert "annonce d’emploi" in template.system
+    assert "Ne prête pas" in template.system

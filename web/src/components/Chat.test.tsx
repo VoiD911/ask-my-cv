@@ -75,12 +75,12 @@ suite("Chat", () => {
     expect(props.onAsk).toHaveBeenCalledWith(attack.text);
   });
 
-  it("limite la saisie à 500 caractères et affiche le compteur", () => {
+  it("limite la saisie à 10 000 caractères et affiche le compteur", () => {
     renderChat();
-    const input = screen.getByRole("textbox", { name: "Ta question" });
+    const input = screen.getByRole("textbox", { name: "Votre question ou annonce" });
     expect(input).toHaveAttribute("maxLength", String(MAX_QUESTION));
     fireEvent.change(input, { target: { value: "Bonjour" } });
-    expect(screen.getByText(/^7\/500/)).toBeInTheDocument();
+    expect(screen.getByText(/^7\/10000/)).toBeInTheDocument();
   });
 
   it("masque le sélecteur de modèle s'il n'y en a qu'un", () => {

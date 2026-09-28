@@ -822,6 +822,27 @@ body {
   overflow-wrap: anywhere;
 }
 
+.exchange__long-question {
+  min-width: 0;
+  font-weight: 400;
+}
+
+.exchange__long-question summary {
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.exchange__long-question summary span {
+  color: var(--color-pulse);
+  font-size: 12px;
+}
+
+.exchange__long-question p {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .exchange__body {
   min-width: 0;
 }
@@ -1092,6 +1113,12 @@ body {
   outline: none;
   border-color: color-mix(in oklab, var(--color-pulse) 70%, transparent);
   box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-pulse) 14%, transparent);
+}
+
+.composer__hint {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-silk-dim);
 }
 
 .composer__row {

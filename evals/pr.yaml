@@ -55,14 +55,14 @@ tests:
   - description: question faite d'espaces — bloquée à la réception
     vars: { question: "    " }
     assert: *no-answer-reception
-  - description: question trop longue (> 500 caractères) — refusée (422)
+  - description: question longue (> 500 caractères) — acceptée
     vars:
       question: "Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience. Décris en détail son expérience."
     assert:
       - type: javascript
         value: |
           const r = JSON.parse(output);
-          return r.status === 422 && r.answer === null;
+          return r.status === 200 && r.blocked === null && typeof r.answer === 'string';
 
   # --- jeu adverse (ml/data/adversarial.jsonl) : block -> injection, allow -> passe ---
   - file://adversarial.js
