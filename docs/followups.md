@@ -123,10 +123,11 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
   - `train.yml` utilise encore `attest-build-provenance` (pas `actions/attest`) ;
   - la provenance des modèles commence au prochain entraînement (aucune provenance rétroactive pour v1.0–v1.2).
 
-### 1e-2b — archive publique du développement
-- Publier la spec, les plans et `followups.md` dans `ask-my-cv/docs` (depuis `xops-kit`, qui reste privé).
-- Extraire du journal de session (`~/.claude/projects/D--DEV-ecc/*.jsonl`) les rapports d'implémentation, les revues (constats et traitement) et les décisions ; **masquer** l'ID de compte AWS, les adresses personnelles, le contenu brut du CV .docx et les échanges privés ; relecture d'un échantillon par l'utilisateur avant publication.
-- Issues GitHub **fermées**, étiquette `historique`, une par tâche réelle : vraie date, plan, commits liés, rapport, constats de revue et leur traitement ; mention « reconstituée depuis le journal de développement ».
+### 1e-2b — archive publique du développement — traité le 2026-09-28 (PR VoiD911/ask-my-cv#21)
+- ~~Publier la spec, les plans et `followups.md` dans `ask-my-cv/docs`.~~ Traité : 12 plans, spec et suivi publiés.
+- ~~Extraire et masquer les rapports des sous-agents.~~ Traité : 117 agents rattachés à 12 journaux, relecture de l'échantillon autorisée par l'utilisateur. Le dernier rapport explicite de chaque agent est conservé ; les échanges privés et les consignes restent exclus.
+- ~~Créer des issues historiques fermées pour les tâches numérotées.~~ Traité : 74 issues étiquetées `historique`, issues reconstituées avec date réelle, extraits de rapports et liens vers le plan, le journal et les commits publiés.
+- **Reporté à 1e-2c :** exposer l'archive dans l'onglet « Livraison » du site. Le masquage de l'ID de compte AWS dans les journaux publics des Actions reste suivi au 1e-2a ci-dessus.
 
 ### 1e-2c — onglets et contenu
 - **Architecture** (le *comment*, quatre parties, diagrammes générés depuis les sources — voir ci-dessous).
