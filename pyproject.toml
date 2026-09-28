@@ -55,6 +55,10 @@ select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S105", "S311", "S324"]
 
+[tool.ruff.format]
+# Historical documents preserve the source code examples as originally written.
+exclude = ["docs/journal/*.md", "docs/plans/*.md", "docs/spec/*.md", "docs/followups.md"]
+
 [tool.pyright]
 pythonVersion = "3.12"
 include = ["src", "tests", "ml", "infra/scripts", "scripts", "tools"]

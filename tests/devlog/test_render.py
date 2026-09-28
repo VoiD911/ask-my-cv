@@ -539,6 +539,7 @@ def test_index_json_schema() -> None:
         "agent_type",
         "model",
         "description",
+        "summary",
         "verdict",
         "commits",
         "links",

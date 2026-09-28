@@ -9,6 +9,7 @@ table de correspondance sont eux aussi fictifs.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -100,6 +101,42 @@ def test_report_is_last_assistant_text_block(agents: dict[str, AgentRecord]) -> 
     assert agents["a1000000000000001"].report == (
         "Rapport final : parseur livré au commit abc1234, tests verts."
     )
+
+
+def test_handback_report_wins_over_final_acknowledgement(tmp_path: Path) -> None:
+    path = tmp_path / "agent-demo.jsonl"
+
+    def entry(content):
+        return {
+            "type": "assistant",
+            "timestamp": "2026-01-10T09:00:00Z",
+            "message": {"content": content},
+        }
+
+    entries = [
+        entry(
+            [{"type": "tool_use", "name": "SubagentHandback", "input": {"message": "First report"}}]
+        ),
+        entry(
+            [
+                {
+                    "type": "tool_use",
+                    "name": "SubagentHandback",
+                    "input": {"message": "Final report: approved, commit abc1234"},
+                }
+            ]
+        ),
+        entry([{"type": "tool_use", "name": "Bash", "input": {"message": "PRIVATE"}}]),
+        entry([{"type": "text", "text": "Reported back to caller."}]),
+    ]
+    path.write_text("\n".join(json.dumps(e) for e in entries), encoding="utf-8")
+    assert load_agent(path).report == "Final report: approved, commit abc1234"
+
+
+@pytest.mark.parametrize("prefix", ["committed as `", "committed as **", "commit "])
+def test_committed_as_links_known_sha(prefix: str) -> None:
+    sha = "abc1234" + "0" * 33
+    assert published_commit_refs(prefix + "abc1234", [sha]) == [sha]
 
 
 def test_prompt_given_as_text_blocks(agents: dict[str, AgentRecord]) -> None:
