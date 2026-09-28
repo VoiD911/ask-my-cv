@@ -286,6 +286,10 @@ jobs:
       attestations: write  # provenance SLSA et SBOM (attestations GitHub)
     env:
       AWS_REGION: ca-central-1
+      # Le compte apparaît aussi dans les URL ECR, ARN IAM et noms S3.
+      # Secret d'environnement `production` : le runner le masque dès le premier step,
+      # y compris lorsqu'il est inclus dans les variables de dépôt ci-dessous.
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       GHCR_IMAGE: ghcr.io/void911/ask-my-cv
       # Identité Sigstore exigée partout : ce workflow, sur main. Chaque vérification cosign
       # y ajoute --certificate-github-workflow-sha "$GITHUB_SHA" (lien au commit déployé).
