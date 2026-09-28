@@ -1,10 +1,12 @@
 import { Demo } from "@/components/Demo";
+import { SiteNav } from "@/components/SiteNav";
 
 const CONTACT = "job@stevelang.net";
 
 export default function Home() {
   return (
     <div className="page">
+      <SiteNav current="/" />
       <header className="titleblock">
         <div className="titleblock__main">
           <p className="titleblock__eyebrow">Interroge mon CV · démo en direct</p>

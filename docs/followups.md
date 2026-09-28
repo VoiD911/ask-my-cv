@@ -117,7 +117,7 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
 - ~~Lighthouse en CI.~~ Traité : bureau 1,00 partout, mobile 0,95–1,00 ; seuils avec marge (runners partagés), médiane de 3 passages.
 - ~~Adaptateur Lambda hors d'ECR public anonyme.~~ Traité : copie GHCR au même digest (`mirror.yml`, `crane copy`).
 - **Reportés** :
-  - l'ID de compte AWS apparaît dans les journaux publics des Actions (URL ECR) : le masquer (`::add-mask::` refusé par semgrep → reformater les sorties ou filtrer) ;
+  - ~~L'ID de compte AWS apparaît dans les journaux publics des Actions (URL ECR).~~ Traité : secret d'environnement `AWS_ACCOUNT_ID` référencé au niveau du job (PR #97) ; le déploiement suivant a réussi sans occurrence brute dans ses journaux. Les journaux des deux exécutions historiques concernées ont été supprimés par l'API GitHub, leurs résultats conservés ;
   - exception osv-scanner `extract-zip` (Lighthouse CI) jusqu'au 2026-11-27 : réévaluer ;
   - CSP : recalcul des empreintes en CI (`--check`), `report-to` pour les violations en production ;
   - `train.yml` utilise encore `attest-build-provenance` (pas `actions/attest`) ;
@@ -127,7 +127,7 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
 - ~~Publier la spec, les plans et `followups.md` dans `ask-my-cv/docs`.~~ Traité : 12 plans, spec et suivi publiés.
 - ~~Extraire et masquer les rapports des sous-agents.~~ Traité : 117 agents rattachés à 12 journaux, relecture de l'échantillon autorisée par l'utilisateur. Le dernier rapport explicite de chaque agent est conservé ; les échanges privés et les consignes restent exclus.
 - ~~Créer des issues historiques fermées pour les tâches numérotées.~~ Traité : 74 issues étiquetées `historique`, issues reconstituées avec date réelle, extraits de rapports et liens vers le plan, le journal et les commits publiés.
-- **Reporté à 1e-2c :** exposer l'archive dans l'onglet « Livraison » du site. Le masquage de l'ID de compte AWS dans les journaux publics des Actions reste suivi au 1e-2a ci-dessus.
+- **Reporté à 1e-2c :** exposer l'archive dans l'onglet « Livraison » du site.
 
 ### 1e-2c — onglets et contenu
 - **Architecture** (le *comment*, quatre parties, diagrammes générés depuis les sources — voir ci-dessous).

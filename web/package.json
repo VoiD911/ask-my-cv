@@ -8,7 +8,8 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/csp.mjs",
+    "build": "node scripts/sync-archive.mjs && next build && node scripts/csp.mjs",
+    "history:sync": "node scripts/sync-archive.mjs && node scripts/sync-issues.mjs",
     "lint": "eslint --max-warnings=0 .",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest",
