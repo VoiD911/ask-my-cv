@@ -79,7 +79,7 @@ async def test_ask_rejects_unknown_fields(make_deps) -> None:
 
 
 async def test_ask_rejects_oversized_body(make_deps) -> None:
-    body = b'{"question":"q","pad":"' + b"a" * 20_000 + b'"}'
+    body = b'{"question":"q","pad":"' + b"a" * 70_000 + b'"}'
     async with client_for(create_app(make_deps())) as client:
         r = await client.post("/ask", content=body, headers={"content-type": "application/json"})
     assert r.status_code == 413
@@ -127,7 +127,7 @@ async def test_rate_limit_follows_the_cloudfront_viewer(make_deps) -> None:
 
 
 async def test_question_longer_than_pipeline_limit_is_rejected_without_echo(make_deps) -> None:
-    secret = "confidentiel-" + "x" * 500
+    secret = "confidentiel-" + "x" * 10_000
     async with client_for(create_app(make_deps())) as client:
         response = await client.post("/ask", json={"question": secret})
     assert response.status_code == 422

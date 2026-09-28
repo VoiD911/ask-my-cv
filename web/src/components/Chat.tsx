@@ -6,7 +6,7 @@ import type { ModelInfo } from "@/lib/models";
 import { stageLabel, type RunState } from "@/lib/pipeline";
 
 /** Longueur maximale d'une question (`MAX_QUESTION_CHARS` côté API). */
-export const MAX_QUESTION = 500;
+export const MAX_QUESTION = 10_000;
 
 /** Questions suggérées, tirées de `data/cv.md`. */
 export const SUGGESTIONS: readonly string[] = [
@@ -240,7 +240,7 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
       {exchanges.length === 0 ? (
         <div className="console__empty">
           <p className="console__lede">
-            Pose une question sur le parcours de Steve Lang. Chaque étape que traverse ta question
+            Posez une question sur le parcours de Steve Lang. Chaque étape du traitement
             s&apos;allume sur le circuit.
           </p>
         </div>
@@ -248,13 +248,23 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
         <ol className="thread" ref={threadRef} aria-label="Questions et réponses">
           {exchanges.map((x) => (
             <li key={x.id} className="exchange" data-status={x.status} data-testid="exchange">
-              <p className="exchange__q">
+              <div className="exchange__q">
                 <span className="exchange__ref" aria-hidden="true">
                   J1
                 </span>
                 <span className="sr-only">Question : </span>
-                {x.question}
-              </p>
+                {x.question.length > 500 ? (
+                  <details className="exchange__long-question">
+                    <summary>
+                      {x.question.slice(0, 220).replace(/\s+/g, " ").trim()}…
+                      <span> Afficher le texte complet</span>
+                    </summary>
+                    <p>{x.question}</p>
+                  </details>
+                ) : (
+                  x.question
+                )}
+              </div>
               <div
                 className="exchange__a"
                 aria-live={x === last ? "polite" : undefined}
@@ -316,7 +326,7 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
 
       <form className="composer" onSubmit={submit}>
         <label htmlFor={`${ids}-q`} className="sr-only">
-          Ta question
+          Votre question ou annonce
         </label>
         <textarea
           id={`${ids}-q`}
@@ -324,13 +334,17 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
           className="composer__input"
           value={draft}
           maxLength={MAX_QUESTION}
-          rows={2}
-          placeholder="Ta question sur le CV…"
+          rows={4}
+          placeholder="Posez votre question ou collez votre annonce…"
           aria-describedby={`${ids}-count`}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={onKeyDown}
           onFocus={onInteract}
         />
+        <p className="composer__hint">
+          Vous pouvez aussi copier-coller votre annonce d&apos;emploi pour voir comment le parcours
+          de Steve répond au profil recherché.
+        </p>
         <div className="composer__row">
           <span id={`${ids}-count`} className="composer__count" data-full={draft.length >= MAX_QUESTION || undefined}>
             {draft.length}/{MAX_QUESTION}

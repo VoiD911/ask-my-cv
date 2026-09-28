@@ -36,7 +36,7 @@ export function exchangesReducer(state: Exchange[], action: Action): Exchange[] 
 }
 
 const ERROR_TEXT: Record<AskError["kind"], string> = {
-  invalid_question: "Question refusée : elle doit compter entre 1 et 500 caractères.",
+  invalid_question: "Question refusée : elle doit compter entre 1 et 10 000 caractères.",
   signature: "Requête refusée par le réseau de diffusion (signature du corps invalide).",
   unavailable: "Le service ne répond pas. Réessaie dans un instant.",
 };

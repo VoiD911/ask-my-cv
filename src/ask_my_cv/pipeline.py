@@ -21,7 +21,7 @@ from ask_my_cv.vectorstore import VectorStore
 
 logger = logging.getLogger(__name__)
 
-MAX_QUESTION_CHARS = 500
+MAX_QUESTION_CHARS = 10_000
 
 BLOCK_MESSAGES = {
     "invalid_question": "Question vide ou trop longue.",

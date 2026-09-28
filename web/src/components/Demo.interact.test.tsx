@@ -19,7 +19,7 @@ suite("Demo — chargement différé de /api/models", () => {
     // Rien tant que le visiteur n'a pas touché la saisie (page inerte au chargement : voir #6).
     expect(fetchMock).not.toHaveBeenCalled();
 
-    const input = screen.getByLabelText("Ta question");
+    const input = screen.getByLabelText("Votre question ou annonce");
     fireEvent.focus(input);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));

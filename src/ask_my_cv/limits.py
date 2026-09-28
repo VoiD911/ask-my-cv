@@ -5,7 +5,7 @@ from typing import Any
 from starlette.responses import JSONResponse
 from starlette.types import Message, Receive, Scope, Send
 
-MAX_BODY_BYTES = 8 * 1024
+MAX_BODY_BYTES = 64 * 1024
 
 
 class BodySizeLimit:
