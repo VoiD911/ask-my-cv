@@ -3,6 +3,22 @@
 Assistant RAG sur un CV, instrumenté de bout en bout : chaque étape du pipeline est un span
 OpenTelemetry diffusé en direct au navigateur (SSE).
 
+## Comment ce projet a été construit
+
+L'architecte fixe les objectifs et arbitre les choix ; des agents implémentent
+les tâches et révisent les changements. La CI, les signatures des artefacts
+et les évaluations vérifient les résultats.
+
+La [spec](docs/spec/), les [plans](docs/plans/), le [suivi](docs/followups.md)
+et les [journaux de développement](docs/journal/) rendent cette méthode
+consultable. Les rapports des agents sont archivés avec les données privées
+masquées et les références aux commits publiés. Les échanges privés et les
+consignes des agents sont exclus.
+
+Les [issues historiques](https://github.com/VoiD911/ask-my-cv/issues?q=is%3Aissue+label%3Ahistorique)
+reconstituent les tâches : leur date de création GitHub est celle de la
+reconstitution ; la date réelle du travail figure dans leur description.
+
 ## Lancer en local
 
 ```bash

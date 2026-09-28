@@ -8,6 +8,11 @@ privées masquées.
 Les fichiers sont générés par `python -m tools.devlog render` (voir
 `tools/devlog/render.py`) ; ils ne sont pas édités à la main.
 
+Le rapport retenu est le dernier message explicite `SubagentHandback` de
+l'agent, lorsqu'il existe ; sinon, son dernier bloc de texte. Cela préserve
+les rapports détaillés suivis d'un simple accusé de remise. Les itérations
+antérieures d'un même agent ne sont pas toutes reconstituées.
+
 ## Génération
 
 ```sh
@@ -53,7 +58,26 @@ python -m tools.devlog render \
   `PR #N` / `issue #N` deviennent des liens ; les plans plus anciens précèdent
   la numérotation actuelle du dépôt.
 
-## `<plan>.md`
+## Issues historiques
+
+Simulation locale (aucune requête GitHub) :
+
+```sh
+python -m tools.devlog.issues --index docs/journal/index.json --date 2026-09-28
+```
+
+La sortie JSON contient le titre, le corps masqué, les étiquettes et l'état
+final attendu. Une issue est produite par tâche numérotée ; un rapport commun
+à plusieurs tâches est identifié comme tel. Les revues finales et le travail
+hors tâche restent consultables dans le journal.
+
+Après validation de l'échantillon, `--apply` crée les issues et les ferme.
+L'outil consulte toutes les pages des issues existantes, ouvertes ou fermées,
+et évite les doublons par titre exact. Une création interrompue avant fermeture
+est reprise au lancement suivant. Une issue existe brièvement ouverte entre
+sa création et sa fermeture ; ne pas lancer deux publications simultanées.
+
+## `<plan>.md` — structure
 
 Un fichier par plan ayant au moins un agent rattaché :
 
@@ -131,6 +155,7 @@ Contrat d'affichage : les chaînes d'`index.json` sont du texte brut, non
 | `events[].date` | Début de l'agent, ISO 8601 UTC (`AAAA-MM-JJTHH:MM:SSZ`). |
 | `events[].agent_type`, `events[].model` | Type d'agent et modèle. |
 | `events[].description` | Description courte de l'agent, masquée. |
+| `events[].summary` | Extrait du rapport masqué, limité à 600 caractères, sur une ligne ; utilisé dans les issues historiques. |
 | `events[].verdict` | Revues seulement : `approuvé`, `corrections demandées` ou `non déterminé` ; `null` sinon. |
 | `events[].commits` | SHA complets (40 caractères) des commits publiés cités par le rapport : SHA complet, ou SHA court (7 à 39 caractères) en contexte de commit et préfixe d'un seul SHA publié. |
 | `events[].links` | URL de PR/issue explicitement citées (plans en flux GitHub seulement). |

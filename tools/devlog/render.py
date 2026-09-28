@@ -589,6 +589,7 @@ def _event_json(event: _Event) -> dict[str, object]:
         "agent_type": event.agent_type,
         "model": event.model,
         "description": event.description,
+        "summary": _one_line(event.report)[:600],
         "verdict": event.verdict,
         "commits": list(event.commits),
         "links": list(event.links),

@@ -17,7 +17,8 @@ Structure attendue d'un `agent-<id>.jsonl` (une entrée JSON par ligne) :
   messages méta (`isMeta`) — relances du contrôleur, notifications — ignorés
   pour la consigne ;
 - les messages `assistant` portent des blocs `thinking`, `text` et
-  `tool_use` ; le **rapport final** est le dernier bloc `text` ;
+  `tool_use` ; le **rapport final** est le dernier `SubagentHandback.message`
+  non vide s'il existe, sinon le dernier bloc `text` ;
 - les entrées `attachment` (crochets, rappels, contexte) ne comptent que pour
   les dates de début et de fin.
 
@@ -152,6 +153,24 @@ def _first_prompt(entries: Iterable[dict[str, Any]]) -> str:
 
 
 def _last_report(entries: Sequence[dict[str, Any]]) -> str:
+    # Some agents return their actual report through SubagentHandback, then
+    # leave only a short acknowledgement as their final text. Read only that
+    # explicit reporting tool, never arbitrary tool inputs/results or prompts.
+    for entry in reversed(entries):
+        if entry.get("type") != "assistant":
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+            continue
+        for block in reversed(message["content"]):
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") != "tool_use" or block.get("name") != "SubagentHandback":
+                continue
+            payload = block.get("input")
+            report = payload.get("message") if isinstance(payload, dict) else None
+            if isinstance(report, str) and report.strip():
+                return report
     for entry in reversed(entries):
         if entry.get("type") != "assistant":
             continue
@@ -325,9 +344,9 @@ _HAS_HEX_LETTER = re.compile(r"[a-f]")
 # Contexte git explicite juste avant le jeton. « HEAD » n'est reconnu qu'en
 # majuscules : « head » (tête de liste, de file…) est un mot anglais courant.
 _COMMIT_CONTEXT = re.compile(
-    r"(?:(?-i:\bHEAD)|\bcommits?|\bsha(?:-?1)?|\bmerge[sd]?|\bcherry-pick(?:ed)?"
+    r"(?:(?-i:\bHEAD)|\bcommit(?:s|ted)?|\bsha(?:-?1)?|\bmerge[sd]?|\bcherry-pick(?:ed)?"
     r"|\brevert(?:ed)?|\brebased?|\bgit\s+(?:show|log|diff|checkout|reset|revert|rebase))"
-    r"\b(?:\s+(?:is\s+now\s+)?(?:onto|at|to|on|from|of|de|du))?\W{0,8}$",
+    r"\b(?:\s+(?:is\s+now\s+)?(?:onto|at|to|on|from|of|de|du|as))?\W{0,8}$",
     re.IGNORECASE,
 )
 # Ligne de `git log --oneline` : SHA court (avec au moins une lettre a-f),
