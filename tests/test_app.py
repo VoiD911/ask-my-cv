@@ -50,7 +50,7 @@ async def test_ask_streams_stage_events_then_done(make_deps) -> None:
 
 async def test_ask_rejects_oversized_payload(make_deps) -> None:
     async with client_for(create_app(make_deps())) as client:
-        response = await client.post("/ask", json={"question": "x" * 2001})
+        response = await client.post("/ask", json={"question": "x" * 10_001})
     assert response.status_code == 422
 
 
