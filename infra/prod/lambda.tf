@@ -45,6 +45,11 @@ data "aws_iam_policy_document" "api" {
     resources = ["arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"]
   }
   statement {
+    sid       = "GuardrailAnnonces" # #118 : pas encore appelé par le service
+    actions   = ["bedrock:ApplyGuardrail"]
+    resources = [aws_bedrock_guardrail.annonces.guardrail_arn]
+  }
+  statement {
     sid       = "VectorSearch"
     actions   = ["dynamodb:SearchVectors"]
     resources = [awscc_dynamodb_table.chunks.arn, "${awscc_dynamodb_table.chunks.arn}/index/*"]
