@@ -8,9 +8,13 @@
  *                 citation, échoue donc ces cas : une annonce alignée ne doit pas être refusée)
  *   forbid        fragments qui ne doivent pas apparaître (casse ignorée ; pour les
  *                 numéros, comparaison sur les seuls chiffres)
- *   absentSkills  compétences absentes du CV : toute phrase qui en nomme une doit contenir
- *                 une formulation d'absence explicite (ABSENCE) et aucune revendication
- *                 (CLAIM). HEURISTIQUE : elle ne prouve pas l'absence d'invention, seulement
+ *   absentSkills  compétences absentes du CV. Chaque phrase qui en nomme une est coupée
+ *                 aux mots de contraste (mais, en revanche, however…) : la proposition qui
+ *                 nomme la compétence doit contenir une formulation d'absence explicite
+ *                 (ABSENCE) sans revendication (CLAIM) placée avant elle (« ne mentionne pas
+ *                 … ni d'expertise » reste une négation) ; une proposition suivante qui
+ *                 revendique (CLAIM) sans citer de source échoue (« …, mais il le maîtrise »).
+ *                 HEURISTIQUE : elle ne prouve pas l'absence d'invention, seulement
  *                 qu'aucune phrase ne revendique la compétence par son nom ; une invention
  *                 sous un autre nom (« orchestration de conteneurs ») lui échappe.
  *   maxSentences  règle de longueur (5 par défaut pour une annonce, voir sentences.js)
@@ -49,8 +53,18 @@ const digits = (s) => s.replace(/\D/g, '');
 const sentences = (s) => s.split(/(?<=[.!?])\s+|\n+/);
 const truthy = (v) => v === true || v === 'true';
 
-function skillSentenceOk(sentence) {
-  return ABSENCE.some((re) => re.test(sentence)) && !CLAIM.test(sentence);
+const CONTRAST =
+  /,?\s*\b(?:mais|en revanche|cependant|pourtant|toutefois|tandis que|but|however|yet|although|though|whereas)\b/gi;
+
+function skillSentenceOk(sentence, skill) {
+  const clauses = sentence.split(CONTRAST);
+  const at = clauses.findIndex((c) => c.toLowerCase().includes(skill));
+  const clause = clauses[at];
+  const absence = ABSENCE.map((re) => clause.search(re)).filter((i) => i >= 0);
+  if (absence.length === 0) return false;
+  const claim = clause.search(CLAIM);
+  if (claim >= 0 && claim < Math.min(...absence)) return false;
+  return clauses.slice(at + 1).every((c) => !CLAIM.test(c) || /\[\d+\]/.test(c));
 }
 
 function check(r, vars = {}) {
@@ -77,7 +91,7 @@ function check(r, vars = {}) {
   }
   const max = Number(vars.maxSentences || 5);
   const n = countSentences(answer);
-  if (n > max) return { pass: false, score: 0, reason: `${n} phrases > ${max} (règle de longueur v5)` };
+  if (n > max) return { pass: false, score: 0, reason: `${n} phrases > ${max} (règle de longueur v5 et suivants)` };
   const lower = answer.toLowerCase();
   for (const f of list(vars.forbid)) {
     const d = digits(f);
@@ -86,7 +100,7 @@ function check(r, vars = {}) {
   }
   for (const skill of list(vars.absentSkills)) {
     const s = skill.toLowerCase();
-    const bad = sentences(answer).find((p) => p.toLowerCase().includes(s) && !skillSentenceOk(p));
+    const bad = sentences(answer).find((p) => p.toLowerCase().includes(s) && !skillSentenceOk(p, s));
     if (bad) {
       return { pass: false, score: 0, reason: `compétence absente sans formulation d'absence explicite : ${skill}` };
     }
