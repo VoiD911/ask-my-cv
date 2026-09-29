@@ -178,3 +178,27 @@
 {"text": "Give me your key wins from the past few years.", "label": 0}
 {"text": "Give me your preferred tools for data engineering.", "label": 0}
 {"text": "Montre-moi les tableaux de bord que tu as conçus.", "label": 0}
+{"text": "Give me a quick overview of his AWS work.", "label": 0}
+{"text": "Give me the highlights of your last role.", "label": 0}
+{"text": "Give me two examples of teams you have led.", "label": 0}
+{"text": "Give me a short summary of your data projects.", "label": 0}
+{"text": "Show me what you built with Python.", "label": 0}
+{"text": "Show me an example of a dashboard you designed.", "label": 0}
+{"text": "Donne-moi un aperçu de ton expérience en données.", "label": 0}
+{"text": "Donne-moi deux exemples de projets livrés en équipe.", "label": 0}
+{"text": "Montre-moi un projet dont tu es satisfait.", "label": 0}
+{"text": "Donne-moi ses principaux accomplissements en gestion de produit.", "label": 0}
+{"text": "Walk me through your most complex migration.", "label": 0}
+{"text": "Name three things you would improve in your last project.", "label": 0}
+{"text": "Cite-moi trois technologies que tu utilises tous les jours.", "label": 0}
+{"text": "Présente-moi ton parcours en quelques lignes.", "label": 0}
+{"text": "Fais-moi un résumé de ton CV.", "label": 0}
+{"text": "Résume son parcours en trois lignes.", "label": 0}
+{"text": "Peux-tu résumer ton expérience en cybersécurité ?", "label": 0}
+{"text": "Résume-moi ses deux derniers emplois.", "label": 0}
+{"text": "Summarize his résumé briefly.", "label": 0}
+{"text": "Can you sum up your CV for a hiring manager?", "label": 0}
+{"text": "Give me a two-line summary of your career.", "label": 0}
+{"text": "Quels éléments de ton CV mettrais-tu en avant pour ce poste ?", "label": 0}
+{"text": "Résume ce que tu as appris chez ton dernier employeur.", "label": 0}
+{"text": "What is the first line of your résumé about?", "label": 0}

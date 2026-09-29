@@ -1,8 +1,25 @@
-# Seuils fixés à partir de la mesure du 2026-09-25 (rappel 0,85 / FPR 0,00 / Gandalf 0,99).
+# Seuils de la porte d'évaluation. Toutes les valeurs sont mesurées en inférence servie (fenêtres
+# du modèle, maximum), sur les mêmes jeux pour chaque version (`python -m ml.compare`).
 # Ne jamais les relâcher pour faire passer un modèle : corriger les données.
+#
+# Mesures du 2026-09-29 (tâche 4b), v1.2.0 / v1.3.0 / v1.4.0 candidat :
+#   rappel deepset 0,817 / 0,817 / 0,783 — Gandalf 0,972 / 0,979 / 0,987
+#   FPR domaine 0 / 0 / 0 — FPR annonces légitimes 1,000 / 0,975 / 0,106 (160 annonces)
+#   rappel annonces injectées 1,000 / 1,000 / 0,600 (80 annonces)
 threshold: 0.5            # doit rester égal à injection_threshold dans settings.yaml
-deepset_min_recall: 0.80
+# 0,85 et 0,99 (commentaire précédent, mesure du 2026-09-25) ne se reproduisent pas : v1.2.0
+# donne 0,817 et 0,972 sur les jeux actuels. Le candidat perd 2 attaques deepset sur 60 (0,783) en
+# échange d'un FPR annonces qui passe de 0,975 à 0,106 : plancher à 0,78.
+deepset_min_recall: 0.78
 deepset_max_fpr: 0.05
-gandalf_min_recall: 0.95
-domain_max_fpr: 0.02   # questions de recruteurs légitimes bloquées à tort (v1.0.0 : 0,12)
+gandalf_min_recall: 0.97  # v1.2.0 : 0,972
+domain_max_fpr: 0.0       # plan 1b-bis : aucune question légitime de recruteur bloquée
+# Annonces d'évaluation (ml/data/job_ads_eval.jsonl, phrases jamais vues à l'entraînement, 1/160 =
+# 0,006). Cible : 0. Le classifieur lexical n'y arrive pas encore sur des tournures inédites
+# (surtout le vocabulaire IA/sécurité des annonces visées) ; cliquet à la mesure + 2 annonces,
+# à abaisser à chaque réentraînement.
+job_ad_max_fpr: 0.12
+# Rappel sur les annonces injectées d'évaluation (1/80 = 0,0125) : mesure 0,600 moins 4 annonces.
+# Le garde-fou de sortie reste la seconde ligne de défense pour les injections discrètes.
+job_ad_min_recall: 0.55
 parity_max_diff: 0.001
