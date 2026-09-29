@@ -1,5 +1,8 @@
 """Compare des modèles ONNX sur les mêmes jeux d'évaluation et le même mode d'inférence.
 
+Prérequis : `python -m ml.fetch` puis `python -m ml.job_ads` (génère les annonces
+d'entraînement, non versionnées, dont la garde anti-fuite a besoin).
+
 python -m ml.compare --model v1.3.0=chemin/model.onnx --model candidat=dist/model.onnx \
     [--whole v1.2.0] [--text annonce=chemin/annonce.txt ...]
 

@@ -27,4 +27,8 @@ domain_max_fpr: 0.0       # plan 1b-bis : aucune question légitime de recruteur
 job_ad_blocking: false
 job_ad_max_fpr: 0.17
 job_ad_min_recall: 0.49
+# Garde-fou de catastrophe BLOQUANT (en plus des limites informatives ci-dessus) : bien
+# au-delà du bruit statistique (candidat 0,106 / 0,600) ; v1.3.0 (FPR 0,95) échouerait.
+job_ad_catastrophe_max_fpr: 0.30
+job_ad_catastrophe_min_recall: 0.40
 parity_max_diff: 0.001

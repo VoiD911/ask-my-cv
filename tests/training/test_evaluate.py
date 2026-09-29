@@ -79,6 +79,8 @@ def test_all_gates_pass_on_separable_data() -> None:
         "domain_fpr",
         "job_ad_fpr",
         "job_ad_recall",
+        "job_ad_fpr_catastrophe",
+        "job_ad_recall_catastrophe",
         "adversarial_pass_rate",
         "onnx_parity_max_diff",
     ]
@@ -177,7 +179,12 @@ def test_job_ad_false_positive_and_missed_injection_fail_their_checks() -> None:
         Example(LONG_AD, 1, "a"),  # injection manquée
     ]
     report = evaluate(pipe, onnx_bytes, ds, Gates())
-    assert [c.name for c in report.checks if not c.passed] == ["job_ad_fpr", "job_ad_recall"]
+    assert [c.name for c in report.checks if not c.passed] == [
+        "job_ad_fpr",
+        "job_ad_recall",
+        "job_ad_fpr_catastrophe",
+        "job_ad_recall_catastrophe",
+    ]
 
 
 def test_empty_job_ad_set_fails_the_gate() -> None:
@@ -185,7 +192,12 @@ def test_empty_job_ad_set_fails_the_gate() -> None:
     ds = tiny_datasets([])
     ds.eval_job_ads = []
     failed = [c.name for c in evaluate(pipe, onnx_bytes, ds, Gates()).checks if not c.passed]
-    assert failed == ["job_ad_fpr", "job_ad_recall"]
+    assert failed == [
+        "job_ad_fpr",
+        "job_ad_recall",
+        "job_ad_fpr_catastrophe",
+        "job_ad_recall_catastrophe",
+    ]
 
 
 def test_report_publishes_metrics_window_and_fpr_by_length() -> None:
@@ -235,11 +247,47 @@ def test_informational_job_ad_checks_are_reported_without_blocking() -> None:
     ds.eval_job_ads = [Example(LONG_AD + INJECTION, 0, "a"), Example(LONG_AD, 1, "a")]
     report = evaluate(pipe, onnx_bytes, ds, Gates(job_ad_blocking=False))
     failed = [c for c in report.checks if not c.passed]
-    assert [c.name for c in failed] == ["job_ad_fpr", "job_ad_recall"]
-    assert not any(c.blocking for c in failed)
-    assert report.passed
+    # les deux annonces sont ratées : le garde-fou de catastrophe bloque, lui
+    assert [c.name for c in failed if not c.blocking] == ["job_ad_fpr", "job_ad_recall"]
+    assert [c.name for c in failed if c.blocking] == [
+        "job_ad_fpr_catastrophe",
+        "job_ad_recall_catastrophe",
+    ]
+    assert not report.passed
     assert report.to_dict()["checks"][4]["blocking"] is False
 
 
 def test_repository_job_ad_gates_are_informational() -> None:
     assert load_gates().job_ad_blocking is False
+
+
+def test_informational_limits_alone_do_not_block() -> None:
+    pipe, onnx_bytes = tiny_model()
+    report = evaluate(
+        pipe,
+        onnx_bytes,
+        tiny_datasets([]),
+        Gates(job_ad_blocking=False, job_ad_max_fpr=-1.0, job_ad_min_recall=2.0),
+    )
+    assert [c.name for c in report.checks if not c.passed] == ["job_ad_fpr", "job_ad_recall"]
+    assert report.passed
+
+
+def test_v13_like_job_ad_fpr_fails_the_repository_gate() -> None:
+    """Un modèle qui bloque 95 % des annonces légitimes (comme v1.3.0) fait échouer train.yml."""
+    pipe, onnx_bytes = tiny_model()
+    ds = tiny_datasets([])
+    blocked = Example(LONG_AD + INJECTION, 0, "a")  # « légitime » que le modèle bloque
+    ds.eval_job_ads = [blocked] * 19 + [
+        Example(LONG_AD, 0, "a"),
+        Example(LONG_AD + INJECTION, 1, "a"),
+    ]
+    report = evaluate(pipe, onnx_bytes, ds, load_gates())
+    fpr = next(c for c in report.checks if c.name == "job_ad_fpr_catastrophe")
+    assert fpr.value == 0.95 and not fpr.passed and fpr.blocking
+    assert not report.passed
+
+
+def test_repository_catastrophe_limits() -> None:
+    gates = load_gates()
+    assert (gates.job_ad_catastrophe_max_fpr, gates.job_ad_catastrophe_min_recall) == (0.30, 0.40)

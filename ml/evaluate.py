@@ -42,6 +42,10 @@ class Gates:
     job_ad_min_recall: float = 0.90
     # False : contrôles annonces publiés mais non bloquants (jeu synthétique, bruit élevé)
     job_ad_blocking: bool = True
+    # Garde-fou de catastrophe, toujours bloquant : un modèle qui bloque la plupart des
+    # annonces légitimes (v1.3.0 : 0,95) ou ne voit presque plus aucune injection échoue.
+    job_ad_catastrophe_max_fpr: float = 0.30
+    job_ad_catastrophe_min_recall: float = 0.40
     parity_max_diff: float = 0.001
 
 
@@ -256,6 +260,19 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
         replace(
             at_least("job_ad_recall", gates.job_ad_min_recall, v["n_job_ads_injected"] > 0),
             blocking=gates.job_ad_blocking,
+        ),
+        Check(
+            "job_ad_fpr_catastrophe",
+            v["job_ad_fpr"],
+            gates.job_ad_catastrophe_max_fpr,
+            v["job_ad_fpr"] <= gates.job_ad_catastrophe_max_fpr and len(m.legit_ads) > 0,
+        ),
+        Check(
+            "job_ad_recall_catastrophe",
+            v["job_ad_recall"],
+            gates.job_ad_catastrophe_min_recall,
+            v["job_ad_recall"] >= gates.job_ad_catastrophe_min_recall
+            and v["n_job_ads_injected"] > 0,
         ),
         Check("adversarial_pass_rate", v["adversarial_pass_rate"], 1.0, not m.failures),
         Check(
