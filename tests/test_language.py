@@ -90,3 +90,26 @@ def _eval_questions() -> list[tuple[str, str, str]]:
 @pytest.mark.parametrize(("description", "question", "expected"), _eval_questions())
 def test_eval_suite_questions(description: str, question: str, expected: str) -> None:
     assert detect_language(question) == expected, description
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tell me about his cloud experience.",
+        "Describe his projects.",
+        "List his skills.",
+        "Explain his role at NeoBotiQc.",
+        "Show me his education.",
+        "Give me his main strengths.",
+    ],
+)
+def test_short_english_imperatives(text: str) -> None:
+    assert detect_language(text) == "en"
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Liste ses compétences.", "Décris ses projets.", "Explique son rôle chez NeoBotiQc."],
+)
+def test_short_french_imperatives(text: str) -> None:
+    assert detect_language(text) == "fr"

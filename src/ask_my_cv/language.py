@@ -22,7 +22,8 @@ _EN = (
     frozenset(
         "the and of to in at with by from is are was were be been has have had his her he "
         "she it this that these those which who what does did not can will would should our "
-        "your you we they their its about into".split()
+        "your you we they their its about into tell show give describe list explain "
+        "summarize summarise compare".split()
     )
     - _AMBIGUOUS
 )
