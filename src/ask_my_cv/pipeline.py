@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import json
 import logging
 import secrets
 import time
@@ -154,9 +155,15 @@ async def run_pipeline(
     usage = Usage()
     sources: list[str] = []
     override: str | None = None
+    answer = ""
     # écritures du registre en cours dans l'executor : référence forte jusqu'à leur fin
     pending: set[asyncio.Future[None]] = set()
     with tracer.start_as_current_span("ask") as root:
+        root.set_attribute(
+            "langfuse.observation.input",
+            json.dumps({"question_chars": len(question)}, ensure_ascii=False),
+        )
+        outcome = "answered"
         try:
             async with stage("reception", emit) as st:
                 question = question.strip()
@@ -256,11 +263,29 @@ async def run_pipeline(
                 if not checked.ok:
                     raise StageBlocked(checked.reason or "blocked")
             emit(Answer(text=answer))
+        except asyncio.CancelledError:
+            outcome = "cancelled"
+            raise
         except StageBlocked as exc:
+            outcome = exc.reason
             override = BLOCK_MESSAGES.get(exc.reason, ERROR_MESSAGE)
         except Exception:
+            outcome = "error"
             override = ERROR_MESSAGE
         finally:
+            root.set_attribute(
+                "langfuse.observation.output",
+                json.dumps(
+                    {
+                        "result": outcome,
+                        "answer_chars": len(answer) if outcome == "answered" else 0,
+                        "source_count": len(sources),
+                        "tokens_in": usage.tokens_in,
+                        "tokens_out": usage.tokens_out,
+                    },
+                    ensure_ascii=False,
+                ),
+            )
             interrupted = False
             if pending and not _cancelling():
                 # fin normale : les dépenses sont écrites avant Done, sans bloquer la boucle ;

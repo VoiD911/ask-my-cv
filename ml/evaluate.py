@@ -9,7 +9,7 @@ import onnxruntime as ort
 import yaml
 from sklearn.pipeline import Pipeline
 
-from ask_my_cv.text import normalize_text
+from ask_my_cv.text import injection_windows
 from ml.dataset import Datasets
 
 GATES_PATH = Path("ml/gates.yaml")
@@ -71,8 +71,16 @@ def onnx_scores(onnx_bytes: bytes, texts: list[str]) -> np.ndarray:
     if not texts:
         return np.zeros(0)
     session = ort.InferenceSession(onnx_bytes, providers=["CPUExecutionProvider"])
-    outputs = session.run(None, {"text": np.array(texts, dtype=object).reshape(-1, 1)})
-    return np.asarray(outputs[1])[:, 1]
+    groups = [injection_windows(text) for text in texts]
+    windows = [window for group in groups for window in group]
+    outputs = session.run(None, {"text": np.asarray(windows, dtype=object).reshape(-1, 1)})
+    scores = np.asarray(outputs[1])[:, 1]
+    result = []
+    offset = 0
+    for group in groups:
+        result.append(float(scores[offset : offset + len(group)].max()))
+        offset += len(group)
+    return np.asarray(result)
 
 
 def _recall_fpr(scores: np.ndarray, labels: list[int], threshold: float) -> tuple[float, float]:
@@ -91,10 +99,20 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
     adversarial = [c.text for c in ds.adversarial]
     domain = [e.text for e in ds.eval_domain]
     texts = deepset + gandalf + adversarial + domain
-    normalized = [normalize_text(t) for t in texts]
+    groups = [injection_windows(text) for text in texts]
+    windows = [window for group in groups for window in group]
 
-    served = onnx_scores(onnx_bytes, normalized)
-    reference = pipe.predict_proba(normalized)[:, 1] if normalized else np.zeros(0)
+    served = onnx_scores(onnx_bytes, texts)
+    if windows:
+        window_scores = pipe.predict_proba(windows)[:, 1]
+        reference_values = []
+        offset = 0
+        for group in groups:
+            reference_values.append(float(window_scores[offset : offset + len(group)].max()))
+            offset += len(group)
+        reference = np.asarray(reference_values)
+    else:
+        reference = np.zeros(0)
     parity = float(np.max(np.abs(served - reference))) if texts else 0.0
     same_decisions = bool(np.array_equal(served >= gates.threshold, reference >= gates.threshold))
 
