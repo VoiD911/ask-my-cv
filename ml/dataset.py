@@ -11,6 +11,7 @@ import pyarrow.parquet as pq
 from ml.fetch import Source
 
 HANDWRITTEN_PATH = Path("ml/data/handwritten.jsonl")
+JOB_ADS_TRAIN_PATH = Path("ml/data/job_ads_train.jsonl")
 ADVERSARIAL_PATH = Path("ml/data/adversarial.jsonl")
 RECRUITER_EVAL_PATH = Path("ml/data/recruiter_eval.jsonl")
 
@@ -71,12 +72,21 @@ def load_adversarial(path: Path) -> list[AdversarialCase]:
 
 
 def build_datasets(
-    sources: list[Source], cache_dir: Path, handwritten: Path, adversarial: Path, domain: Path
+    sources: list[Source],
+    cache_dir: Path,
+    handwritten: Path,
+    adversarial: Path,
+    domain: Path,
+    job_ads_train: Path | None = None,
 ) -> Datasets:
     by_role: dict[str, list[Example]] = {"train": [], "eval_deepset": [], "eval_gandalf": []}
     for source in sources:
         by_role[source.role].extend(read_parquet(cache_dir / f"{source.name}.parquet", source))
-    train = by_role["train"] + read_jsonl(handwritten, "handwritten")
+    train = (
+        by_role["train"]
+        + read_jsonl(handwritten, "handwritten")
+        + (read_jsonl(job_ads_train, "job_ads_train") if job_ads_train is not None else [])
+    )
     cases = load_adversarial(adversarial)
     leaked = {c.text for c in cases} & {e.text for e in train}
     if leaked:

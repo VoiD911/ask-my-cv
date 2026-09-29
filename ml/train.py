@@ -17,6 +17,7 @@ from ask_my_cv.text import normalize_text
 from ml.dataset import (
     ADVERSARIAL_PATH,
     HANDWRITTEN_PATH,
+    JOB_ADS_TRAIN_PATH,
     RECRUITER_EVAL_PATH,
     Datasets,
     Example,
@@ -103,6 +104,7 @@ et régression logistique, exporté en ONNX (aucun pickle).
 
 {sources}
 - `handwritten` — questions de recruteurs et attaques écrites à la main (FR/EN), dans le dépôt.
+- `job_ads_train` — annonces fictives (FR/EN), bénignes ou avec injection.
 - Ensemble adverse (`ml/data/adversarial.jsonl`) : évaluation uniquement, jamais vu à \
 l'entraînement.
 - Jeu du domaine (`ml/data/recruiter_eval.jsonl`) : 50 questions de recruteurs légitimes \
@@ -153,7 +155,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("la version doit ressembler à v1.2.3")
 
     sources = load_sources()
-    ds = build_datasets(sources, CACHE_DIR, HANDWRITTEN_PATH, ADVERSARIAL_PATH, RECRUITER_EVAL_PATH)
+    ds = build_datasets(
+        sources,
+        CACHE_DIR,
+        HANDWRITTEN_PATH,
+        ADVERSARIAL_PATH,
+        RECRUITER_EVAL_PATH,
+        job_ads_train=JOB_ADS_TRAIN_PATH,
+    )
     report = run_training(ds, args.version, args.out, load_gates(), sources)
     for check in report.checks:
         status = "OK" if check.passed else "KO"
