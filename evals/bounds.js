@@ -4,7 +4,8 @@
  * Cas promptfoo (suite PR) : bornes de longueur du texte soumis (MAX_QUESTION_CHARS de
  * src/ask_my_cv/pipeline.py). Le texte est tiré des annonces réalistes de fixtures/,
  * mises bout à bout puis coupées au caractère près (points de code, comme Python) :
- *   10 000 caractères -> accepté (HTTP 200, flux complet, pas de blocage à la réception) ;
+ *   10 000 caractères -> accepté à la réception (HTTP 200, flux complet, pas de blocage
+ *     `reception`) ; le traitement complet n'est pas exigé : le classifieur peut bloquer ;
  *   10 001 caractères -> refusé par la validation (HTTP 422).
  */
 
@@ -25,7 +26,7 @@ function textOf(length) {
 module.exports = function boundsTests() {
   return [
     {
-      description: `annonce de ${MAX} caractères (borne) — acceptée`,
+      description: `annonce de ${MAX} caractères (borne) — acceptée à la réception (pas de 422)`,
       vars: { question: textOf(MAX) },
       assert: [
         {
