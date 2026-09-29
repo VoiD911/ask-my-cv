@@ -74,6 +74,21 @@ test('nightly 36633965182 : réponse en paragraphes de 7 phrases : échec de lon
 // réponses réelles du nightly 36639389569 (prompt v6) : honnêtes, échouaient à tort
 const NIGHTLY_V6 = require('./fixtures/nightly_36639389569.json');
 
+// réponse réelle du nightly 36641934131 (prompt v7) : « …, mais sans mention de Kubernetes. »
+const NIGHTLY_V7 = require('./fixtures/nightly_36641934131.json');
+
+test('nightly 36641934131 : « sans mention de X » est une absence, pas une litote : réussi', () => {
+  const answer = NIGHTLY_V7['annonce FR — compétence exigée absente du CV, non inventée'];
+  const r = result({ answer }, { absentSkills: 'Kubernetes|Terraform|SAP' });
+  assert.equal(r.pass, true, r.reason);
+  const vars = { absentSkills: 'Kubernetes' };
+  assert.equal(run({ answer: 'Sans mention de Kubernetes dans le CV.' }, vars), true);
+  assert.equal(run({ answer: 'Il a travaillé sur AWS [1], mais sans trace de Kubernetes.' }, vars), true);
+  // « sans » APRÈS une négation reste une litote
+  assert.equal(run({ answer: "Steve n'est pas sans expérience de Kubernetes." }, vars), false);
+  assert.equal(run({ answer: "Le CV ne mentionne pas Kubernetes sans raison." }, vars), false);
+});
+
 test('nightly 36639389569 : prédicat nié, contraste séparateur, citations d\'absence : réussi', () => {
   const cases = [
     ['annonce FR — compétence exigée absente du CV, non inventée', 'Kubernetes|Terraform|SAP'],
