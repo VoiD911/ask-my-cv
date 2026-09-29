@@ -1,7 +1,9 @@
 """Annonces d'emploi synthétiques (FR/EN) pour l'entraînement et l'évaluation du classifieur.
 
-python -m ml.job_ads            # régénère ml/data/job_ads_train.jsonl et job_ads_eval.jsonl
-python -m ml.job_ads --check    # échoue si les fichiers du dépôt ne sont pas à jour
+python -m ml.job_ads               # écrit ml/data/job_ads_train.jsonl (non versionné,
+                                   # produit par train.yml) et vérifie job_ads_eval.jsonl
+python -m ml.job_ads --check       # vérifie seulement job_ads_eval.jsonl (versionné)
+python -m ml.job_ads --write-eval  # réécrit job_ads_eval.jsonl après un changement voulu
 
 Tout est inventé : entreprises (noms composés de syllabes), personnes, numéros en 555-01xx
 (réservés à la fiction), courriels en `.example`. Aucune donnée d'entreprise réelle.
@@ -22,7 +24,6 @@ import json
 import random
 import sys
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from types import ModuleType
 from typing import Literal
 
@@ -422,30 +423,36 @@ def to_jsonl(ads: list[JobAd]) -> str:
     return "\n".join(rows) + "\n"
 
 
-def expected_files() -> dict[Path, str]:
-    return {
-        JOB_ADS_TRAIN_PATH: to_jsonl(generate("train", TRAIN_LEGIT, TRAIN_INJECTED, SEED)),
-        JOB_ADS_EVAL_PATH: to_jsonl(generate("eval", EVAL_LEGIT, EVAL_INJECTED, SEED)),
-    }
+def train_jsonl() -> str:
+    return to_jsonl(generate("train", TRAIN_LEGIT, TRAIN_INJECTED, SEED))
+
+
+def eval_jsonl() -> str:
+    return to_jsonl(generate("eval", EVAL_LEGIT, EVAL_INJECTED, SEED))
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Génère les annonces synthétiques.")
-    parser.add_argument("--check", action="store_true", help="vérifie sans écrire")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="vérifie job_ads_eval.jsonl seulement")
+    mode.add_argument("--write-eval", action="store_true", help="réécrit job_ads_eval.jsonl")
     args = parser.parse_args(argv)
-    stale = []
-    for path, content in expected_files().items():
-        current = path.read_text(encoding="utf-8") if path.exists() else None
-        if current == content:
-            continue
-        if args.check:
-            stale.append(str(path))
-        else:
-            path.write_text(content, encoding="utf-8", newline="\n")
-            print(f"écrit : {path}")
-    if stale:
-        print(f"fichiers à régénérer (python -m ml.job_ads) : {stale}", file=sys.stderr)
+    expected_eval = eval_jsonl()
+    if args.write_eval:
+        JOB_ADS_EVAL_PATH.write_text(expected_eval, encoding="utf-8", newline="\n")
+        print(f"écrit : {JOB_ADS_EVAL_PATH}")
+        return 0
+    current = JOB_ADS_EVAL_PATH.read_text(encoding="utf-8") if JOB_ADS_EVAL_PATH.exists() else None
+    if current != expected_eval:
+        print(
+            f"{JOB_ADS_EVAL_PATH} ne correspond plus au générateur : relire le changement, puis "
+            "python -m ml.job_ads --write-eval",
+            file=sys.stderr,
+        )
         return 1
+    if not args.check:
+        JOB_ADS_TRAIN_PATH.write_text(train_jsonl(), encoding="utf-8", newline="\n")
+        print(f"écrit : {JOB_ADS_TRAIN_PATH}")
     return 0
 
 

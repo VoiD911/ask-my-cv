@@ -6,6 +6,8 @@ __pycache__/
 data/index.json
 .env
 ml/.cache/
+# généré par `python -m ml.job_ads` (train.yml), graine versionnée
+ml/data/job_ads_train.jsonl
 dist/
 models/*.onnx
 models/*.sigstore.json

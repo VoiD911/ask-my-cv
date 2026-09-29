@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
-from ask_my_cv.onnx_detector import score_texts
+from ask_my_cv.onnx_detector import normalization_version, score_texts
 from ask_my_cv.text import normalize_text
 from ml.evaluate import eval_texts, load_gates, measure, split_scores
 from ml.train import load_repository_datasets
@@ -45,7 +45,9 @@ def whole_text_scorer(session: ort.InferenceSession) -> Scorer:
     def score(texts: list[str]) -> np.ndarray:
         if not texts:
             return np.zeros(0)
-        batch = np.asarray([normalize_text(t) for t in texts], dtype=object).reshape(-1, 1)
+        version = normalization_version(session)
+        batch = [normalize_text(t, version) for t in texts]
+        batch = np.asarray(batch, dtype=object).reshape(-1, 1)
         return np.asarray(session.run(None, {"text": batch})[1])[:, 1].astype(float)
 
     return score

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -9,8 +9,8 @@ import onnxruntime as ort
 import yaml
 from sklearn.pipeline import Pipeline
 
-from ask_my_cv.onnx_detector import score_texts, window_params
-from ask_my_cv.text import injection_windows
+from ask_my_cv.onnx_detector import normalization_version, score_texts, window_params
+from ask_my_cv.text import NORMALIZATION, injection_windows
 from ml.dataset import Datasets
 
 GATES_PATH = Path("ml/gates.yaml")
@@ -18,6 +18,17 @@ BINS = [round(i / 10, 1) for i in range(11)]
 # Tranches de longueur (caractères) des annonces : le max sur les fenêtres fait croître le risque
 # de faux positif avec le nombre de fenêtres, on suit donc le FPR par tranche.
 LENGTH_BUCKETS = ((0, 1_500), (1_500, 4_000), (4_000, 7_000), (7_000, 1_000_000))
+# Seuils publiés dans metrics.json (`thresholds`) pour choisir un seuil en connaissance de cause.
+THRESHOLDS = (0.5, 0.6, 0.7, 0.8, 0.9)
+THRESHOLD_METRICS = (
+    "deepset_recall",
+    "deepset_fpr",
+    "gandalf_recall",
+    "domain_fpr",
+    "job_ad_fpr",
+    "job_ad_recall",
+    "adversarial_pass_rate",
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +40,8 @@ class Gates:
     domain_max_fpr: float = 0.0
     job_ad_max_fpr: float = 0.0
     job_ad_min_recall: float = 0.90
+    # False : contrôles annonces publiés mais non bloquants (jeu synthétique, bruit élevé)
+    job_ad_blocking: bool = True
     parity_max_diff: float = 0.001
 
 
@@ -42,6 +55,7 @@ class Check:
     value: float
     limit: float
     passed: bool
+    blocking: bool = True
 
 
 @dataclass
@@ -55,15 +69,23 @@ class Report:
     metrics: dict[str, float] = field(default_factory=dict)
     job_ad_fpr_by_length: list[dict[str, float]] = field(default_factory=list)
     window: tuple[int, int] = (0, 0)
+    normalization: int = NORMALIZATION
+    thresholds: list[dict[str, float]] = field(default_factory=list)
 
     @property
     def passed(self) -> bool:
-        return all(c.passed for c in self.checks)
+        return all(c.passed for c in self.checks if c.blocking)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "passed": self.passed,
-            "window": {"size": self.window[0], "overlap": self.window[1], "aggregation": "max"},
+            "window": {
+                "size": self.window[0],
+                "overlap": self.window[1],
+                "aggregation": "max",
+                "normalization": self.normalization,
+            },
+            "thresholds": self.thresholds,
             "metrics": self.metrics,
             "job_ad_fpr_by_length": self.job_ad_fpr_by_length,
             "checks": [asdict(c) for c in self.checks],
@@ -87,9 +109,14 @@ def onnx_scores(onnx_bytes: bytes, texts: list[str]) -> np.ndarray:
     return np.asarray(score_texts(session, texts), dtype=float)
 
 
-def sklearn_scores(pipe: Pipeline, texts: list[str], window: tuple[int, int]) -> np.ndarray:
+def sklearn_scores(
+    pipe: Pipeline,
+    texts: list[str],
+    window: tuple[int, int],
+    normalization: int = NORMALIZATION,
+) -> np.ndarray:
     """Même calcul que le service, avec le modèle scikit-learn (référence de parité)."""
-    groups = [injection_windows(text, *window) for text in texts]
+    groups = [injection_windows(text, *window, normalization) for text in texts]
     windows = [w for group in groups for w in group]
     if not windows:
         return np.zeros(0)
@@ -203,11 +230,12 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
     sets = eval_texts(ds)
     texts = [t for group in sets.values() for t in group]
     served = np.asarray(score_texts(session, texts), dtype=float)
-    reference = sklearn_scores(pipe, texts, window)
+    reference = sklearn_scores(pipe, texts, window, normalization_version(session))
     parity = float(np.max(np.abs(served - reference))) if texts else 0.0
     same_decisions = bool(np.array_equal(served >= gates.threshold, reference >= gates.threshold))
 
-    m = measure(ds, split_scores(sets, served), gates.threshold)
+    by_set = split_scores(sets, served)
+    m = measure(ds, by_set, gates.threshold)
     v = m.metrics
 
     def at_least(name: str, limit: float, non_empty: bool = True) -> Check:
@@ -221,8 +249,14 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
         at_most("deepset_fpr", gates.deepset_max_fpr),
         at_least("gandalf_recall", gates.gandalf_min_recall),
         at_most("domain_fpr", gates.domain_max_fpr, len(m.domain) > 0),
-        at_most("job_ad_fpr", gates.job_ad_max_fpr, len(m.legit_ads) > 0),
-        at_least("job_ad_recall", gates.job_ad_min_recall, v["n_job_ads_injected"] > 0),
+        replace(
+            at_most("job_ad_fpr", gates.job_ad_max_fpr, len(m.legit_ads) > 0),
+            blocking=gates.job_ad_blocking,
+        ),
+        replace(
+            at_least("job_ad_recall", gates.job_ad_min_recall, v["n_job_ads_injected"] > 0),
+            blocking=gates.job_ad_blocking,
+        ),
         Check("adversarial_pass_rate", v["adversarial_pass_rate"], 1.0, not m.failures),
         Check(
             "onnx_parity_max_diff",
@@ -244,4 +278,9 @@ def evaluate(pipe: Pipeline, onnx_bytes: bytes, ds: Datasets, gates: Gates) -> R
         metrics=v,
         job_ad_fpr_by_length=_fpr_by_length(legit_ad_texts, m.legit_ads, gates.threshold),
         window=window,
+        normalization=normalization_version(session),
+        thresholds=[
+            {"threshold": t, **{k: measure(ds, by_set, t).metrics[k] for k in THRESHOLD_METRICS}}
+            for t in THRESHOLDS
+        ],
     )

@@ -8,11 +8,18 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
-from ask_my_cv.text import WINDOW_OVERLAP, WINDOW_SIZE, injection_windows
+from ask_my_cv.text import (
+    NORMALIZATION_LEGACY,
+    NORMALIZATIONS,
+    WINDOW_OVERLAP,
+    WINDOW_SIZE,
+    injection_windows,
+)
 
 # Clés des métadonnées ONNX écrites par `ml.train` depuis v1.4.0.
 META_WINDOW_SIZE = "window_size"
 META_WINDOW_OVERLAP = "window_overlap"
+META_NORMALIZATION = "normalization"
 
 
 class ModelIntegrityError(Exception):
@@ -57,6 +64,16 @@ def window_params(session: ort.InferenceSession) -> tuple[int, int]:
     return params
 
 
+def normalization_version(session: ort.InferenceSession) -> int:
+    """Version de normalisation du modèle ; 1 (historique) s'il ne l'enregistre pas."""
+    value = session.get_modelmeta().custom_metadata_map.get(META_NORMALIZATION)
+    if value is None:
+        return NORMALIZATION_LEGACY
+    if not value.isdigit() or int(value) not in NORMALIZATIONS:
+        raise ModelIntegrityError(f"normalisation inconnue dans le modèle : {value!r}")
+    return int(value)
+
+
 def score_texts(session: ort.InferenceSession, texts: list[str]) -> list[float]:
     """Probabilité d'injection de chaque texte : maximum sur ses fenêtres, en un seul lot ONNX.
 
@@ -66,7 +83,8 @@ def score_texts(session: ort.InferenceSession, texts: list[str]) -> list[float]:
     if not texts:
         return []
     size, overlap = window_params(session)
-    groups = [injection_windows(text, size, overlap) for text in texts]
+    normalization = normalization_version(session)
+    groups = [injection_windows(text, size, overlap, normalization) for text in texts]
     windows = [window for group in groups for window in group]
     outputs = session.run(None, {"text": np.asarray(windows, dtype=object).reshape(-1, 1)})
     scores = np.asarray(outputs[1])[:, 1]
@@ -91,6 +109,7 @@ class OnnxDetector:
             raise ModelIntegrityError(f"{model_path} : sha256 {digest} au lieu de {sha256}")
         self._session = ort.InferenceSession(data, providers=["CPUExecutionProvider"])
         self.window = window_params(self._session)
+        self.normalization = normalization_version(self._session)
         self.version = f"onnx-{version}"
 
     def score(self, text: str) -> float:

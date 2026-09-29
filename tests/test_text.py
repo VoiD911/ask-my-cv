@@ -82,3 +82,11 @@ def test_custom_parameters_and_invalid_ones() -> None:
         injection_windows("abc", size=4, overlap=4)
     with pytest.raises(ValueError):
         injection_windows("abc", size=4, overlap=-1)
+
+
+def test_legacy_normalization_keeps_the_hash_sign() -> None:
+    assert normalize_text("## Profil", version=1) == "## Profil"
+    assert injection_windows("a  ## b", normalization=1) == ["a ## b"]
+    assert injection_windows("a  ## b") == ["a b"]
+    with pytest.raises(ValueError):
+        normalize_text("x", version=3)

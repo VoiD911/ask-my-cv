@@ -14,8 +14,14 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline, make_union
 
-from ask_my_cv.onnx_detector import META_WINDOW_OVERLAP, META_WINDOW_SIZE
-from ask_my_cv.text import WINDOW_OVERLAP, WINDOW_SIZE, injection_windows, normalize_text
+from ask_my_cv.onnx_detector import META_NORMALIZATION, META_WINDOW_OVERLAP, META_WINDOW_SIZE
+from ask_my_cv.text import (
+    NORMALIZATION,
+    WINDOW_OVERLAP,
+    WINDOW_SIZE,
+    injection_windows,
+    normalize_text,
+)
 from ml.dataset import (
     ADVERSARIAL_PATH,
     HANDWRITTEN_PATH,
@@ -107,7 +113,12 @@ def to_onnx_bytes(pipe: Pipeline, window: tuple[int, int] = (WINDOW_SIZE, WINDOW
     del model.opset_import[:]  # pyright: ignore[reportAttributeAccessIssue]
     model.opset_import.extend(ops)  # pyright: ignore[reportAttributeAccessIssue]
     injection_windows("", *window)  # refuse un découpage invalide avant de l'enregistrer
-    for key, value in ((META_WINDOW_SIZE, window[0]), (META_WINDOW_OVERLAP, window[1])):
+    meta = (
+        (META_WINDOW_SIZE, window[0]),
+        (META_WINDOW_OVERLAP, window[1]),
+        (META_NORMALIZATION, NORMALIZATION),
+    )
+    for key, value in meta:
         entry = model.metadata_props.add()  # pyright: ignore[reportAttributeAccessIssue]
         entry.key, entry.value = key, str(value)
     return model.SerializeToString()  # pyright: ignore[reportAttributeAccessIssue]
@@ -132,6 +143,12 @@ def render_model_card(metrics: dict) -> str:
         for b in metrics["job_ad_fpr_by_length"]
     )
     window = metrics["window"]
+    per_threshold = "\n".join(
+        f"| {r['threshold']:.1f} | {r['deepset_recall']:.4f} | {r['deepset_fpr']:.4f} | "
+        f"{r['gandalf_recall']:.4f} | {r['domain_fpr']:.4f} | {r['job_ad_fpr']:.4f} | "
+        f"{r['job_ad_recall']:.4f} |"
+        for r in metrics["thresholds"]
+    )
     counts = metrics["metrics"]
     return f"""# Classifieur d'injection de prompt — {metrics["version"]}
 
@@ -149,6 +166,12 @@ score = maximum sur les fenêtres (paramètres enregistrés dans les métadonné
 | Contrôle | Valeur | Limite | Résultat |
 |---|---|---|---|
 {checks}
+
+## Par seuil (inférence servie)
+
+| Seuil | deepset rappel | deepset FPR | Gandalf | FPR domaine | FPR annonces | rappel annonces |
+|---|---|---|---|---|---|---|
+{per_threshold}
 
 ## Métriques (inférence servie : fenêtres et maximum)
 
@@ -219,6 +242,8 @@ def run_training(
 
 
 def load_repository_datasets() -> tuple[Datasets, list[Source]]:
+    if not JOB_ADS_TRAIN_PATH.exists():
+        raise FileNotFoundError(f"{JOB_ADS_TRAIN_PATH} absent : lancer python -m ml.job_ads")
     sources = load_sources()
     ds = build_datasets(
         sources,

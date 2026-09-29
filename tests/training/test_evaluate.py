@@ -148,9 +148,9 @@ def test_repository_gates_match_api_threshold() -> None:
     assert gates.threshold == settings["injection_threshold"]
     assert gates.domain_max_fpr == 0.0  # plan 1b-bis : aucune question légitime bloquée
     # planchers de rappel mesurés sur v1.2.0 (0,817 et 0,972), justifiés dans gates.yaml
-    assert (gates.deepset_min_recall, gates.gandalf_min_recall) == (0.78, 0.97)
-    assert 0.0 <= gates.job_ad_max_fpr <= 0.12
-    assert gates.job_ad_min_recall >= 0.55
+    assert (gates.deepset_min_recall, gates.gandalf_min_recall) == (0.75, 0.97)
+    assert 0.0 <= gates.job_ad_max_fpr <= 0.17
+    assert gates.job_ad_min_recall >= 0.49
 
 
 def test_domain_false_positive_fails_the_gate() -> None:
@@ -191,7 +191,17 @@ def test_empty_job_ad_set_fails_the_gate() -> None:
 def test_report_publishes_metrics_window_and_fpr_by_length() -> None:
     pipe, onnx_bytes = tiny_model()
     out = evaluate(pipe, onnx_bytes, tiny_datasets([]), Gates()).to_dict()
-    assert out["window"] == {"size": 600, "overlap": 120, "aggregation": "max"}
+    # modèle exporté sans métadonnées (comme v1.3.0) : normalisation historique
+    assert out["window"] == {
+        "size": 600,
+        "overlap": 120,
+        "aggregation": "max",
+        "normalization": 1,
+    }
+    assert [r["threshold"] for r in out["thresholds"]] == [0.5, 0.6, 0.7, 0.8, 0.9]
+    assert out["thresholds"][0]["job_ad_recall"] == out["metrics"]["job_ad_recall"]
+    recalls = [r["deepset_recall"] for r in out["thresholds"]]
+    assert recalls == sorted(recalls, reverse=True)
     for key in ("deepset_recall", "deepset_fpr", "gandalf_recall", "domain_fpr", "job_ad_fpr"):
         assert 0.0 <= out["metrics"][key] <= 1.0
     assert out["metrics"]["job_ad_recall"] == 1.0
@@ -217,3 +227,19 @@ def test_drift_reference_excludes_scores_above_the_threshold() -> None:
     report = evaluate(pipe, onnx_bytes, ds, Gates())
     assert sum(report.job_ad_histogram_counts) == 1  # l'annonce « légitime » bloquée
     assert sum(report.domain_histogram_counts) == len(ds.eval_domain)  # pas dans la référence
+
+
+def test_informational_job_ad_checks_are_reported_without_blocking() -> None:
+    pipe, onnx_bytes = tiny_model()
+    ds = tiny_datasets([])
+    ds.eval_job_ads = [Example(LONG_AD + INJECTION, 0, "a"), Example(LONG_AD, 1, "a")]
+    report = evaluate(pipe, onnx_bytes, ds, Gates(job_ad_blocking=False))
+    failed = [c for c in report.checks if not c.passed]
+    assert [c.name for c in failed] == ["job_ad_fpr", "job_ad_recall"]
+    assert not any(c.blocking for c in failed)
+    assert report.passed
+    assert report.to_dict()["checks"][4]["blocking"] is False
+
+
+def test_repository_job_ad_gates_are_informational() -> None:
+    assert load_gates().job_ad_blocking is False

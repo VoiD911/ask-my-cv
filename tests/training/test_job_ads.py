@@ -1,12 +1,14 @@
 import re
 import statistics
 from functools import cache
+from pathlib import Path
+
+import pytest
 
 from ml import job_ads, job_ads_compose, job_ads_en, job_ads_fr
 from ml.dataset import (
     AD_SHINGLE_NGRAM,
     JOB_ADS_EVAL_PATH,
-    JOB_ADS_TRAIN_PATH,
     NEAR_DUPLICATE_JACCARD,
     JobAdRow,
     near_duplicate_pairs,
@@ -17,11 +19,29 @@ from ml.job_ads import split_pool
 
 @cache
 def rows(split: str) -> tuple[JobAdRow, ...]:
-    return tuple(read_job_ads(JOB_ADS_TRAIN_PATH if split == "train" else JOB_ADS_EVAL_PATH))
+    """Annonces d'évaluation : fichier versionné ; d'entraînement : générées (non versionnées)."""
+    if split == "eval":
+        return tuple(read_job_ads(JOB_ADS_EVAL_PATH))
+    ads = job_ads.generate("train", job_ads.TRAIN_LEGIT, job_ads.TRAIN_INJECTED, job_ads.SEED)
+    return tuple(JobAdRow(a.text, a.label, a.injection) for a in ads)
 
 
-def test_repository_files_are_exactly_what_the_generator_produces() -> None:
+def test_versioned_eval_file_is_exactly_what_the_generator_produces() -> None:
     assert job_ads.main(["--check"]) == 0
+
+
+def test_generation_writes_the_train_file_and_refuses_a_stale_eval_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    train, evaluation = tmp_path / "train.jsonl", tmp_path / "eval.jsonl"
+    monkeypatch.setattr(job_ads, "JOB_ADS_TRAIN_PATH", train)
+    monkeypatch.setattr(job_ads, "JOB_ADS_EVAL_PATH", evaluation)
+    monkeypatch.setattr(job_ads, "train_jsonl", lambda: "train\n")
+    monkeypatch.setattr(job_ads, "eval_jsonl", lambda: "eval\n")
+    assert job_ads.main([]) == 1 and not train.exists()  # éval absente ou périmée
+    assert job_ads.main(["--write-eval"]) == 0
+    assert job_ads.main([]) == 0
+    assert train.read_text(encoding="utf-8") == "train\n"
 
 
 def test_split_pool_partitions_without_overlap() -> None:

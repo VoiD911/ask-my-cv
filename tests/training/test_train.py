@@ -91,7 +91,14 @@ def test_run_training_writes_model_metrics_and_card(tmp_path: Path) -> None:
     domain = metrics["domain_score_histogram"]
     assert domain["bins"] == metrics["score_histogram"]["bins"]
     assert sum(domain["counts"]) == len(tiny_datasets().eval_domain) + 1
-    assert metrics["window"] == {"size": 600, "overlap": 120, "aggregation": "max"}
+    assert metrics["window"] == {
+        "size": 600,
+        "overlap": 120,
+        "aggregation": "max",
+        "normalization": 2,
+    }
+    assert len(metrics["thresholds"]) == 5
+    assert "| 0.9 |" in (tmp_path / "model_card.md").read_text(encoding="utf-8")
     assert {"deepset_recall", "gandalf_recall", "domain_fpr", "job_ad_fpr", "job_ad_recall"} <= set(
         metrics["metrics"]
     )
