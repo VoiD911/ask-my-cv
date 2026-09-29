@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import onnxruntime as ort
 
-from ask_my_cv.text import normalize_text
+from ask_my_cv.text import injection_windows
 
 
 class ModelIntegrityError(Exception):
@@ -48,7 +48,8 @@ class OnnxDetector:
         self.version = f"onnx-{version}"
 
     def score(self, text: str) -> float:
+        windows = injection_windows(text)
         outputs = self._session.run(
-            None, {"text": np.array([[normalize_text(text)]], dtype=object)}
+            None, {"text": np.asarray(windows, dtype=object).reshape(-1, 1)}
         )
-        return float(np.asarray(outputs[1])[0, 1])
+        return float(np.asarray(outputs[1])[:, 1].max())

@@ -1,5 +1,5 @@
 {
-  "version": "v1.2.0",
-  "sha256": "94f71c494e1149a459376c81619065a0625dde7e4be9587d69f774e8c6757a18",
+  "version": "v1.3.0",
+  "sha256": "7e89cf018ae386642d6314c8b979546eae63eaf094a0acef0a37ada026d63111",
   "file": "model.onnx"
 }
