@@ -7,6 +7,13 @@ Lit les scores `xops.score` des spans `injection` (hors trafic d'évaluation `xo
 CloudWatch Logs Insights sur `--days` jours, et calcule le PSI (Population Stability Index)
 contre `domain_score_histogram` du `metrics.json` de la release promue.
 
+Depuis v1.4.0, cette référence décrit le trafic légitime tel qu'il est servi : les questions du
+domaine et les annonces légitimes d'évaluation (jusqu'à ~9 000 caractères), chacune scorée par
+le maximum sur ses fenêtres, comme `xops.score` en production, et sous le seuil comme les scores
+de production retenus. Avant, elle ne comptait que 50 questions courtes et l'arrivée d'annonces
+collées passait pour une dérive. Les deux parts sont aussi publiées à part
+(`domain_question_score_histogram`, `job_ad_score_histogram`).
+
 Les scores ≥ `--threshold` (le seuil d'injection servi, `injection_threshold`) sont exclus :
 ce sont des attaques bloquées, pas des questions du domaine, et la référence ne décrit que
 le domaine. Une vague d'attaques ne doit pas passer pour une dérive du modèle. Le minimum de
