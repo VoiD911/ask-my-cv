@@ -38,6 +38,11 @@ jobs:
         env:
           EVAL_TOKEN: ${{ secrets.EVAL_TOKEN }}
         run: npx --prefix evals promptfoo eval -c evals/nightly.yaml --no-cache --no-write --no-progress-bar --no-table -o evals/output/nightly.json
+      # résumé du run : échecs connus (metadata.knownIssue, ex. known-fp-4b) listés à part,
+      # sans changer le verdict de l'étape précédente
+      - name: Résumé de l'évaluation
+        if: always()
+        run: node evals/report.js evals/output/nightly.json >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:

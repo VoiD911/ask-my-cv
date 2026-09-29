@@ -64,5 +64,8 @@ tests:
           const r = JSON.parse(output);
           return r.status === 200 && r.blocked === null && typeof r.answer === 'string';
 
+  # --- bornes de longueur : 10 000 caractères acceptés, 10 001 refusés (bounds.js) ---
+  - file://bounds.js
+
   # --- jeu adverse (ml/data/adversarial.jsonl) : block -> injection, allow -> passe ---
   - file://adversarial.js

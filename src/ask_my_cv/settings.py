@@ -37,7 +37,7 @@ class Settings(BaseModel):
 
     cv_path: Path = Path("data/cv.md")
     index_path: Path = Path("data/index.json")
-    prompt_path: Path = Path("prompts/answer@v4.md")
+    prompt_path: Path = Path("prompts/answer@v7.md")
     embed_dim: int = Field(default=256, ge=1, le=4096)
     models: list[ModelConfig]
     default_model: str
