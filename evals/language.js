@@ -3,7 +3,9 @@
 /**
  * Langue d'une réponse, par proportion de mots-outils (heuristique simple, sans service
  * externe). Citations [n] et nombres ignorés. `isEnglish` exige plus de mots-outils
- * anglais que français et au moins 15 % de mots-outils anglais parmi les mots.
+ * anglais que français et au moins 15 % de mots-outils anglais parmi les mots. Une
+ * réponse sans aucun mot-outil, faite à 60 % au moins de noms propres ou de jetons
+ * techniques, est neutre et n'est pas jugée (pas de faux échec sur une énumération).
  */
 
 const EN = new Set(
@@ -25,9 +27,27 @@ function stopwordRatios(text) {
   return { en: en / total, fr: fr / total, words: words.length };
 }
 
+// jeton « technique » : nom propre, sigle ou identifiant (majuscule initiale, chiffre, / . + #)
+const TECHNICAL = /^(?:\p{Lu}|.*[\p{N}/.+#])/u;
+
+/** Réponse faite surtout de noms propres et de jetons techniques, sans aucun mot-outil :
+ *  sa langue n'est pas jugeable (« AWS, Python, PostgreSQL, CI/CD [1][2]. »). */
+function languageNeutral(text) {
+  const tokens = String(text ?? '')
+    .replace(/\[\d+\]/g, ' ')
+    .split(/[\s,;:!?()]+/)
+    .map((t) => t.replace(/[.]+$/, ''))
+    .filter(Boolean);
+  if (tokens.length === 0) return true;
+  const { en, fr } = stopwordRatios(text);
+  const technical = tokens.filter((t) => TECHNICAL.test(t)).length;
+  return en === 0 && fr === 0 && technical / tokens.length >= 0.6;
+}
+
 function isEnglish(text) {
+  if (languageNeutral(text)) return true;
   const { en, fr } = stopwordRatios(text);
   return en > fr && en >= 0.15;
 }
 
-module.exports = { isEnglish, stopwordRatios };
+module.exports = { isEnglish, languageNeutral, stopwordRatios };

@@ -12,7 +12,12 @@ test('isEnglish : anglais reconnu, français rejeté', () => {
   assert.equal(isEnglish('The CV does not mention a CKA certification.'), true);
   assert.equal(isEnglish('Steve possède une expérience directe avec AWS, Python et PostgreSQL [1].'), false);
   assert.equal(isEnglish('Le CV ne mentionne pas la certification CKA.'), false);
-  assert.equal(isEnglish('AWS [1], Python [2].'), false);
+  // énumération de noms propres et jetons techniques : neutre, non jugée
+  assert.equal(isEnglish('AWS [1], Python [2].'), true);
+  assert.equal(isEnglish('AWS, Python, PostgreSQL, CI/CD [1][2].'), true);
+  // un seul mot-outil français suffit à juger
+  assert.equal(isEnglish('AWS, Python et PostgreSQL [1].'), false);
+  assert.equal(isEnglish('expérience directe, architecture multi-cloud'), false);
 });
 
 test('nightly 36639389569 : cas EN répondu en français : échec de langue', () => {

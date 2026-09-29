@@ -96,6 +96,14 @@ test('proposition d\'absence pure exigée ; le contraste sépare les proposition
   assert.equal(run({ answer: 'Steve ne détient pas la certification Kubernetes.' }, vars), true);
   assert.equal(run({ answer: 'Steve does not hold a Kubernetes certification [1].' }, vars), true);
   assert.equal(run({ answer: 'Kubernetes n\'apparaît pas dans son parcours [1][2].' }, vars), true);
+  // revue #114 : formes honnêtes qui échouaient à tort
+  assert.equal(run({ answer: 'Steve does not have Kubernetes experience [1].' }, vars), true);
+  assert.equal(
+    run({ answer: 'Steve ne possède pas Kubernetes, Terraform, ni SAP.' }, { absentSkills: 'Kubernetes|Terraform|SAP' }),
+    true,
+  );
+  // énumération nue : un élément de plus de 3 mots ou revendiqué reste un ajout
+  assert.equal(run({ answer: 'Steve ne possède pas Kubernetes, 3 ans de pratique chez Acme.' }, vars), false);
   // sujet sans négation, ou revendication dans la proposition de la compétence : échec
   assert.equal(run({ answer: 'Steve détient la certification Kubernetes, le CV ne la mentionne pas.' }, vars), false);
   assert.equal(run({ answer: 'Kubernetes ne figure pas au CV mais il l\'utilise.' }, vars), false);
@@ -110,6 +118,15 @@ test('proposition d\'absence pure exigée ; le contraste sépare les proposition
     'Steve ne maîtrise pas que Kubernetes.',
     'Steve does not only know Kubernetes.',
     'Steve does not lack Kubernetes experience.',
+    // revue #114 : doubles négations et litotes
+    "Steve n'est pas sans expérience de Kubernetes.",
+    "Steve ne manque pas d'expérience avec Kubernetes.",
+    "Il n'est pas vrai que le CV ne mentionne pas Kubernetes.",
+    "Steve n'a jamais cessé d'utiliser Kubernetes.",
+    "Steve n'a pas arrêté Kubernetes.",
+    'Steve has no Kubernetes gap.',
+    'Steve has no doubt about Kubernetes.',
+    'Steve ne possède pas de doute sur Kubernetes.',
   ];
   for (const answer of bad) assert.equal(run({ answer }, vars), false, answer);
   // la même information en deux phrases passe

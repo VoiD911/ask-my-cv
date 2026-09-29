@@ -17,7 +17,12 @@
  *                     « is not listed »…) ou un prédicat nié (« ne possède / détient / a /
  *                     maîtrise pas », « does not have / hold », « has no ») ; les négations
  *                     restrictives ou doubles (« pas seulement », « pas que », « not only »,
- *                     « does not lack ») ne comptent pas ;
+ *                     « does not lack ») ne comptent pas ; une proposition échoue si sa
+ *                     négation est suivie d'une litote (sans, ne manque pas, pas vrai que,
+ *                     jamais cessé, pas arrêté, doute, lack, gap…) ou d'une seconde négation
+ *                     hors énumération « ni » ; un nom de revendication objet direct du
+ *                     prédicat nié est admis (« does not have Kubernetes experience »), de même
+ *                     qu'un élément nu d'énumération de 3 mots au plus (« , Terraform, ni SAP ») ;
  *                   - un sujet d'attribution (Steve, il, he, son, le candidat…) n'est admis
  *                     que s'il porte la négation (« Steve ne détient pas ») ou la suit ;
  *                   - aucun mot de contraste à l'intérieur de la proposition ;
@@ -82,6 +87,8 @@ const CLAIM_VERB = words(
     'built', 'builds', 'manages', 'managed', 'runs', 'ran', 'operates', 'operated', 'knows',
     'integrated', 'implemented', 'worked', 'works', 'administrée?s?', 'administre', 'pilotée?s?', 'pilote', 'certifiée?s?', 'acquise?s?',
     'administered', 'certified', 'holds', 'has',
+    'utiliser', 'déployer', 'piloter', 'administrer', 'gérer', 'exploiter', 'intégrer', 'pratiquer',
+    'use', 'run', 'deploy', 'manage', 'operate', 'administer', 'build', 'master',
   ].join('|'),
 );
 const CLAIM_NOUN = words(
@@ -155,11 +162,24 @@ const negationSpans = (clause) => {
   return spans.sort((a, b) => a.start - b.start);
 };
 
-function unnegatedClaimNoun(text) {
+const has = (re, s) => new RegExp(re.source, re.flags.replace('g', '')).test(s);
+const OBJECT_BREAK = new RegExp(`[,;:()]|(?<!${L})(?:et|and|while|qui|que|that|which|but|mais)(?!${L})`, 'iu');
+
+/** Nom de revendication hors négation : nié s'il suit « ni d' / pas d' / no », s'il est
+ *  sujet d'un passif nié, ou s'il est l'objet direct d'un prédicat nié de la proposition
+ *  (« does not have Kubernetes experience » : ni virgule, ni coordination, ni sujet,
+ *  6 mots au plus entre les deux). */
+function unnegatedClaimNoun(text, spans = []) {
   for (const m of text.matchAll(CLAIM_NOUN)) {
     const before = text.slice(0, m.index);
     const after = text.slice(m.index + m[0].length);
-    if (!NEGATED_BEFORE.test(before) && !NEGATED_PASSIVE_AFTER.test(after)) return m[0];
+    if (NEGATED_BEFORE.test(before) || NEGATED_PASSIVE_AFTER.test(after)) continue;
+    const objectOfNegation = spans.some(({ end }) => {
+      if (end > m.index) return false;
+      const gap = text.slice(end, m.index);
+      return !OBJECT_BREAK.test(gap) && !has(ATTRIBUTION_SUBJECT, gap) && gap.trim().split(/\s+/).filter(Boolean).length <= 6;
+    });
+    if (!objectOfNegation) return m[0];
   }
   return null;
 }
@@ -170,16 +190,55 @@ function positiveClaim(clause, spans) {
   for (const { start, end } of [...spans].reverse()) rest = rest.slice(0, start) + ' '.repeat(end - start) + rest.slice(end);
   const verb = rest.match(CLAIM_VERB);
   if (verb) return `verbe de revendication « ${verb[0]} »`;
-  const noun = unnegatedClaimNoun(clause);
+  const noun = unnegatedClaimNoun(clause, spans);
   if (noun) return `revendication « ${noun} »`;
   return null;
 }
+
+// doubles négations et litotes qui affirment : « n'est pas sans », « ne manque pas de »,
+// « il n'est pas vrai que », « n'a jamais cessé », « no lack / gap / doubt »…
+const DOUBLE_NEGATION = new RegExp(
+  [
+    `(?<!${L})sans(?!${L})`,
+    `(?<!${L})manquen?t?\\s+(?:pas|jamais)(?!${L})`,
+    `(?<!${L})pas\\s+(?:vrai|faux)(?!${L})`,
+    `(?<!${L})(?:jamais|pas)\\s+(?:cessé|arrêté|renoncé)(?!${L})`,
+    `(?<!${L})pas\\s+d${APOS}absence(?!${L})`,
+    `(?<!${L})(?:de\\s+)?doute(?!${L})`,
+    `(?<!${L})(?:lacks?|gaps?|shortages?|doubts?|lacunes?|problems?|issues?)(?!${L})`,
+    `(?<!${L})without(?!${L})`,
+  ].join('|'),
+  'iu',
+);
+
+/** Fusionne les négations qui se chevauchent (« ne mentionne pas d'expérience »). */
+function mergedNegations(spans) {
+  const out = [];
+  for (const s of spans) {
+    const last = out[out.length - 1];
+    if (last && s.start <= last.end) last.end = Math.max(last.end, s.end);
+    else out.push({ ...s });
+  }
+  return out;
+}
+
+// élément nu d'énumération après la négation : « , Terraform », au plus 3 mots
+const BARE_ITEM = /^\s*[\p{L}\p{N}][\p{L}\p{N}./+#-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}./+#-]*){0,2}\s*$/u;
 
 /** Raison pour laquelle la proposition qui nomme une compétence absente n'est pas une pure absence. */
 function impureAbsence(clause) {
   const spans = negationSpans(clause);
   if (spans.length === 0) return "pas de formulation d'absence ni de prédicat nié";
   const firstNegation = spans[0];
+  const afterNegation = clause.slice(firstNegation.start);
+  const litotes = afterNegation.match(DOUBLE_NEGATION);
+  if (litotes) return `double négation « ${litotes[0]} »`;
+  const disjoint = mergedNegations(spans);
+  if (disjoint.length > 1) {
+    const second = clause.slice(disjoint[1].start, disjoint[1].end);
+    // seule une seconde négation d'énumération (« ni ») est admise
+    if (!/(?<![\p{L}])ni(?![\p{L}])/iu.test(second)) return `seconde négation « ${second} »`;
+  }
   // sujet admis seulement s'il porte la négation (« Steve ne possède pas ») ou s'il la suit
   for (const m of clause.matchAll(ATTRIBUTION_SUBJECT)) {
     const carriesNegation = spans.some(({ start }) => start >= m.index + m[0].length && /^\s*$/.test(clause.slice(m.index + m[0].length, start)));
@@ -189,7 +248,14 @@ function impureAbsence(clause) {
   if (contrast) return `mot de contraste « ${contrast[0]} » à l'intérieur de la proposition`;
   // après la négation, seuls les éléments de l'énumération niée peuvent suivre une virgule
   const segments = clause.slice(firstNegation.end).split(',').slice(1);
-  const extra = segments.find((s) => s.trim() && !ENUM_CONTINUATION.test(s));
+  const isItem = (s) =>
+    ENUM_CONTINUATION.test(s) ||
+    (BARE_ITEM.test(s.replace(/\.\s*$/, '')) &&
+      !CLAIM_VERB.test(s) &&
+      !has(CLAIM_NOUN, s) &&
+      !has(ATTRIBUTION_SUBJECT, s) &&
+      !BACK_REFERENCE.test(s));
+  const extra = segments.find((s) => s.trim() && !isItem(s));
   if (extra) return `ajout après la négation « ${extra.trim()} »`;
   const claim = positiveClaim(clause, spans);
   if (claim) return claim;
