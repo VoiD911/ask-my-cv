@@ -4,7 +4,7 @@
 environment: prod
 trusted_proxy: cloudfront
 aws_region: ca-central-1
-prompt_path: prompts/answer@v6.md
+prompt_path: prompts/answer@v7.md
 detector: onnx
 model_manifest: models/prod.json
 embedder: bedrock
