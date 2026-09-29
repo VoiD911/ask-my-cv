@@ -1,2 +1,6 @@
 # Scripts shell exécutés par bash (Git Bash, Linux) : jamais de CRLF.
 *.sh text eol=lf
+
+# Gabarits de prompt : LF partout (déjà LF dans l'index ; évite les diffs de fins de ligne
+# entre copies de travail Windows et Linux).
+prompts/*.md text eol=lf
