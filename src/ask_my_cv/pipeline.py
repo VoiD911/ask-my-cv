@@ -13,6 +13,7 @@ from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
 from ask_my_cv.events import Answer, Done, LLMProgress
 from ask_my_cv.input_guard import InjectionDetector, check_input
+from ask_my_cv.language import detect_language
 from ask_my_cv.llm import LLMError, LLMProvider, TokenUsage, estimate_tokens
 from ask_my_cv.output_guard import check_output
 from ask_my_cv.prompting import PromptTemplate
@@ -214,8 +215,10 @@ async def run_pipeline(
 
             async with stage("prompt", emit) as st:
                 canary = secrets.token_hex(8)
-                system, user = deps.template.render(question, hits, canary)
-                st.set(template=f"{deps.template.name}@{deps.template.version}")
+                language = detect_language(question)
+                system, user = deps.template.render(question, hits, canary, language=language)
+                # langue détectée seulement (jamais le texte soumis)
+                st.set(template=f"{deps.template.name}@{deps.template.version}", language=language)
 
             async with stage("llm", emit) as st:
                 loop = asyncio.get_running_loop()
