@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * Comptage de phrases tolérant à la segmentation, pour la règle de longueur du prompt v5
+ * Comptage de phrases tolérant à la segmentation, pour la règle de longueur du prompt (v5 et suivants)
  * (3 phrases au plus pour une question, 5 pour une annonce). Avant de couper sur . ! ? :
  * citations [n] retirées, nombres décimaux et abréviations courantes (p. ex., e.g., inc.,
  * M., Dr, etc.) protégés. Un segment sans lettre ne compte pas.

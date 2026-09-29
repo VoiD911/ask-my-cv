@@ -45,7 +45,8 @@ def test_render_wraps_submitted_text_when_template_declares_tags() -> None:
 def test_only_v5_and_later_templates_delimit() -> None:
     for version in ("v1", "v2", "v3", "v4"):
         assert not load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
-    assert load_template(Path("prompts/answer@v5.md")).delimits_submitted
+    for version in ("v5", "v6"):
+        assert load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
 
 
 @pytest.mark.parametrize(
@@ -159,9 +160,23 @@ def test_prompt_v5_rules() -> None:
     assert "deux ou trois" not in template.system
 
 
-def test_settings_use_prompt_v5() -> None:
+def test_prompt_v6_keeps_v5_rules_and_makes_length_explicit() -> None:
+    v5 = load_template(Path("prompts/answer@v5.md")).system
+    v6 = load_template(Path("prompts/answer@v6.md"))
+    assert v6.version == "v6" and v6.delimits_submitted
+    # règles v5 inchangées hors longueur et consigne d'annonce
+    changed = ("- Pour une annonce", "- Longueur")
+    same = [line for line in v5.splitlines() if not line.startswith(changed)]
+    assert all(line in v6.system for line in same)
+    assert "cinq phrases au plus au total pour une annonce" in v6.system
+    assert "Un seul paragraphe, sans retour à la ligne" in v6.system
+    assert "une seule phrase qui regroupe toutes les compétences manquantes" in v6.system
+    assert v6.system.count("phrases au plus") == 2
+
+
+def test_settings_use_prompt_v6() -> None:
     from ask_my_cv.settings import Settings
 
-    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v5.md")
+    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v6.md")
     for name in ("settings.yaml", "settings.aws.yaml", "settings.ci.yaml"):
-        assert "prompt_path: prompts/answer@v5.md" in Path(name).read_text(encoding="utf-8")
+        assert "prompt_path: prompts/answer@v6.md" in Path(name).read_text(encoding="utf-8")

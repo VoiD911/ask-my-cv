@@ -7,8 +7,8 @@
  * sortie (quota, plafond, injection), en erreur ou incomplète échoue.
  *
  * Mode (variable du cas `refusalMode`) :
- *   strict (défaut, prompt v5) : la réponse, espaces de bord retirés, est la phrase de
- *     refus et rien d'autre ; aucun balisage ni guillemet toléré (le v5 l'interdit).
+ *   strict (défaut, prompts v5 et suivants) : la réponse, espaces de bord retirés, est la phrase de
+ *     refus et rien d'autre ; aucun balisage ni guillemet toléré (v5 et v6 l'interdisent).
  *   lenient (v3/v4) : comportement historique, astérisques, tirets bas et guillemets
  *     retirés et espaces réduits avant la comparaison.
  */
