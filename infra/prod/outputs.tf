@@ -14,3 +14,6 @@ output "site_cert_validation_records" {
 }
 # Cible du CNAME job.stevelang.net chez le registraire.
 output "site_cname_target" { value = aws_cloudfront_distribution.site.domain_name }
+# Garde-fou Bedrock des annonces (#118) : paramètres de `python -m ml.guardrail_eval`.
+output "guardrail_annonces_id" { value = aws_bedrock_guardrail.annonces.guardrail_id }
+output "guardrail_annonces_version" { value = aws_bedrock_guardrail_version.annonces.version }

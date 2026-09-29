@@ -55,3 +55,13 @@ variable "site_csp" {
   description = "En-tête Content-Security-Policy du site statique."
   default     = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
+
+variable "guardrail_prompt_attack_strength" {
+  type        = string
+  default     = "HIGH"
+  description = "Force du filtre d'attaque de prompt (entrée) du garde-fou Bedrock des annonces."
+  validation {
+    condition     = contains(["LOW", "MEDIUM", "HIGH"], var.guardrail_prompt_attack_strength)
+    error_message = "Valeurs admises : LOW, MEDIUM, HIGH."
+  }
+}
