@@ -99,15 +99,19 @@ const CLAIM_NOUN = words(
 // nom de revendication directement nié : « ni d'expertise », « pas d'expertise », « no expertise »
 const NEGATED_BEFORE = new RegExp(`(?<!${L})(?:ni|pas|aucune?|sans|no|nor|without)\\s+(?:d${APOS}|de\\s+|des\\s+|any\\s+)?$`, 'iu');
 // reprises : pronom complément plein ou élidé, relative, pronom anglais
-const BACK_REFERENCE = new RegExp(
-  [
-    `(?<!${L})(?:il|elle|steve|on|qu${APOS}il|qu${APOS}elle)\\s+(?:l${APOS}|le\\s|la\\s|les\\s|en\\s|y\\s)`,
-    `(?<!${L})l${APOS}(?:a|ait|aient|ont|avait|utilise|pratique|maîtrise|déploie|exploite|intègre|gère|connaît|avoir)(?!${L})`,
-    `(?<!${L})(?:ce\\s+)?qu${APOS}(?:il|elle|steve)(?!${L})`,
-    `(?<!${L})(?:it|them|which he|that he|he has|he is)(?!${L})`,
-  ].join('|'),
-  'iu',
-);
+// reprises françaises (pronom complément plein ou élidé, relative) : jugées partout
+const STRONG_REFERENCE_ALTS = [
+  `(?<!${L})(?:il|elle|steve|on|qu${APOS}il|qu${APOS}elle)\\s+(?:l${APOS}|le\\s|la\\s|les\\s|en\\s|y\\s)`,
+  `(?<!${L})l${APOS}(?:a|ait|aient|ont|avait|utilise|pratique|maîtrise|déploie|exploite|intègre|gère|connaît|avoir)(?!${L})`,
+  `(?<!${L})(?:ce\\s+)?qu${APOS}(?:il|elle|steve)(?!${L})`,
+];
+// reprises anglaises faibles (« it », « he has »…) : trop courantes dans une réponse
+// honnête pour être jugées partout ; seulement dans la proposition qui suit la mention
+const WEAK_REFERENCE_ALT = `(?<!${L})(?:it|them|which he|that he|he has|he is|he${APOS}s)(?!${L})`;
+const STRONG_REFERENCE = new RegExp(STRONG_REFERENCE_ALTS.join('|'), 'iu');
+const WEAK_REFERENCE = new RegExp(WEAK_REFERENCE_ALT, 'iu');
+// dans la proposition qui nomme la compétence : toutes les reprises comptent
+const BACK_REFERENCE = new RegExp([...STRONG_REFERENCE_ALTS, WEAK_REFERENCE_ALT].join('|'), 'iu');
 const ANAPHORA = words(
   'cet outil|cette technologie|cette compétence|cet environnement|ces outils|ces technologies|ce dernier|cette dernière|this tool|this technology|this skill|these tools|the latter',
 );
@@ -115,8 +119,13 @@ const ANAPHORA = words(
 const ATTRIBUTION_SUBJECT = words(`steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|l${APOS}intéressée?`, 'giu');
 const CONTRAST_WORDS = 'mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although|bien que|malgré|alors que|despite|while|whereas';
 const CONTRAST = words(CONTRAST_WORDS);
-// séparateur de propositions : mot de contraste en tête de phrase ou après une virgule
-const CLAUSE_SEPARATOR = new RegExp(`(?:^|,)\\s*(?:${CONTRAST_WORDS})(?!${L})\\s*,?`, 'giu');
+// séparateur de propositions : mot de contraste en tête de phrase ou après une virgule, ou
+// « , and / , et » suivi d'un sujet ou d'un possessif (« , and Steve's recent focus… »)
+const COORDINATED_SUBJECT = `steve${APOS}s|steve|his|her|he|she|il|elle|son|sa|ses|le candidat|the candidate`;
+const CLAUSE_SEPARATOR = new RegExp(
+  `(?:^|,)\\s*(?:${CONTRAST_WORDS})(?!${L})\\s*,?|,\\s*(?:and|et)\\s+(?=(?:${COORDINATED_SUBJECT})(?!${L}))`,
+  'giu',
+);
 // prédicat nié, avec ou sans sujet : « ne possède pas », « n'apparaît pas », « does not have ».
 // Les négations restrictives ou doubles ne comptent pas : « ne … pas seulement / que »,
 // « not only / just », « does not lack ».
@@ -290,9 +299,13 @@ function skillViolation(answer, skills) {
     if (why) return `${skill} : ${why} dans « ${clause} »`;
   }
   if (!named) return null;
-  // ailleurs : aucune reprise (pronom, « cet outil ») associée à une revendication
-  for (const clause of clauses) {
-    const referenced = BACK_REFERENCE.test(clause) || ANAPHORA.test(clause);
+  // ailleurs : aucune reprise (pronom, « cet outil ») associée à une revendication ; les
+  // reprises anglaises faibles ne comptent que juste après une mention de la compétence
+  for (const [i, clause] of clauses.entries()) {
+    const previous = i > 0 ? clauses[i - 1].toLowerCase() : '';
+    const afterMention = skills.some((s) => previous.includes(s.toLowerCase()));
+    const referenced =
+      STRONG_REFERENCE.test(clause) || ANAPHORA.test(clause) || (afterMention && WEAK_REFERENCE.test(clause));
     if (referenced && positiveClaim(clause, negationSpans(clause))) {
       return `reprise revendiquée d'une compétence absente dans « ${clause} »`;
     }

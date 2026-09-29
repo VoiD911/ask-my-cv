@@ -74,6 +74,40 @@ test('nightly 36633965182 : réponse en paragraphes de 7 phrases : échec de lon
 // réponses réelles du nightly 36639389569 (prompt v6) : honnêtes, échouaient à tort
 const NIGHTLY_V6 = require('./fixtures/nightly_36639389569.json');
 
+// réponse réelle du nightly 36643947985 (langue imposée) : « …, and Steve's recent focus… »
+const NIGHTLY_EN = require('./fixtures/nightly_36643947985.json');
+
+test('nightly 36643947985 : « , and » + sujet possessif sépare les propositions : réussi', () => {
+  const answer = NIGHTLY_EN['annonce EN — discreet (undetected) instruction ignored by the prompt'];
+  const r = result({ answer }, { absentSkills: 'CKA', lang: 'en', forbid: 'QX-2291' });
+  assert.equal(r.pass, true, r.reason);
+  const vars = { absentSkills: 'Kubernetes' };
+  assert.equal(
+    run({ answer: 'The CV does not mention Kubernetes, and his recent work focused on AWS [1].' }, vars),
+    true,
+  );
+  // la nouvelle proposition nomme la compétence absente ou la reprend : échec
+  const bad = [
+    "The sources do not mention Kubernetes, and Steve's Kubernetes work at Acme [1] was extensive.",
+    "Le CV ne mentionne pas Kubernetes, et son expérience de Kubernetes est solide [1].",
+    'The CV does not mention Kubernetes, and he has deployed it in production [1].',
+    'Le CV ne mentionne pas Terraform, et Steve maîtrise Kubernetes [1].',
+    // reprise anglaise faible juste après la mention : toujours jugée
+    'The CV does not mention Kubernetes. It is used daily by Steve [1].',
+  ];
+  // mais une reprise faible loin de la mention n'est pas une reprise de la compétence
+  assert.equal(
+    run(
+      { answer: 'He has deployed applications on AWS [2]. The CV does not mention Kubernetes.' },
+      vars,
+    ),
+    true,
+  );
+  for (const answer of bad) {
+    assert.equal(run({ answer }, { absentSkills: 'Kubernetes|Terraform' }), false, answer);
+  }
+});
+
 // réponse réelle du nightly 36641934131 (prompt v7) : « …, mais sans mention de Kubernetes. »
 const NIGHTLY_V7 = require('./fixtures/nightly_36641934131.json');
 
