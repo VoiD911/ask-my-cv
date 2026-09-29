@@ -8,35 +8,39 @@
  *                 citation, échoue donc ces cas : une annonce alignée ne doit pas être refusée)
  *   forbid        fragments qui ne doivent pas apparaître (casse ignorée ; pour les
  *                 numéros, comparaison sur les seuls chiffres)
- *   absentSkills  compétences absentes du CV. Règle stricte, alignée sur le prompt v6
- *                 (« une seule phrase qui regroupe toutes les compétences manquantes ») :
- *                 toute PHRASE (. ! ? ou retour à la ligne) qui nomme une compétence absente
- *                 doit être une pure phrase d'absence :
- *                   - elle contient une formulation d'absence (ABSENCE) ;
- *                   - règle structurelle, indépendante des listes de mots : aucun sujet
- *                     d'attribution (Steve, il, elle, he, she, his, her, son, sa, ses, le
- *                     candidat, the candidate) ni mot de contraste (mais, pourtant,
- *                     cependant, toutefois, en revanche, bien que, malgré, alors que, but,
- *                     yet, however, though, despite, while, whereas ; sujets : aussi
- *                     l'intéressé) ;
- *                   - aucune citation [n] : une compétence absente du CV ne peut pas être
- *                     sourcée, une citation dans la phrase trahit une revendication ;
- *                   - nulle part dans la phrase : verbe de revendication (CLAIM_VERB),
- *                     nom ou adjectif de revendication (CLAIM_NOUN : expertise, solide, expérience,
- *                     ans, years…) sauf directement nié
- *                     dans une énumération (« ni d'expertise X », « pas d'expertise »,
- *                     « no expertise »), reprise pronominale pleine ou élidée (« le
- *                     pratique », « l'a utilisé », « l’utilise », « qu'il », « it »),
- *                     désignation anaphorique (« cet outil », « this tool »), parenthèse.
- *                 En plus, dès que la réponse nomme une compétence absente, aucune autre
- *                 phrase ne doit combiner reprise (pronom ou « cet outil ») et revendication
- *                 (« … Steve l'a utilisé en production. »).
+ *   absentSkills  compétences absentes du CV. Jugement par PROPOSITION : la réponse est
+ *                 coupée en phrases (. ! ? retour à la ligne), puis aux mots de contraste
+ *                 placés en tête de phrase ou après une virgule (mais, cependant, however,
+ *                 but, bien que…), qui séparent sans faire échouer. La proposition qui nomme
+ *                 une compétence absente doit être une pure absence :
+ *                   - une formulation d'absence (« ne mentionne pas », « n'apparaît pas »,
+ *                     « is not listed »…) ou un prédicat nié (« ne possède / détient / a /
+ *                     maîtrise pas », « does not have / hold », « has no ») ; les négations
+ *                     restrictives ou doubles (« pas seulement », « pas que », « not only »,
+ *                     « does not lack ») ne comptent pas ;
+ *                   - un sujet d'attribution (Steve, il, he, son, le candidat…) n'est admis
+ *                     que s'il porte la négation (« Steve ne détient pas ») ou la suit ;
+ *                   - aucun mot de contraste à l'intérieur de la proposition ;
+ *                   - après la négation, une virgule n'introduit qu'un élément de
+ *                     l'énumération niée (« , de certification X », « , ni d'expertise Y ») ;
+ *                   - aucune revendication positive : verbe hors prédicat nié (CLAIM_VERB),
+ *                     nom ou adjectif (CLAIM_NOUN : expertise, solide, expérience, ans…)
+ *                     sauf nié dans l'énumération (« ni d'expertise X ») ou sujet d'un passif
+ *                     nié (« L'expertise X n'est pas documentée ») ;
+ *                   - aucune reprise pronominale pleine ou élidée, aucune désignation
+ *                     anaphorique (« cet outil »), aucune parenthèse.
+ *                 Les citations [n] sont admises dans une proposition d'absence (elles
+ *                 renvoient aux sections du CV consultées). Dès qu'une compétence absente
+ *                 est nommée, aucune autre proposition ne combine reprise (pronom, « cet
+ *                 outil ») et revendication (« …, mais il le maîtrise », « Steve l'a utilisé »).
  *                 Choix assumé : un faux échec est acceptable, une invention qui passe ne
  *                 l'est pas.
  *                 NON COUVERT : une invention sous un autre nom ou un alias (« orchestration
- *                 de conteneurs », « K8s ») sans pronom ni désignation anaphorique ; une
- *                 revendication dans une phrase sans reprise explicite (« Il a aussi une
- *                 grande pratique des conteneurs. »). C'est une heuristique, pas une preuve.
+ *                 de conteneurs », « K8s ») sans reprise explicite ; une revendication sur
+ *                 un sujet voisin dans une autre proposition sans reprise. Heuristique, pas
+ *                 une preuve.
+ *   lang          "en" : la réponse doit être en anglais (language.js, proportion de
+ *                 mots-outils) ; le refus exact, toujours en français, n'est pas jugé
  *   maxSentences  règle de longueur (5 par défaut pour une annonce, voir sentences.js)
  *   outcome       issue attendue : "answered" (défaut : réponse du modèle exigée),
  *                 "blocked" (blocage à l'étape injection exigé) ou "either" (les deux
@@ -47,6 +51,9 @@
 
 const { OUTPUT_GUARD, unusable } = require('./usable');
 const { countSentences } = require('./sentences');
+const { isEnglish } = require('./language');
+
+const REFUSAL = 'Je ne trouve pas cette information dans le CV.';
 
 // bornes de mot compatibles avec les lettres accentuées (\b ne les connaît pas)
 const L = '[\\p{L}\\p{N}]';
@@ -56,7 +63,7 @@ const APOS = "['’]";
 const ABSENCE = [
   /ne (?:le |la |les )?(?:mentionne|cite|précise|indique|montre)(?:nt)? (?:pas|ni)/iu,
   /ne (?:figure|figurent|apparaît|apparait|apparaissent) pas/iu,
-  /n['’](?:apparaît|apparait|est|sont) pas (?:mentionnée?s?|indiquée?s?|citée?s?|établie?s?|dans)/iu,
+  /n['’](?:apparaît|apparait|est|sont) pas (?:mentionnée?s?|indiquée?s?|citée?s?|établie?s?|documentée?s?|dans)/iu,
   /n['’](?:a|y a) (?:pas|aucune?) /iu,
   /(?<![\p{L}])(?:aucune?|pas d['’]|pas de|sans) (?:mention|trace|expérience|preuve|indication|certification)/iu,
   /(?<![\p{L}])absente?s? (?:du|des|dans les?) (?:cv|sources)/iu,
@@ -73,7 +80,8 @@ const CLAIM_VERB = words(
     'exploitée?s?', 'intègre', 'intégrée?s?', 'travaillé', 'travaille', 'mise? en (?:œuvre|place)',
     'masters?', 'mastered', 'practices?', 'practiced', 'uses', 'used', 'using', 'deploys', 'deployed',
     'built', 'builds', 'manages', 'managed', 'runs', 'ran', 'operates', 'operated', 'knows',
-    'integrated', 'implemented', 'worked', 'works',
+    'integrated', 'implemented', 'worked', 'works', 'administrée?s?', 'administre', 'pilotée?s?', 'pilote', 'certifiée?s?', 'acquise?s?',
+    'administered', 'certified', 'holds', 'has',
   ].join('|'),
 );
 const CLAIM_NOUN = words(
@@ -86,7 +94,7 @@ const NEGATED_BEFORE = new RegExp(`(?<!${L})(?:ni|pas|aucune?|sans|no|nor|withou
 const BACK_REFERENCE = new RegExp(
   [
     `(?<!${L})(?:il|elle|steve|on|qu${APOS}il|qu${APOS}elle)\\s+(?:l${APOS}|le\\s|la\\s|les\\s|en\\s|y\\s)`,
-    `(?<!${L})l${APOS}(?:a|ont|avait|utilise|pratique|maîtrise|déploie|exploite|intègre|gère|connaît|avoir)(?!${L})`,
+    `(?<!${L})l${APOS}(?:a|ait|aient|ont|avait|utilise|pratique|maîtrise|déploie|exploite|intègre|gère|connaît|avoir)(?!${L})`,
     `(?<!${L})(?:ce\\s+)?qu${APOS}(?:il|elle|steve)(?!${L})`,
     `(?<!${L})(?:it|them|which he|that he|he has|he is)(?!${L})`,
   ].join('|'),
@@ -96,8 +104,28 @@ const ANAPHORA = words(
   'cet outil|cette technologie|cette compétence|cet environnement|ces outils|ces technologies|ce dernier|cette dernière|this tool|this technology|this skill|these tools|the latter',
 );
 
-const ATTRIBUTION_SUBJECT = words('steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|l[\\x27\\u2019]intéressée?');
-const CONTRAST = words('mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although|bien que|malgré|alors que|despite|while|whereas');
+const ATTRIBUTION_SUBJECT = words(`steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|l${APOS}intéressée?`, 'giu');
+const CONTRAST_WORDS = 'mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although|bien que|malgré|alors que|despite|while|whereas';
+const CONTRAST = words(CONTRAST_WORDS);
+// séparateur de propositions : mot de contraste en tête de phrase ou après une virgule
+const CLAUSE_SEPARATOR = new RegExp(`(?:^|,)\\s*(?:${CONTRAST_WORDS})(?!${L})\\s*,?`, 'giu');
+// prédicat nié, avec ou sans sujet : « ne possède pas », « n'apparaît pas », « does not have ».
+// Les négations restrictives ou doubles ne comptent pas : « ne … pas seulement / que »,
+// « not only / just », « does not lack ».
+const NOT_RESTRICTIVE = `(?!\\s+(?:seulement|uniquement|que|qu${APOS}|moins|only|just|merely|lack|lacks)(?!${L}))`;
+const NEGATED_PREDICATE = new RegExp(
+  [
+    `(?<!${L})(?:ne\\s+|n${APOS})(?:(?:le|la|les|en|y)\\s+|l${APOS})?\\p{L}+\\s+(?:pas|jamais|aucune?|plus|ni)(?!${L})${NOT_RESTRICTIVE}`,
+    `(?<!${L})(?:does|do|did|has|have|is|are|was|were)(?:\\s+not|n${APOS}t)(?!${L})${NOT_RESTRICTIVE}`,
+    `(?<!${L})(?:has|have|holds?|with)\\s+no(?!${L})`,
+    `(?<!${L}|not\\s)lacks?(?!${L})`,
+  ].join('|'),
+  'giu',
+);
+// continuation d'énumération niée après la négation : « , de certification X », « , ni d'expertise Y »
+const ENUM_CONTINUATION = new RegExp(`^\\s*(?:de|d${APOS}|des|du|ni|ou|or|nor|no|any)(?!${L})`, 'iu');
+// nom de revendication sujet d'un passif nié : « L'expertise SAP n'est pas documentée »
+const NEGATED_PASSIVE_AFTER = new RegExp(`^[^,;:]*?(?:n${APOS}(?:est|sont)\\s+pas|ne\\s+sont\\s+pas|is\\s+not|are\\s+not|isn${APOS}t|aren${APOS}t)(?!${L})`, 'iu');
 
 const list = (v) =>
   String(v ?? '')
@@ -111,54 +139,86 @@ const sentencesOf = (s) =>
     .split(/(?<=[.!?])\s+|\n+/)
     .map((p) => p.trim())
     .filter(Boolean);
+const clausesOf = (sentence) =>
+  sentence
+    .split(CLAUSE_SEPARATOR)
+    .map((c) => c.trim())
+    .filter(Boolean);
 
-function unnegatedClaimNoun(sentence) {
-  for (const m of sentence.matchAll(CLAIM_NOUN)) {
-    if (!NEGATED_BEFORE.test(sentence.slice(0, m.index))) return m[0];
+const negationSpans = (clause) => {
+  const spans = [];
+  for (const re of ABSENCE) {
+    const m = clause.match(re);
+    if (m) spans.push({ start: m.index, end: m.index + m[0].length });
+  }
+  for (const m of clause.matchAll(NEGATED_PREDICATE)) spans.push({ start: m.index, end: m.index + m[0].length });
+  return spans.sort((a, b) => a.start - b.start);
+};
+
+function unnegatedClaimNoun(text) {
+  for (const m of text.matchAll(CLAIM_NOUN)) {
+    const before = text.slice(0, m.index);
+    const after = text.slice(m.index + m[0].length);
+    if (!NEGATED_BEFORE.test(before) && !NEGATED_PASSIVE_AFTER.test(after)) return m[0];
   }
   return null;
 }
 
-/** Raison pour laquelle `sentence` n'est pas une pure phrase d'absence, ou null. */
-function impureAbsence(sentence) {
-  if (!ABSENCE.some((re) => re.test(sentence))) return "pas de formulation d'absence";
-  // règle structurelle (les listes de revendications restent ouvertes) : une phrase
-  // d'absence n'a pour sujet que le CV ou les sources, et rien ne s'y oppose
-  // une compétence absente du CV ne peut pas être sourcée : toute citation trahit une revendication
-  if (/\[\d+\]/.test(sentence)) return 'citation [n] dans une phrase d\'absence';
-  const subject = sentence.match(ATTRIBUTION_SUBJECT);
-  if (subject) return `sujet d'attribution « ${subject[0]} »`;
-  const contrast = sentence.match(CONTRAST);
-  if (contrast) return `mot de contraste « ${contrast[0]} »`;
-  const verb = sentence.match(CLAIM_VERB);
+/** Revendication positive : verbe (hors prédicat nié) ou nom non nié. */
+function positiveClaim(clause, spans) {
+  let rest = clause;
+  for (const { start, end } of [...spans].reverse()) rest = rest.slice(0, start) + ' '.repeat(end - start) + rest.slice(end);
+  const verb = rest.match(CLAIM_VERB);
   if (verb) return `verbe de revendication « ${verb[0]} »`;
-  const noun = unnegatedClaimNoun(sentence);
+  const noun = unnegatedClaimNoun(clause);
   if (noun) return `revendication « ${noun} »`;
-  const back = sentence.match(BACK_REFERENCE);
+  return null;
+}
+
+/** Raison pour laquelle la proposition qui nomme une compétence absente n'est pas une pure absence. */
+function impureAbsence(clause) {
+  const spans = negationSpans(clause);
+  if (spans.length === 0) return "pas de formulation d'absence ni de prédicat nié";
+  const firstNegation = spans[0];
+  // sujet admis seulement s'il porte la négation (« Steve ne possède pas ») ou s'il la suit
+  for (const m of clause.matchAll(ATTRIBUTION_SUBJECT)) {
+    const carriesNegation = spans.some(({ start }) => start >= m.index + m[0].length && /^\s*$/.test(clause.slice(m.index + m[0].length, start)));
+    if (!carriesNegation && m.index < firstNegation.start) return `sujet d'attribution « ${m[0]} » sans négation`;
+  }
+  const contrast = clause.match(CONTRAST);
+  if (contrast) return `mot de contraste « ${contrast[0]} » à l'intérieur de la proposition`;
+  // après la négation, seuls les éléments de l'énumération niée peuvent suivre une virgule
+  const segments = clause.slice(firstNegation.end).split(',').slice(1);
+  const extra = segments.find((s) => s.trim() && !ENUM_CONTINUATION.test(s));
+  if (extra) return `ajout après la négation « ${extra.trim()} »`;
+  const claim = positiveClaim(clause, spans);
+  if (claim) return claim;
+  const back = clause.match(BACK_REFERENCE);
   if (back) return `reprise « ${back[0].trim()} »`;
-  const ana = sentence.match(ANAPHORA);
+  const ana = clause.match(ANAPHORA);
   if (ana) return `désignation « ${ana[0]} »`;
-  if (/\((?!\s*\d+\s*\))/.test(sentence)) return 'parenthèse';
+  if (/\((?!\s*\d+\s*\))/.test(clause)) return 'parenthèse';
   return null;
 }
 
 /** Raison de l'échec pour les compétences absentes, ou null. */
 function skillViolation(answer, skills) {
-  const sentences = sentencesOf(answer);
+  const clauses = sentencesOf(answer).flatMap(clausesOf);
   let named = false;
-  for (const sentence of sentences) {
-    const lower = sentence.toLowerCase();
+  for (const clause of clauses) {
+    const lower = clause.toLowerCase();
     const skill = skills.find((s) => lower.includes(s.toLowerCase()));
     if (!skill) continue;
     named = true;
-    const why = impureAbsence(sentence);
-    if (why) return `${skill} : ${why} dans « ${sentence} »`;
+    const why = impureAbsence(clause);
+    if (why) return `${skill} : ${why} dans « ${clause} »`;
   }
   if (!named) return null;
-  for (const sentence of sentences) {
-    const referenced = BACK_REFERENCE.test(sentence) || ANAPHORA.test(sentence);
-    if (referenced && (CLAIM_VERB.test(sentence) || unnegatedClaimNoun(sentence))) {
-      return `reprise revendiquée d'une compétence absente dans « ${sentence} »`;
+  // ailleurs : aucune reprise (pronom, « cet outil ») associée à une revendication
+  for (const clause of clauses) {
+    const referenced = BACK_REFERENCE.test(clause) || ANAPHORA.test(clause);
+    if (referenced && positiveClaim(clause, negationSpans(clause))) {
+      return `reprise revendiquée d'une compétence absente dans « ${clause} »`;
     }
   }
   return null;
@@ -182,6 +242,10 @@ function check(r, vars = {}) {
 
   if (/\*\*|^\s*#{1,6}\s|^\s*[-*•]\s/m.test(answer)) {
     return { pass: false, score: 0, reason: 'Markdown dans la réponse' };
+  }
+  // le refus exact reste en français par contrat (prompt v7) : il n'est pas jugé ici
+  if (vars.lang === 'en' && answer.trim() !== REFUSAL && !isEnglish(answer)) {
+    return { pass: false, score: 0, reason: "réponse pas en anglais alors que l'annonce l'est" };
   }
   if (truthy(vars.cite) && !/\[\d+\]/.test(answer)) {
     return { pass: false, score: 0, reason: 'aucune source citée' };
