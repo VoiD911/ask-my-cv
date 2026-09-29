@@ -45,7 +45,7 @@ def test_render_wraps_submitted_text_when_template_declares_tags() -> None:
 def test_only_v5_and_later_templates_delimit() -> None:
     for version in ("v1", "v2", "v3", "v4"):
         assert not load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
-    for version in ("v5", "v6"):
+    for version in ("v5", "v6", "v7"):
         assert load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
 
 
@@ -174,9 +174,21 @@ def test_prompt_v6_keeps_v5_rules_and_makes_length_explicit() -> None:
     assert v6.system.count("phrases au plus") == 2
 
 
-def test_settings_use_prompt_v6() -> None:
+def test_prompt_v7_only_makes_language_explicit() -> None:
+    from ask_my_cv.output_guard import REFUSAL
+
+    v6 = load_template(Path("prompts/answer@v6.md")).system.splitlines()
+    v7 = load_template(Path("prompts/answer@v7.md"))
+    assert v7.version == "v7" and v7.delimits_submitted
+    changed = [line for line in v7.system.splitlines() if line not in v6]
+    assert len(changed) == 1 and changed[0].startswith("- Réponds dans la langue de l'annonce")
+    assert "en anglais si le texte soumis est en anglais" in v7.system
+    assert "refus reste toujours en français" in v7.system and REFUSAL in v7.system
+
+
+def test_settings_use_prompt_v7() -> None:
     from ask_my_cv.settings import Settings
 
-    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v6.md")
+    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v7.md")
     for name in ("settings.yaml", "settings.aws.yaml", "settings.ci.yaml"):
-        assert "prompt_path: prompts/answer@v6.md" in Path(name).read_text(encoding="utf-8")
+        assert "prompt_path: prompts/answer@v7.md" in Path(name).read_text(encoding="utf-8")

@@ -4,7 +4,7 @@ cors_origins: []   # origine du site en production (plan 1e)
 
 cv_path: data/cv.md
 index_path: data/index.json
-prompt_path: prompts/answer@v6.md
+prompt_path: prompts/answer@v7.md
 embed_dim: 256
 
 default_model: ollama:gemma3
