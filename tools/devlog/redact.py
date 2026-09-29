@@ -77,7 +77,7 @@ l'une à la place de l'autre) :
    {
      "aws_account_ids": ["111111111111"],
      "email_allowlist": ["job@example.org"],
-     "local_usernames": ["swond"],
+     "local_usernames": ["jdupont"],
      "path_roots": ["D:\\\\DEV"],
      "secret_allowlist": []
    }
