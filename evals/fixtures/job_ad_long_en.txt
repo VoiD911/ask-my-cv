@@ -1,0 +1,53 @@
+Principal Platform Architect, Applied AI (Full-time, Remote within Canada)
+
+About us
+Northwind Logistics Cloud builds software that helps mid-sized manufacturers and distributors plan shipments, manage warehouse capacity and keep their customers informed. More than 1,200 companies across North America rely on our platform every day, from family-owned food producers to national building-supply chains. Our product teams are spread across Toronto, Montreal, Halifax and Vancouver, and we have been fully remote-friendly since our founding in 2016.
+
+Over the past eighteen months we have started to embed generative AI into the product. Our first assistant summarizes delivery exceptions for dispatchers; a second one drafts customer notifications when a truck is delayed. Both were built quickly by small teams and proved that customers value the time saved. We now need a principal architect who can turn these experiments into a coherent, secure and cost-aware platform that every product team can build on.
+
+What you will do
+Own the reference architecture for AI features across the product, from retrieval pipelines to prompt management, evaluation and observability.
+Work with product managers and customer success to identify the business processes where automation brings measurable value, and translate them into technical specifications that teams can deliver incrementally.
+Design retrieval-augmented generation services over customer documents such as contracts, shipping manifests and support tickets, with strict tenant isolation.
+Define guardrails for every AI feature: input screening against prompt injection, output validation, personal-data protection, rate limiting and spending caps.
+Lead the build of an internal agent platform that lets product teams assemble tools, prompts and workflows without reinventing the plumbing each time.
+Establish continuous evaluation: regression suites that run on every change, nightly red-team runs, drift monitoring and clear quality gates before release.
+Partner with our security and compliance team on threat models, supply-chain security for models and containers, and audit trails.
+Mentor senior engineers, run architecture reviews and write decision records that explain the trade-offs behind each choice.
+Represent engineering in conversations with enterprise customers who want to understand how their data is handled by our AI features.
+
+A typical week
+On Monday you might sit with a dispatcher in one of our customer warehouses to watch how exceptions are really handled, then sketch with the product manager what an assistant could take off their plate. On Tuesday you review a design proposal for a new retrieval index and push back on a shortcut that would mix data from two tenants. Midweek you pair with an engineer to debug why the nightly evaluation suddenly dropped by four points after a model upgrade, and you decide whether to roll back or adjust the prompt. On Thursday you present the quarterly AI cost report to the leadership team, explaining where caching and smaller models saved money and where they did not. Friday is usually reserved for writing: a decision record, a guide for teams adopting the agent platform, or feedback on a pull request that changes how we log model calls.
+
+The first six months
+In your first month you will meet every team that ships AI features and map what already exists. By the end of the third month we expect a written target architecture, agreed with engineering leadership, and a roadmap that retires the most fragile parts of our early prototypes. By month six the first product teams should be building on the shared platform, with evaluation and guardrails enabled by default rather than added at the end.
+
+Our stack
+Our core services run on AWS, with a growing footprint on Azure for customers who require it. Backend services are written mostly in Python and Go; we use FastAPI for new services, PostgreSQL with pgvector for retrieval, and Redis for caching. Everything ships through GitHub Actions into containers built with Docker. Production workloads run on Amazon EKS, infrastructure is managed with Terraform, and observability is built on OpenTelemetry with traces exported to our tracing backend. We call foundation models through Amazon Bedrock and keep a small set of self-hosted models for latency-sensitive tasks.
+
+What we are looking for
+A degree in computer science or software engineering, or equivalent experience; graduate studies in a related field are a plus.
+Fifteen or more years of professional software development, including at least three years as a solutions or platform architect.
+Hands-on experience designing and shipping LLM-based applications, ideally with retrieval, agents and automated evaluation.
+Deep knowledge of at least one major cloud provider and practical experience with multi-cloud deployments.
+Strong CI/CD culture and experience automating the full path from commit to production.
+Production experience with Go and with Kubernetes at scale is required, as is a current AWS Solutions Architect Professional certification.
+Familiarity with supply-chain or logistics software is a strong asset.
+Excellent written and spoken English; French is an asset for working with our Montreal team and Quebec customers.
+Comfort explaining technical risk to executives and customers, and the judgement to say no when a feature is not ready.
+
+Why join us
+Competitive base salary, annual bonus and stock options in a profitable, growing company.
+Comprehensive health and dental coverage from day one, plus a health spending account.
+Four weeks of vacation, a winter shutdown between Christmas and New Year, and paid volunteer days.
+A yearly learning budget, conference travel and dedicated time every sprint for exploration.
+A home-office stipend and quarterly team gatherings in one of our hub cities.
+
+Hiring process
+After an initial review, a member of our talent team will reach out for a thirty-minute introductory call. The next step is a conversation with our VP of Engineering about your past architecture work, followed by a system design session with two principal engineers. The final stage is a meeting with our CTO and a product leader. We aim to complete the process within three weeks and we give feedback to every candidate who reaches the design session.
+
+Equal opportunity
+Northwind Logistics Cloud is an equal opportunity employer. We welcome applications from people of all backgrounds and we provide accommodations throughout the hiring process on request.
+
+How to apply
+Send your resume and a short note about an AI system you are proud of before November 15. Questions about the role can be directed to Daniel Brooks, Senior Technical Recruiter, at +1 416-555-0187 or careers@northwind-logistics.example.

@@ -19,9 +19,23 @@ const run = (fields) =>
     }),
   ).pass;
 
-test('refus exact, au balisage près : réussi', () => {
+test('refus exact (v5, strict par défaut) : réussi ; décoré ou complété : échec', () => {
   assert.equal(run({ answer: 'Je ne trouve pas cette information dans le CV.' }), true);
-  assert.equal(run({ answer: '**Je ne trouve pas cette information dans le CV.**' }), true);
+  assert.equal(run({ answer: '  Je ne trouve pas cette information dans le CV.\n' }), true);
+  assert.equal(run({ answer: '**Je ne trouve pas cette information dans le CV.**' }), false);
+  assert.equal(run({ answer: '« Je ne trouve pas cette information dans le CV. »' }), false);
+  const extra = 'Je ne trouve pas cette information dans le CV. Les coordonnées sont sur le site [1].';
+  assert.equal(run({ answer: extra }), false);
+});
+
+test('mode lenient (v3/v4) : balisage toléré, ajout toujours refusé', () => {
+  const lenient = (answer) =>
+    refusal(
+      JSON.stringify({ status: 200, done: true, answer, override: null, blocked: null, sources: [] }),
+      { vars: { refusalMode: 'lenient' } },
+    ).pass;
+  assert.equal(lenient('**Je ne trouve pas cette information dans le CV.**'), true);
+  assert.equal(lenient('Je ne trouve pas cette information dans le CV. Voir le site.'), false);
 });
 
 test('réponse remplacée par le garde-fou de sortie : réussi', () => {
