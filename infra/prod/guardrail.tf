@@ -22,12 +22,16 @@ resource "aws_bedrock_guardrail" "annonces" {
 }
 
 # Version publiée (immuable) : c'est elle que le service et la mesure appellent, jamais DRAFT.
-# Toute modification du garde-fou publie une nouvelle version.
+# Toute modification du garde-fou publie une nouvelle version, créée AVANT la destruction de
+# l'ancienne (create_before_destroy) : une version épinglée par le service ne disparaît jamais
+# en cours d'apply ; les références (sorties, futur environnement Lambda) basculent dans le
+# même apply, puis l'ancienne version est supprimée.
 resource "aws_bedrock_guardrail_version" "annonces" {
   guardrail_arn = aws_bedrock_guardrail.annonces.guardrail_arn
   description   = "Filtre attaque de prompt, entree ${var.guardrail_prompt_attack_strength}"
 
   lifecycle {
-    replace_triggered_by = [aws_bedrock_guardrail.annonces]
+    create_before_destroy = true
+    replace_triggered_by  = [aws_bedrock_guardrail.annonces]
   }
 }

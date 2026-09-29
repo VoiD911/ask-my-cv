@@ -1,7 +1,7 @@
 """Mesure du garde-fou Bedrock « annonces » (tâche 4c, #118) : second avis sur les annonces collées.
 
 python -m ml.guardrail_eval --guardrail-id ID --guardrail-version N \
-    [--model chemin/model.onnx] [--max-units 3000] [--out-dir dist/guardrail]
+    [--model chemin/model.onnx] [--max-units 3000] [--out-dir dist/guardrail] [--resume]
 
 Appelle ApplyGuardrail (source INPUT, contenu qualifié `guard_content`, portée FULL) sur :
 - les annonces d'évaluation `ml/data/job_ads_eval.jsonl` (légitimes / injectées) ;
@@ -12,6 +12,9 @@ Appelle ApplyGuardrail (source INPUT, contenu qualifié `guard_content`, portée
 Avec `--model`, ajoute le score du classifieur ONNX (calculé comme au service) et un tableau
 croisé score × garde-fou, avec les règles combinées candidates. Sorties : `guardrail_eval.json`
 et `guardrail_eval.md`. Aucun texte d'annonce n'est affiché ni écrit, seulement des identifiants.
+Les scores ONNX sont calculés avant tout appel payant. Chaque résultat est ajouté dès réception
+à `journal_v<version>.jsonl` (sans texte) ; `--resume` reprend sans repayer les cas journalisés.
+Le plafond `--max-units` porte sur les unités réellement facturées, revérifié à chaque appel.
 Les identifiants AWS viennent de la chaîne standard de boto3 (profil, variables, SSO).
 """
 
@@ -20,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import random
 import sys
 import time
 from collections.abc import Callable, Sequence
@@ -113,11 +117,16 @@ def _prompt_attack_confidence(response: dict[str, Any]) -> str | None:
     return None
 
 
-def _error_code(exc: Exception) -> str | None:
+def _retryable(exc: Exception) -> bool:
+    from botocore.exceptions import ConnectionError as BotoConnectionError
+    from botocore.exceptions import HTTPClientError
+
+    if isinstance(exc, BotoConnectionError | HTTPClientError):  # réseau, délais dépassés
+        return True
     response = getattr(exc, "response", None)
     if isinstance(response, dict):
-        return (response.get("Error") or {}).get("Code")
-    return None
+        return (response.get("Error") or {}).get("Code") in RETRYABLE
+    return False
 
 
 def apply_one(
@@ -128,6 +137,7 @@ def apply_one(
     *,
     retries: int = 5,
     sleep: Callable[[float], None] = time.sleep,
+    jitter: Callable[[float, float], float] = random.uniform,
 ) -> Result:
     request = {
         "guardrailIdentifier": guardrail_id,
@@ -141,9 +151,10 @@ def apply_one(
             response = client.apply_guardrail(**request)
             break
         except Exception as exc:
-            if _error_code(exc) not in RETRYABLE or attempt == retries:
+            if not _retryable(exc) or attempt == retries:
                 raise
-            sleep(min(30.0, 0.5 * 2**attempt))
+            # attente exponentielle à gigue complète
+            sleep(jitter(0.0, min(30.0, 0.5 * 2**attempt)))
     else:  # pragma: no cover - la boucle sort par break ou raise
         raise RuntimeError("inaccessible")
     usage = response.get("usage") or {}
@@ -160,6 +171,13 @@ def apply_one(
     )
 
 
+def load_journal(path: Path) -> dict[str, Result]:
+    """Résultats déjà mesurés (une ligne JSON par cas), pour reprendre sans repayer."""
+    if not path.exists():
+        return {}
+    return {r["id"]: Result(**r) for r in _jsonl(path)}
+
+
 def run(
     client: GuardrailClient,
     guardrail_id: str,
@@ -167,24 +185,46 @@ def run(
     cases: Sequence[Case],
     *,
     max_units: int = DEFAULT_MAX_UNITS,
+    journal: Path | None = None,
+    scores: dict[str, float] | None = None,
     min_interval: float = 0.2,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> list[Result]:
-    estimated = sum(text_units(c.text) for c in cases)
+    """Mesure les cas absents du journal ; chaque résultat y est ajouté dès sa réception.
+
+    Le plafond porte sur les unités réellement facturées (champ `usage` de la réponse, journal
+    compris) : vérifié avant l'appel sur l'estimation, puis recalculé après chaque réponse.
+    """
+    done = load_journal(journal) if journal is not None else {}
+    todo = [c for c in cases if c.id not in done]
+    billed = sum(r.units for r in done.values())
+    estimated = billed + sum(text_units(c.text) for c in todo)
     if estimated > max_units:
         raise SystemExit(
             f"estimation {estimated} unités > plafond {max_units} "
             f"(≈ {estimated * USD_PER_UNIT:.2f} $) : relever --max-units en connaissance de cause"
         )
-    results: list[Result] = []
     last = -math.inf
-    for case in cases:
+    for case in todo:
+        if billed + text_units(case.text) > max_units:
+            raise SystemExit(f"plafond atteint : {billed} unités facturées, arrêt avant {case.id}")
         wait = min_interval - (clock() - last)
         if wait > 0:
             sleep(wait)
         last = clock()
-        results.append(apply_one(client, guardrail_id, version, case, sleep=sleep))
+        result = apply_one(client, guardrail_id, version, case, sleep=sleep)
+        if scores is not None:
+            result.score = scores[case.id]  # journalisé avec son score
+        billed += result.units
+        done[case.id] = result
+        if journal is not None:
+            with journal.open("a", encoding="utf-8") as f:
+                f.write(json.dumps(asdict(result), ensure_ascii=False) + "\n")
+    results = [done[c.id] for c in cases]
+    if scores is not None:  # reprise : les cas journalisés reçoivent aussi le score courant
+        for r in results:
+            r.score = scores[r.id]
     return results
 
 
@@ -312,11 +352,6 @@ def to_markdown(summary: dict[str, Any], guardrail: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def attach_scores(results: Sequence[Result], scores: Sequence[float]) -> None:
-    for result, score in zip(results, scores, strict=True):
-        result.score = float(score)
-
-
 def _onnx_scores(model: Path, texts: list[str]) -> list[float]:
     import onnxruntime as ort
 
@@ -335,11 +370,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--max-units", type=int, default=DEFAULT_MAX_UNITS)
     parser.add_argument("--min-interval", type=float, default=0.2, help="secondes entre appels")
     parser.add_argument("--out-dir", type=Path, default=Path("dist/guardrail"))
+    parser.add_argument(
+        "--resume", action="store_true", help="reprendre le journal existant (cas déjà payés)"
+    )
     args = parser.parse_args(argv)
     if args.guardrail_version.upper() == "DRAFT":
         parser.error("mesurer une version publiée, pas DRAFT")
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    journal = args.out_dir / f"journal_v{args.guardrail_version}.jsonl"
+    if journal.exists() and not args.resume:
+        parser.error(f"{journal} existe : --resume pour le reprendre, ou le supprimer")
 
     cases = load_cases()
+    # Scores du classifieur calculés AVANT tout appel payant : un modèle illisible échoue ici.
+    scores = None
+    if args.model is not None:
+        values = _onnx_scores(args.model, [c.text for c in cases])
+        scores = {c.id: float(v) for c, v in zip(cases, values, strict=True)}
     estimated = sum(text_units(c.text) for c in cases)
     print(f"{len(cases)} cas, ≈ {estimated} unités (≈ {estimated * USD_PER_UNIT:.2f} $)")
     import boto3
@@ -351,13 +398,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         args.guardrail_version,
         cases,
         max_units=args.max_units,
+        journal=journal,
+        scores=scores,
         min_interval=args.min_interval,
     )
-    if args.model is not None:
-        attach_scores(results, _onnx_scores(args.model, [c.text for c in cases]))
     summary = summarize(results)
     summary["guardrail"] = {"version": args.guardrail_version, "region": args.region}
-    args.out_dir.mkdir(parents=True, exist_ok=True)
     (args.out_dir / "guardrail_eval.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
     )

@@ -1,12 +1,14 @@
+import json
+from pathlib import Path
 from typing import Any
 
 import pytest
+from botocore.exceptions import ReadTimeoutError
 
 from ml.guardrail_eval import (
     DEFAULT_MAX_UNITS,
     Case,
     apply_one,
-    attach_scores,
     load_cases,
     run,
     summarize,
@@ -85,9 +87,27 @@ def test_apply_one_request_shape() -> None:
 def test_apply_one_retries_throttling() -> None:
     sleeps: list[float] = []
     client = FakeClient(["ThrottlingException", "ThrottlingException"])
-    result = apply_one(client, "gid", "1", _case(0, "domain", 0), sleep=sleeps.append)
+    result = apply_one(
+        client, "gid", "1", _case(0, "domain", 0), sleep=sleeps.append, jitter=lambda a, b: b
+    )
     assert not result.intervened
-    assert sleeps == [0.5, 1.0]
+    assert sleeps == [0.5, 1.0]  # plafonds de la gigue : 0,5 puis 1 s
+
+
+def test_apply_one_retries_timeouts() -> None:
+    client = FakeClient()
+    calls = {"n": 0}
+    original = client.apply_guardrail
+
+    def flaky(**kwargs: Any) -> dict[str, Any]:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ReadTimeoutError(endpoint_url="https://example.invalid")
+        return original(**kwargs)
+
+    client.apply_guardrail = flaky
+    result = apply_one(client, "gid", "1", _case(0, "domain", 0), sleep=lambda _: None)
+    assert calls["n"] == 2 and not result.intervened
 
 
 def test_apply_one_raises_other_errors() -> None:
@@ -102,6 +122,45 @@ def test_run_aborts_over_cost_limit() -> None:
     with pytest.raises(SystemExit):
         run(client, "gid", "1", cases, max_units=10, sleep=lambda _: None)
     assert client.calls == []
+
+
+def test_run_checks_billed_units_in_loop() -> None:
+    class Overbilling(FakeClient):
+        def apply_guardrail(self, **kwargs: Any) -> dict[str, Any]:
+            response = super().apply_guardrail(**kwargs)
+            response["usage"]["contentPolicyUnits"] = 4  # facturé au-delà de l'estimation
+            return response
+
+    client = Overbilling()
+    cases = [_case(i, "domain", 0) for i in range(3)]
+    with pytest.raises(SystemExit):
+        run(client, "gid", "1", cases, max_units=4, min_interval=0, sleep=lambda _: None)
+    assert len(client.calls) == 1
+
+
+def test_run_journal_and_resume(tmp_path: Path) -> None:
+    journal = tmp_path / "journal.jsonl"
+    cases = [_case(i, "job_ads", 0, f"annonce secrète {i}") for i in range(3)]
+    first = FakeClient()
+    run(first, "gid", "1", cases[:2], journal=journal, min_interval=0, sleep=lambda _: None)
+    lines = journal.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line)["id"] for line in lines] == ["job_ads:0", "job_ads:1"]
+    assert "secrète" not in journal.read_text(encoding="utf-8")
+    second = FakeClient()
+    scores = {c.id: 0.1 * i for i, c in enumerate(cases)}
+    results = run(
+        second,
+        "gid",
+        "1",
+        cases,
+        journal=journal,
+        scores=scores,
+        min_interval=0,
+        sleep=lambda _: None,
+    )
+    assert len(second.calls) == 1  # seuls les cas absents du journal sont payés
+    assert [r.id for r in results] == [c.id for c in cases]
+    assert [r.score for r in results] == [scores[c.id] for c in cases]
 
 
 def test_run_rate_limits() -> None:
@@ -122,8 +181,11 @@ def test_summarize_and_joint_rules() -> None:
         _case(4, "domain", 0),
         Case("nightly:x", "nightly", "IGNORE", 1, "blocked"),
     ]
-    results = run(FakeClient(), "gid", "1", cases, min_interval=0, sleep=lambda _: None)
-    attach_scores(results, [0.6, 0.2, 0.6, 0.9, 0.1, 0.95])
+    values = [0.6, 0.2, 0.6, 0.9, 0.1, 0.95]
+    scores = {c.id: v for c, v in zip(cases, values, strict=True)}
+    results = run(
+        FakeClient(), "gid", "1", cases, scores=scores, min_interval=0, sleep=lambda _: None
+    )
     summary = summarize(results)
     assert summary["job_ad_fpr"] == 0.5
     assert summary["job_ad_recall"] == 0.5
@@ -134,8 +196,11 @@ def test_summarize_and_joint_rules() -> None:
     assert rules["classifieur ≥ 0,5 (actuel)"]["job_ad_fpr"] == 0.5
     combined = rules["≥ 0,8, ou 0,5–0,8 et garde-fou"]
     assert (combined["job_ad_fpr"], combined["job_ad_recall"]) == (0.0, 1.0)
-    legit_mid = next(r for r in summary["joint"] if r["set"] == "job_ads:0" and r["n"] == 1)
-    assert legit_mid["guardrail_flagged"] in (0, 1)
+    joint = {(r["set"], r["bin"]): (r["n"], r["guardrail_flagged"]) for r in summary["joint"]}
+    assert joint[("job_ads:0", "0–0,5")] == (1, 1)
+    assert joint[("job_ads:0", "0,5–0,8")] == (1, 0)
+    assert joint[("job_ads:1", "≥ 0,8")] == (1, 0)
+    assert "IGNORE" not in json.dumps(summary, ensure_ascii=False)  # ni dans le JSON
     markdown = to_markdown(summary, "version 1")
     assert "IGNORE" not in markdown  # aucun texte d'annonce dans le rapport
     assert "nightly:x" in markdown
