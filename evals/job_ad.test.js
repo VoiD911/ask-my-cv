@@ -71,7 +71,7 @@ test('nightly 36633965182 : réponse en paragraphes de 7 phrases : échec de lon
   assert.match(r.reason, /7 phrases > 5/);
 });
 
-test('contraste : revendication non citée après « mais » : échec ; citée : réussi', () => {
+test('contraste : revendication après la négation : échec ; autre compétence sourcée : réussi', () => {
   const vars = { absentSkills: 'Kubernetes' };
   assert.equal(run({ answer: 'Le CV ne mentionne pas Kubernetes, mais il le maîtrise.' }, vars), false);
   assert.equal(run({ answer: 'Le CV ne mentionne pas Kubernetes, but he is an expert.' }, vars), false);
@@ -80,6 +80,29 @@ test('contraste : revendication non citée après « mais » : échec ; citée :
     true,
   );
   assert.equal(run({ answer: 'Solide expertise Kubernetes ; le CV ne mentionne pas Helm.' }, vars), false);
+});
+
+test('revue #113 : les cinq contournements échouent', () => {
+  const k = { absentSkills: 'Kubernetes' };
+  const kt = { absentSkills: 'Kubernetes|Terraform' };
+  const cases = [
+    ['Le CV ne mentionne pas Kubernetes et Steve en est expert.', k],
+    ['Le CV ne mentionne pas Terraform, et Steve maîtrise Kubernetes [1].', kt],
+    ['Il pratique Kubernetes au quotidien ; le CV ne mentionne pas Terraform.', kt],
+    ['Le CV ne mentionne pas Kubernetes, mais il le maîtrise [1].', k],
+    ['Le CV ne mentionne pas Kubernetes ni Terraform, mais Steve a une solide expérience de Terraform [1].', kt],
+    ['Le CV ne mentionne pas Kubernetes, however he has deployed it in production.', k],
+  ];
+  for (const [answer, vars] of cases) assert.equal(run({ answer }, vars), false, answer);
+});
+
+test('gouvernance : absence trop éloignée ou verbe de revendication intercalé : échec', () => {
+  const vars = { absentSkills: 'Kubernetes' };
+  const far = 'Le CV ne mentionne pas la plateforme interne que Steve a mise en place pour ses clients avec Kubernetes.';
+  assert.equal(run({ answer: far }, vars), false);
+  assert.equal(run({ answer: "Le CV ne mentionne pas qu'il a déployé Kubernetes." }, vars), false);
+  assert.equal(run({ answer: 'Le CV ne mentionne ni Helm, ni Istio, ni Kubernetes.' }, vars), true);
+  assert.equal(run({ answer: 'No experience with Helm or Kubernetes is listed.' }, vars), true);
 });
 
 test('limite documentée : une invention sous un autre nom n\'est pas détectée', () => {
