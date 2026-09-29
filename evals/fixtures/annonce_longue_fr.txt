@@ -1,0 +1,52 @@
+Architecte de solutions IA générative (poste permanent, hybride)
+
+Qui sommes-nous
+Groupe Boréal Assurances est un assureur de dommages établi au Québec depuis plus de soixante ans. Nous protégeons près de 900 000 clients particuliers et entreprises, et nos 2 400 employés travaillent depuis Québec, Montréal, Sherbrooke et Trois-Rivières. Depuis trois ans, notre direction Transformation numérique modernise l'ensemble de la chaîne de traitement des réclamations : dépôt en ligne, tri des documents, estimation des dommages, communication avec les assurés et les experts en sinistres. Notre ambition est simple : réduire de moitié le délai moyen de règlement d'un dossier tout en améliorant la qualité des décisions et la transparence envers nos clients.
+
+Pour y parvenir, nous avons constitué un centre d'excellence en intelligence artificielle qui réunit des scientifiques des données, des ingénieurs logiciels, des analystes d'affaires et des spécialistes de la conformité. Nous cherchons aujourd'hui la personne qui donnera une cohérence d'ensemble à nos initiatives d'IA générative et qui transformera nos preuves de concept en services fiables, sécurisés et mesurables.
+
+Le mandat
+Relevant de la directrice du centre d'excellence, vous serez responsable de l'architecture des solutions qui intègrent des grands modèles de langage dans nos processus d'affaires. Vous travaillerez en étroite collaboration avec les équipes Réclamations, Souscription et Service à la clientèle pour comprendre leurs irritants, prioriser les cas d'usage et proposer des architectures réalistes. Vous accompagnerez ensuite les équipes de développement jusqu'à la mise en production et au suivi en exploitation.
+
+Vos principales responsabilités
+Recueillir les besoins métier auprès des gestionnaires et des utilisateurs, puis les traduire en exigences fonctionnelles et non fonctionnelles claires, priorisées et vérifiables.
+Concevoir des architectures d'assistants et d'agents basés sur des modèles de langage, avec récupération augmentée (RAG) sur nos bases documentaires internes : polices, guides de souscription, procédures de réclamation et historique de correspondance.
+Définir les garde-fous nécessaires : filtrage des entrées, détection des tentatives de manipulation, contrôle des sorties, protection des renseignements personnels et journalisation des décisions.
+Choisir les services infonuagiques appropriés et concevoir des déploiements incrémentaux sur Azure et AWS, en tirant parti de l'automatisation des pipelines d'intégration et de déploiement continus.
+Mettre en place des pratiques d'évaluation des modèles : jeux de tests, métriques de qualité, suivi de la dérive, tests adverses et revue humaine des cas limites.
+Encadrer techniquement une équipe de six développeurs et deux scientifiques des données, faire des revues de conception et favoriser le partage de connaissances.
+Rédiger et maintenir les dossiers d'architecture, les décisions techniques et les guides de bonnes pratiques à l'intention des autres équipes.
+Présenter les orientations techniques au comité d'architecture et vulgariser les enjeux auprès des gestionnaires non techniques.
+Assurer une veille sur l'évolution rapide des modèles, des outils et du cadre réglementaire applicable à l'IA dans le secteur financier.
+
+Environnement technologique
+Nos charges de travail sont réparties entre Azure, où se trouvent la plupart de nos applications d'entreprise, et AWS, que nous utilisons pour nos nouveaux services d'analyse. Nos équipes développent principalement en Python, avec FastAPI pour les services et PostgreSQL pour les données transactionnelles. Nous utilisons GitHub et GitHub Actions pour la gestion du code et l'automatisation, ainsi que Docker pour l'empaquetage. L'orchestration de conteneurs repose sur Kubernetes (AKS) et l'infrastructure est décrite avec Terraform. Nos tableaux de bord de suivi s'appuient sur Power BI et notre gestion des identités sur Entra ID.
+
+Profil recherché
+Diplôme universitaire en génie logiciel, en informatique ou dans un domaine connexe ; une formation aux cycles supérieurs est un atout.
+Au moins dix ans d'expérience en développement logiciel, dont plusieurs années dans un rôle d'architecte de solutions ou de responsable technique.
+Expérience concrète de la conception et du déploiement de solutions intégrant des modèles de langage, idéalement avec une composante RAG.
+Maîtrise d'au moins un grand fournisseur infonuagique ; une expérience multi-cloud sera fortement appréciée.
+Solide connaissance des pratiques d'intégration et de déploiement continus.
+Expérience pratique de Kubernetes en production et certification Terraform Associate exigées.
+Connaissance du secteur de l'assurance de dommages ou des services financiers, un atout important.
+Excellentes capacités de communication en français, à l'oral comme à l'écrit ; anglais fonctionnel pour échanger avec nos partenaires technologiques.
+Capacité à vulgariser des sujets complexes et à influencer sans autorité hiérarchique.
+Rigueur, sens de l'éthique et intérêt marqué pour l'usage responsable de l'intelligence artificielle.
+
+Ce que nous offrons
+Un salaire concurrentiel établi selon l'expérience, accompagné d'un programme de rémunération incitative annuelle.
+Un régime de retraite à prestations déterminées et une assurance collective complète dès le premier jour.
+Quatre semaines de vacances dès l'embauche, en plus de cinq journées personnelles et de la période des Fêtes.
+Un mode de travail hybride flexible, avec deux jours par semaine au bureau de Montréal, à proximité du métro.
+Un budget annuel de formation et l'accès à des conférences spécialisées en intelligence artificielle.
+Un programme d'aide aux employés et à leur famille, des activités sociales et un club sportif.
+
+Notre démarche de recrutement
+Après une première lecture des candidatures, notre équipe d'acquisition de talents communiquera avec les personnes retenues pour un échange téléphonique d'une trentaine de minutes. Suivront une entrevue technique avec deux architectes du centre d'excellence, au cours de laquelle nous vous demanderons de présenter une architecture que vous avez conçue, puis une rencontre avec la directrice et un membre du comité de direction. Nous visons à compléter le processus en moins de quatre semaines et à informer chaque candidate et chaque candidat de la décision prise, quelle qu'elle soit.
+
+Diversité et inclusion
+Groupe Boréal Assurances souscrit au principe d'équité en matière d'emploi et invite les femmes, les membres des minorités visibles et ethniques, les Autochtones et les personnes handicapées à présenter leur candidature. Des mesures d'adaptation peuvent être offertes à toutes les étapes du processus de sélection ; il suffit d'en faire la demande à notre équipe de recrutement.
+
+Pour postuler
+Faites-nous parvenir votre curriculum vitae avant le 31 octobre. Seules les personnes retenues pour une entrevue seront contactées. Pour toute question sur le poste, communiquez avec Mélanie Gagnon, conseillère principale en acquisition de talents, au 418-555-0142 ou à l'adresse talents@boreal-assurances.example.
