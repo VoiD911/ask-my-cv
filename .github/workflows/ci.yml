@@ -301,6 +301,12 @@ jobs:
       SITE_BUCKET: ${{ vars.SITE_BUCKET }}
       DISTRIBUTION_ID: ${{ vars.DISTRIBUTION_ID }}
     steps:
+      - name: Vérifier le masquage du compte AWS
+        run: |
+          if ! test -n "$AWS_ACCOUNT_ID"; then
+            echo "::error::secret AWS_ACCOUNT_ID absent de l'environnement : le numéro de compte ne serait plus masqué dans les journaux publics"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
