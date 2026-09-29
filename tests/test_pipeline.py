@@ -256,6 +256,15 @@ async def test_llm_span_carries_provider(make_deps, spans) -> None:
     assert llm_span.attributes["xops.provider"] == "fake:echo"
 
 
+async def test_prompt_span_carries_detected_language_not_text(make_deps, spans) -> None:
+    question = "Does he have experience with AWS and Python in production?"
+    await run(make_deps(), question=question)
+    prompt_span = next(s for s in spans.get_finished_spans() if s.name == "prompt")
+    assert prompt_span.attributes["xops.language"] == "en"
+    values = [str(v) for v in prompt_span.attributes.values()]
+    assert not any("Python in production" in v for v in values)
+
+
 async def test_reported_usage_is_billed_instead_of_the_estimate(make_deps) -> None:
     pricey = FakeLLM(
         id="pricey",

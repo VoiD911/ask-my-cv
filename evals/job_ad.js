@@ -20,7 +20,8 @@
  *                     « does not lack ») ne comptent pas ; une proposition échoue si sa
  *                     négation est suivie d'une litote (sans, ne manque pas, pas vrai que,
  *                     jamais cessé, pas arrêté, doute, lack, gap…) ou d'une seconde négation
- *                     hors énumération « ni » ; un nom de revendication objet direct du
+ *                     hors énumération « ni » (un « sans mention / trace de X » qui porte
+ *                     lui-même l'absence n'est pas une litote) ; un nom de revendication objet direct du
  *                     prédicat nié est admis (« does not have Kubernetes experience »), de même
  *                     qu'un élément nu d'énumération de 3 mots au plus (« , Terraform, ni SAP ») ;
  *                   - un sujet d'attribution (Steve, il, he, son, le candidat…) n'est admis
@@ -197,13 +198,21 @@ function positiveClaim(clause, spans) {
 
 // doubles négations et litotes qui affirment : « n'est pas sans », « ne manque pas de »,
 // « il n'est pas vrai que », « n'a jamais cessé », « no lack / gap / doubt »…
-const DOUBLE_NEGATION = new RegExp(
+// litotes portées par la négation elle-même : jugées dès le début de la négation
+const LITOTE_PREDICATE = new RegExp(
   [
-    `(?<!${L})sans(?!${L})`,
     `(?<!${L})manquen?t?\\s+(?:pas|jamais)(?!${L})`,
     `(?<!${L})pas\\s+(?:vrai|faux)(?!${L})`,
     `(?<!${L})(?:jamais|pas)\\s+(?:cessé|arrêté|renoncé)(?!${L})`,
     `(?<!${L})pas\\s+d${APOS}absence(?!${L})`,
+  ].join('|'),
+  'iu',
+);
+// litotes qui SUIVENT la négation (« n'est pas sans », « ne possède pas de doute ») ; un
+// « sans » en tête (« sans mention de X ») est lui-même une absence, pas une litote
+const DOUBLE_NEGATION = new RegExp(
+  [
+    `(?<!${L})sans(?!${L})`,
     `(?<!${L})(?:de\\s+)?doute(?!${L})`,
     `(?<!${L})(?:lacks?|gaps?|shortages?|doubts?|lacunes?|problems?|issues?)(?!${L})`,
     `(?<!${L})without(?!${L})`,
@@ -230,8 +239,9 @@ function impureAbsence(clause) {
   const spans = negationSpans(clause);
   if (spans.length === 0) return "pas de formulation d'absence ni de prédicat nié";
   const firstNegation = spans[0];
-  const afterNegation = clause.slice(firstNegation.start);
-  const litotes = afterNegation.match(DOUBLE_NEGATION);
+  // litote seulement APRÈS la négation : « sans mention de X » est lui-même une absence
+  const afterNegation = clause.slice(firstNegation.end);
+  const litotes = clause.slice(firstNegation.start).match(LITOTE_PREDICATE) || afterNegation.match(DOUBLE_NEGATION);
   if (litotes) return `double négation « ${litotes[0]} »`;
   const disjoint = mergedNegations(spans);
   if (disjoint.length > 1) {
