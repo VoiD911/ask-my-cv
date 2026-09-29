@@ -117,6 +117,13 @@ test('revues #113 (1er et 2e passages) : tous les contournements échouent', () 
     ["Le CV ne mentionne pas Kubernetes. Steve l'a utilisé en production.", k],
     ['Le CV ne mentionne pas Kubernetes, et Steve l’a déployé en production [1].', k],
     ['Le CV ne mentionne pas Kubernetes. Il a aussi déployé cet outil en production.', k],
+    // 3e passage : verbes et noms hors liste, bloqués par la règle structurelle
+    ["Le CV ne mentionne pas Kubernetes, mais Steve a de l'expérience avec Kubernetes [1].", k],
+    ['Le CV ne mentionne pas Kubernetes, Steve a piloté des clusters Kubernetes en production [1].', k],
+    ['Le CV ne mentionne pas Kubernetes, Steve a administré des clusters Kubernetes.', k],
+    ['Le CV ne mentionne pas Kubernetes, mais Steve est certifié Kubernetes.', k],
+    ['The CV does not mention Kubernetes, but Steve has five years of Kubernetes experience [1].', k],
+    ['Le CV ne mentionne pas Helm, Kubernetes est pourtant acquis.', { absentSkills: 'Kubernetes|Helm' }],
   ];
   for (const [answer, vars] of cases) assert.equal(run({ answer }, vars), false, answer);
 });

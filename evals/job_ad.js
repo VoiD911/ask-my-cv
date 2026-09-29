@@ -13,6 +13,10 @@
  *                 toute PHRASE (. ! ? ou retour à la ligne) qui nomme une compétence absente
  *                 doit être une pure phrase d'absence :
  *                   - elle contient une formulation d'absence (ABSENCE) ;
+ *                   - règle structurelle, indépendante des listes de mots : aucun sujet
+ *                     d'attribution (Steve, il, elle, he, she, his, her, son, sa, ses, le
+ *                     candidat, the candidate) ni mot de contraste (mais, pourtant,
+ *                     cependant, toutefois, en revanche, but, yet, however, though) ;
  *                   - nulle part dans la phrase : verbe de revendication (CLAIM_VERB),
  *                     nom ou adjectif de revendication (CLAIM_NOUN) sauf directement nié
  *                     dans une énumération (« ni d'expertise X », « pas d'expertise »,
@@ -87,6 +91,9 @@ const ANAPHORA = words(
   'cet outil|cette technologie|cette compétence|cet environnement|ces outils|ces technologies|ce dernier|cette dernière|this tool|this technology|this skill|these tools|the latter',
 );
 
+const ATTRIBUTION_SUBJECT = words('steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate');
+const CONTRAST = words('mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although');
+
 const list = (v) =>
   String(v ?? '')
     .split('|')
@@ -110,6 +117,12 @@ function unnegatedClaimNoun(sentence) {
 /** Raison pour laquelle `sentence` n'est pas une pure phrase d'absence, ou null. */
 function impureAbsence(sentence) {
   if (!ABSENCE.some((re) => re.test(sentence))) return "pas de formulation d'absence";
+  // règle structurelle (les listes de revendications restent ouvertes) : une phrase
+  // d'absence n'a pour sujet que le CV ou les sources, et rien ne s'y oppose
+  const subject = sentence.match(ATTRIBUTION_SUBJECT);
+  if (subject) return `sujet d'attribution « ${subject[0]} »`;
+  const contrast = sentence.match(CONTRAST);
+  if (contrast) return `mot de contraste « ${contrast[0]} »`;
   const verb = sentence.match(CLAIM_VERB);
   if (verb) return `verbe de revendication « ${verb[0]} »`;
   const noun = unnegatedClaimNoun(sentence);
