@@ -16,9 +16,14 @@
  *                   - règle structurelle, indépendante des listes de mots : aucun sujet
  *                     d'attribution (Steve, il, elle, he, she, his, her, son, sa, ses, le
  *                     candidat, the candidate) ni mot de contraste (mais, pourtant,
- *                     cependant, toutefois, en revanche, but, yet, however, though) ;
+ *                     cependant, toutefois, en revanche, bien que, malgré, alors que, but,
+ *                     yet, however, though, despite, while, whereas ; sujets : aussi
+ *                     l'intéressé) ;
+ *                   - aucune citation [n] : une compétence absente du CV ne peut pas être
+ *                     sourcée, une citation dans la phrase trahit une revendication ;
  *                   - nulle part dans la phrase : verbe de revendication (CLAIM_VERB),
- *                     nom ou adjectif de revendication (CLAIM_NOUN) sauf directement nié
+ *                     nom ou adjectif de revendication (CLAIM_NOUN : expertise, solide, expérience,
+ *                     ans, years…) sauf directement nié
  *                     dans une énumération (« ni d'expertise X », « pas d'expertise »,
  *                     « no expertise »), reprise pronominale pleine ou élidée (« le
  *                     pratique », « l'a utilisé », « l’utilise », « qu'il », « it »),
@@ -72,7 +77,7 @@ const CLAIM_VERB = words(
   ].join('|'),
 );
 const CLAIM_NOUN = words(
-  'expert|experte|expertise|solide|confirmée?|chevronnée?|proficient|proficiency|experienced|skilled|strong|extensive|solid|hands-on',
+  'expert|experte|expertise|solide|confirmée?|chevronnée?|proficient|proficiency|experienced|skilled|strong|extensive|solid|hands-on|expérience|experience|ans|years?',
   'giu',
 );
 // nom de revendication directement nié : « ni d'expertise », « pas d'expertise », « no expertise »
@@ -91,8 +96,8 @@ const ANAPHORA = words(
   'cet outil|cette technologie|cette compétence|cet environnement|ces outils|ces technologies|ce dernier|cette dernière|this tool|this technology|this skill|these tools|the latter',
 );
 
-const ATTRIBUTION_SUBJECT = words('steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate');
-const CONTRAST = words('mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although');
+const ATTRIBUTION_SUBJECT = words('steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|l[\\x27\\u2019]intéressée?');
+const CONTRAST = words('mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although|bien que|malgré|alors que|despite|while|whereas');
 
 const list = (v) =>
   String(v ?? '')
@@ -119,6 +124,8 @@ function impureAbsence(sentence) {
   if (!ABSENCE.some((re) => re.test(sentence))) return "pas de formulation d'absence";
   // règle structurelle (les listes de revendications restent ouvertes) : une phrase
   // d'absence n'a pour sujet que le CV ou les sources, et rien ne s'y oppose
+  // une compétence absente du CV ne peut pas être sourcée : toute citation trahit une revendication
+  if (/\[\d+\]/.test(sentence)) return 'citation [n] dans une phrase d\'absence';
   const subject = sentence.match(ATTRIBUTION_SUBJECT);
   if (subject) return `sujet d'attribution « ${subject[0]} »`;
   const contrast = sentence.match(CONTRAST);

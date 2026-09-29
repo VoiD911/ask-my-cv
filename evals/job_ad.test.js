@@ -124,6 +124,12 @@ test('revues #113 (1er et 2e passages) : tous les contournements échouent', () 
     ['Le CV ne mentionne pas Kubernetes, mais Steve est certifié Kubernetes.', k],
     ['The CV does not mention Kubernetes, but Steve has five years of Kubernetes experience [1].', k],
     ['Le CV ne mentionne pas Helm, Kubernetes est pourtant acquis.', { absentSkills: 'Kubernetes|Helm' }],
+    // 4e passage : citation, expérience chiffrée, contraste et sujet hors liste
+    ["Le CV ne mentionne pas Kubernetes : 3 ans d'expérience [1].", k],
+    ["Le CV ne mentionne pas Kubernetes, 3 ans d'expérience [1].", k],
+    ["Le CV ne mentionne pas Kubernetes ; Kubernetes : 3 ans d'expérience.", k],
+    ['Le CV ne mentionne pas Kubernetes, pilotage de clusters en production chez Acme [1].', k],
+    ["Le CV ne mentionne pas Kubernetes, bien que l'intéressé l'ait administré.", k],
   ];
   for (const [answer, vars] of cases) assert.equal(run({ answer }, vars), false, answer);
 });
