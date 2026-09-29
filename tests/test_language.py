@@ -43,3 +43,50 @@ def test_long_fixture_ads() -> None:
     en = (fixtures / "job_ad_long_en.txt").read_text(encoding="utf-8")
     assert detect_language(fr) == "fr"
     assert detect_language(en) == "en"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Quel poste a Steve ?",
+        "Quelle formation a Steve ?",
+        "Quelle expérience a Steve chez Solutions Will ?",
+        "Quelles certifications a Steve ?",
+        "Steve a quel âge ?",
+    ],
+)
+def test_short_french_questions_with_ambiguous_a(text: str) -> None:
+    assert detect_language(text) == "fr"
+
+
+def test_a_single_english_function_word_is_not_enough() -> None:
+    assert detect_language("Steve on AWS ?") == "fr"
+    assert detect_language("Python the best ?") == "fr"
+    assert detect_language("Is he on AWS?") == "en"
+
+
+def _eval_questions() -> list[tuple[str, str, str]]:
+    """Questions des suites promptfoo : langue attendue = variable `lang` (défaut fr)."""
+    from pathlib import Path
+
+    import yaml
+
+    out: list[tuple[str, str, str]] = []
+    for suite in ("evals/pr.yaml", "evals/nightly.yaml"):
+        config = yaml.safe_load(Path(suite).read_text(encoding="utf-8"))
+        for case in config["tests"]:
+            if not isinstance(case, dict) or "vars" not in case:
+                continue
+            question = case["vars"].get("question", "")
+            if question.startswith("file://"):
+                question = (Path("evals") / question.removeprefix("file://")).read_text(
+                    encoding="utf-8"
+                )
+            if question.strip():
+                out.append((case["description"], question, case["vars"].get("lang", "fr")))
+    return out
+
+
+@pytest.mark.parametrize(("description", "question", "expected"), _eval_questions())
+def test_eval_suite_questions(description: str, question: str, expected: str) -> None:
+    assert detect_language(question) == expected, description
