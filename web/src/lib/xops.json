@@ -22,7 +22,7 @@
     "sbomPredicate": "https://cyclonedx.org/bom"
   },
   "prompts": {
-    "current": "v8",
+    "current": "v7",
     "versions": [
       "v1",
       "v2",
@@ -30,8 +30,7 @@
       "v4",
       "v5",
       "v6",
-      "v7",
-      "v8"
+      "v7"
     ]
   },
   "production": {

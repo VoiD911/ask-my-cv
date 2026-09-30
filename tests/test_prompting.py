@@ -67,7 +67,7 @@ def test_render_states_detected_language_outside_the_block() -> None:
 def test_only_v5_and_later_templates_delimit() -> None:
     for version in ("v1", "v2", "v3", "v4"):
         assert not load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
-    for version in ("v5", "v6", "v7", "v8"):
+    for version in ("v5", "v6", "v7"):
         assert load_template(Path(f"prompts/answer@{version}.md")).delimits_submitted
 
 
@@ -210,20 +210,6 @@ def test_prompt_v7_only_makes_language_explicit() -> None:
     assert "refus reste toujours en français" in v7.system and REFUSAL in v7.system
 
 
-def test_prompt_v8_only_makes_citations_explicit_in_every_language() -> None:
-    from ask_my_cv.output_guard import REFUSAL
-
-    v7 = load_template(Path("prompts/answer@v7.md")).system.splitlines()
-    v8 = load_template(Path("prompts/answer@v8.md"))
-    assert v8.version == "v8" and v8.delimits_submitted
-    changed = [line for line in v8.system.splitlines() if line not in v7]
-    assert len(changed) == 2
-    assert "Dans toutes les langues" in v8.system
-    assert "He designed RAG agents on AWS [1]." in v8.system
-    assert "Les numéros de source [n] restent les mêmes dans toutes les langues" in v8.system
-    assert "jamais traduite" in v8.system and REFUSAL in v8.system
-
-
 def test_language_line_restates_citations_and_french_refusal() -> None:
     from ask_my_cv.output_guard import REFUSAL
     from ask_my_cv.prompting import language_line
@@ -233,9 +219,9 @@ def test_language_line_restates_citations_and_french_refusal() -> None:
         assert "[1]" in line and "numéro de sa source" in line and REFUSAL in line
 
 
-def test_settings_use_prompt_v8() -> None:
+def test_settings_use_prompt_v7() -> None:
     from ask_my_cv.settings import Settings
 
-    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v8.md")
+    assert Settings.model_fields["prompt_path"].default == Path("prompts/answer@v7.md")
     for name in ("settings.yaml", "settings.aws.yaml", "settings.ci.yaml"):
-        assert "prompt_path: prompts/answer@v8.md" in Path(name).read_text(encoding="utf-8")
+        assert "prompt_path: prompts/answer@v7.md" in Path(name).read_text(encoding="utf-8")
