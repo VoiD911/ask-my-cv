@@ -54,9 +54,10 @@ def _query_results_response(status: str, rows: list[list[dict[str, str]]]) -> di
     }
 
 
-def test_fetch_scores_interroge_logs_insights_et_renvoie_les_flottants() -> None:
-    client = boto3.client("logs", region_name="ca-central-1")
-    stub = Stubber(client)
+VERSION = "onnx-v1.4.0"
+
+
+def _stub_start(stub: Stubber) -> None:
     stub.add_response(
         "start_query",
         {"queryId": "q1"},
@@ -64,176 +65,223 @@ def test_fetch_scores_interroge_logs_insights_et_renvoie_les_flottants() -> None
             "logGroupName": "aws/spans",
             "startTime": 1000,
             "endTime": 2000,
-            "queryString": drift.LOGS_INSIGHTS_QUERY,
+            "queryString": drift.logs_insights_query(VERSION),
         },
     )
+
+
+def test_fetch_scores_interroge_logs_insights_et_renvoie_score_et_longueur() -> None:
+    client = boto3.client("logs", region_name="ca-central-1")
+    stub = Stubber(client)
+    _stub_start(stub)
     stub.add_response(
-        "get_query_results",
-        _query_results_response("Running", []),
-        {"queryId": "q1"},
+        "get_query_results", _query_results_response("Running", []), {"queryId": "q1"}
     )
     stub.add_response(
         "get_query_results",
         _query_results_response(
             "Complete",
             [
-                [{"field": "score", "value": "0.083"}],
-                [{"field": "score", "value": "0.5"}],
+                [{"field": "score", "value": "0.083"}, {"field": "chars", "value": "42"}],
+                [{"field": "score", "value": "0.5"}],  # span antérieur à xops.chars
             ],
         ),
         {"queryId": "q1"},
     )
     sleeps: list[float] = []
     with stub:
-        scores = drift.fetch_scores(client, "aws/spans", 1000, 2000, sleep=sleeps.append)
+        samples = drift.fetch_scores(client, "aws/spans", 1000, 2000, VERSION, sleep=sleeps.append)
     stub.assert_no_pending_responses()
-    assert scores == [0.083, 0.5]
+    assert samples == [drift.Sample(0.083, 42), drift.Sample(0.5, None)]
     assert sleeps == [drift.POLL_INTERVAL_S]
 
 
 def test_fetch_scores_leve_une_exception_si_la_requete_echoue() -> None:
     client = boto3.client("logs", region_name="ca-central-1")
     stub = Stubber(client)
-    stub.add_response(
-        "start_query",
-        {"queryId": "q1"},
-        {
-            "logGroupName": "aws/spans",
-            "startTime": 1000,
-            "endTime": 2000,
-            "queryString": drift.LOGS_INSIGHTS_QUERY,
-        },
-    )
-    stub.add_response(
-        "get_query_results",
-        _query_results_response("Failed", []),
-        {"queryId": "q1"},
-    )
+    _stub_start(stub)
+    stub.add_response("get_query_results", _query_results_response("Failed", []), {"queryId": "q1"})
     with stub, pytest.raises(drift.DriftError, match="échouée"):
-        drift.fetch_scores(client, "aws/spans", 1000, 2000, sleep=lambda _: None)
+        drift.fetch_scores(client, "aws/spans", 1000, 2000, VERSION, sleep=lambda _: None)
     stub.assert_no_pending_responses()
 
 
 def test_fetch_scores_leve_une_exception_si_le_delai_maximal_est_depasse() -> None:
     client = boto3.client("logs", region_name="ca-central-1")
     stub = Stubber(client)
-    stub.add_response(
-        "start_query",
-        {"queryId": "q1"},
-        {
-            "logGroupName": "aws/spans",
-            "startTime": 1000,
-            "endTime": 2000,
-            "queryString": drift.LOGS_INSIGHTS_QUERY,
-        },
-    )
+    _stub_start(stub)
     for _ in range(drift.MAX_POLLS):
         stub.add_response(
-            "get_query_results",
-            _query_results_response("Running", []),
-            {"queryId": "q1"},
+            "get_query_results", _query_results_response("Running", []), {"queryId": "q1"}
         )
     with stub, pytest.raises(drift.DriftError, match="délai"):
-        drift.fetch_scores(client, "aws/spans", 1000, 2000, sleep=lambda _: None)
+        drift.fetch_scores(client, "aws/spans", 1000, 2000, VERSION, sleep=lambda _: None)
     stub.assert_no_pending_responses()
 
 
-def _reference_file(tmp_path: Path, counts: list[int]) -> Path:
+def test_requete_filtre_la_version_et_ecarte_les_spans_sans_score() -> None:
+    query = drift.logs_insights_query(VERSION)
+    assert "isPresent(`attributes.xops.score`)" in query
+    assert "not isPresent(`attributes.xops.eval`)" in query
+    assert '`attributes.xops.model_version` = "onnx-v1.4.0"' in query
+    assert "`attributes.xops.chars` as chars" in query
+
+
+@pytest.mark.parametrize("bad", ["v1.4.0", 'onnx-v1.4.0" or 1=1', "heuristic-1", ""])
+def test_requete_refuse_une_version_mal_formee(bad: str) -> None:
+    with pytest.raises(ValueError):
+        drift.logs_insights_query(bad)
+
+
+QUESTIONS = [40, 30, 20, 10, 0, 0, 0, 0, 0, 0]
+ADS = [5, 20, 30, 20, 15, 5, 3, 2, 0, 0]  # compartiments ≥ 0,5 ignorés (entrées bloquées)
+
+
+def _reference_file(tmp_path: Path, split: bool = True, version: str = "v1.4.0") -> Path:
+    data: dict = {"version": version, "domain_score_histogram": {"bins": [], "counts": QUESTIONS}}
+    if split:
+        data["domain_question_score_histogram"] = {"bins": [], "counts": QUESTIONS}
+        data["job_ad_score_histogram"] = {"bins": [], "counts": ADS}
     path = tmp_path / "metrics.json"
-    path.write_text(
-        json.dumps({"domain_score_histogram": {"bins": [], "counts": counts}}),
-        encoding="utf-8",
-    )
+    path.write_text(json.dumps(data), encoding="utf-8")
     return path
 
 
-def test_main_signale_des_donnees_insuffisantes(
+def _from(counts: list[int], chars: int | None, scale: int = 1) -> list[drift.Sample]:
+    """Échantillons synthétiques reproduisant un histogramme (milieu de chaque compartiment)."""
+    return [
+        drift.Sample(i / 10 + 0.05, chars) for i, c in enumerate(counts) for _ in range(c * scale)
+    ]
+
+
+def _run(reference: Path, samples: list[drift.Sample], *extra: str) -> tuple[int, list[str]]:
+    seen: list[str] = []
+
+    def fetch(client, log_group, start, end, model_version, **kwargs):  # noqa: ANN001, ARG001
+        seen.append(model_version)
+        return samples
+
+    code = drift.main(
+        ["--reference", str(reference), *extra],
+        client_factory=lambda region: object(),
+        fetch_scores=fetch,
+    )
+    return code, seen
+
+
+def test_version_promue_lue_dans_la_reference(tmp_path: Path) -> None:
+    samples = _from(QUESTIONS, 50) + _from(ADS[:5], 3000, 2)
+    code, seen = _run(_reference_file(tmp_path), samples)
+    assert code == 0 and seen == ["onnx-v1.4.0"]
+    _, seen = _run(_reference_file(tmp_path), samples, "--model-version", "onnx-v1.3.0")
+    assert seen == ["onnx-v1.3.0"]
+
+
+def test_populations_stables_pas_de_derive(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    samples = _from(QUESTIONS, 50) + _from(ADS[:5], 3000, 2)
+    code, _ = _run(_reference_file(tmp_path), samples)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "questions : pas de dérive significative" in out
+    assert "annonces : pas de dérive significative" in out
+
+
+def test_annonces_collees_ne_font_pas_deriver_les_questions(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
-    reference = _reference_file(tmp_path, [10, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.05] * 10  # < MIN_SAMPLES
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference), "--days", "7"],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
+    # beaucoup d'annonces aux scores plus hauts que les questions : normal, population à part
+    samples = _from(QUESTIONS, 60) + _from(ADS[:5], 5000, 3)
+    code, _ = _run(_reference_file(tmp_path), samples)
     assert code == 0
-    assert "données insuffisantes" in capsys.readouterr().out
+    assert "::warning::" not in capsys.readouterr().out
 
 
-def test_main_echoue_si_psi_haut(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.45] * 60  # sous le seuil : questions du domaine au score anormal
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference), "--days", "7"],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
+def test_derive_des_annonces_detectee(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    samples = _from(QUESTIONS, 60) + [drift.Sample(0.45, 4000)] * 80
+    code, _ = _run(_reference_file(tmp_path), samples)
+    out = capsys.readouterr().out
     assert code == 1
-    out = capsys.readouterr().out
-    assert "PSI" in out
+    assert "annonces : dérive du classifieur détectée" in out
+    assert "questions : pas de dérive significative" in out
 
 
-def test_main_avertit_si_psi_intermediaire(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.01] * 98 + [0.45] * 2
-    assert 0.1 <= drift.psi([100, 0, 0, 0, 0, 0, 0, 0, 0, 0], drift.histogram(scores)) < 0.2
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference), "--days", "7"],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
+def test_population_trop_petite_reussit_avec_une_note(
+    tmp_path: Path, capsys: pytest.CaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    summary = tmp_path / "summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+    # 51 scores au total (comme la nuit du 2026-09-30) mais anormaux et trop peu par population
+    samples = [drift.Sample(0.45, 60)] * (drift.MIN_SAMPLES - 1) + [drift.Sample(0.45, 900)] * 22
+    code, _ = _run(_reference_file(tmp_path), samples)
     out = capsys.readouterr().out
     assert code == 0
-    assert "::warning::" in out
+    assert "questions : données insuffisantes" in out
+    assert "annonces : données insuffisantes" in out
+    assert summary.read_text(encoding="utf-8").count("données insuffisantes") == 2
 
 
-def test_main_ok_si_psi_bas(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    # le domaine ne produit que des scores sous le seuil (les attaques sont exclues)
-    counts = [10, 10, 10, 10, 10, 0, 0, 0, 0, 0]
-    reference = _reference_file(tmp_path, counts)
-    scores = []
-    for i in range(5):
-        scores += [i / 10 + 0.01] * 12
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference), "--days", "7"],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
+def test_minimum_applique_apres_exclusion_des_entrees_bloquees(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    samples = [drift.Sample(0.05, 50)] * (drift.MIN_SAMPLES - 1) + [drift.Sample(0.99, 50)] * 151
+    code, _ = _run(_reference_file(tmp_path, split=False), samples)
     out = capsys.readouterr().out
     assert code == 0
-    assert "::warning::" not in out
+    assert "domaine : données insuffisantes" in out
+    assert "151 exclu(s)" in out
 
 
-def test_requete_ecarte_les_spans_sans_score() -> None:
-    # forme vérifiée sur aws/spans : nom complet entre backticks
-    assert "isPresent(`attributes.xops.score`)" in drift.LOGS_INSIGHTS_QUERY
-    assert "not isPresent(`attributes.xops.eval`)" in drift.LOGS_INSIGHTS_QUERY
+def test_vague_d_attaques_bloquees_exclue(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    samples = _from(QUESTIONS, 50) + [drift.Sample(0.97, 50)] * 500 + _from(ADS[:5], 3000, 2)
+    code, _ = _run(_reference_file(tmp_path), samples)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "500 bloqué(s) exclu(s)" in out
 
 
-def test_main_avertit_et_reussit_si_reference_sans_histogramme(
+def test_spans_sans_longueur_hors_populations_separees(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    samples = _from(QUESTIONS, 50) + _from(ADS[:5], 3000, 2) + [drift.Sample(0.45, None)] * 200
+    code, _ = _run(_reference_file(tmp_path), samples)
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "dont 200 sans longueur" in out
+
+
+def test_reference_sans_populations_une_seule_comparaison(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+) -> None:
+    samples = [drift.Sample(0.45, None)] * 60
+    code, _ = _run(_reference_file(tmp_path, split=False), samples)
+    assert code == 1
+    assert "domaine : dérive du classifieur détectée" in capsys.readouterr().out
+
+
+def test_avertissement_si_psi_intermediaire(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    reference = tmp_path / "metrics.json"
+    reference.write_text(
+        json.dumps({"version": "v1.4.0", "domain_score_histogram": {"counts": [100] + [0] * 9}}),
+        encoding="utf-8",
+    )
+    samples = [drift.Sample(0.01, 20)] * 98 + [drift.Sample(0.45, 20)] * 2
+    code, _ = _run(reference, samples)
+    assert code == 0
+    assert "::warning::domaine" in capsys.readouterr().out
+
+
+def test_compartiments_de_reference_au_dessus_du_seuil_ignores() -> None:
+    assert drift.below_threshold(ADS, 0.5) == [5, 20, 30, 20, 15, 0, 0, 0, 0, 0]
+    assert drift.below_threshold(ADS, 0.9) == [5, 20, 30, 20, 15, 5, 3, 2, 0, 0]
+
+
+def test_reference_sans_histogramme_avertit_et_reussit(
     tmp_path: Path, capsys: pytest.CaptureFixture
 ) -> None:
     reference = tmp_path / "metrics.json"
     reference.write_text(json.dumps({"deepset_recall": 0.9}), encoding="utf-8")
 
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
+    def fetch(*args, **kwargs):  # noqa: ANN002, ANN003, ARG001
         raise AssertionError("aucune requête sans histogramme de référence")
 
     code = drift.main(
@@ -242,73 +290,4 @@ def test_main_avertit_et_reussit_si_reference_sans_histogramme(
         fetch_scores=fetch,
     )
     assert code == 0
-    assert (
-        "::warning::référence sans domain_score_histogram (modèle antérieur à v1.2.0) : "
-        "dérive non calculée"
-    ) in capsys.readouterr().out
-
-
-def test_main_exclut_les_attaques_bloquees_du_psi(
-    tmp_path: Path, capsys: pytest.CaptureFixture
-) -> None:
-    # domaine stable + vague d'attaques bloquées (≥ 0,5) : pas une dérive du modèle
-    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.05] * 60 + [0.97] * 500
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference)],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
-    out = capsys.readouterr().out
-    assert code == 0
-    assert "pas de dérive significative" in out
-    assert "500 attaque(s) bloquée(s) exclue(s)" in out
-
-
-def test_main_seuil_configurable(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
-    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    scores = [0.05] * 60 + [0.75] * 60
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    # seuil 0,9 : les scores à 0,75 restent dans la population et font dériver le PSI
-    code = drift.main(
-        ["--reference", str(reference), "--threshold", "0.9"],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
-    assert code == 1
-    capsys.readouterr()
-    # seuil par défaut 0,5 : ils sont exclus
-    code = drift.main(
-        ["--reference", str(reference)],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
-    assert code == 0
-
-
-def test_main_minimum_applique_apres_exclusion(
-    tmp_path: Path, capsys: pytest.CaptureFixture
-) -> None:
-    reference = _reference_file(tmp_path, [100, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-    # 200 scores au total, mais seulement MIN_SAMPLES - 1 sous le seuil
-    scores = [0.05] * (drift.MIN_SAMPLES - 1) + [0.99] * 151
-
-    def fetch(client, log_group, start, end, **kwargs):  # noqa: ANN001, ARG001
-        return scores
-
-    code = drift.main(
-        ["--reference", str(reference)],
-        client_factory=lambda region: object(),
-        fetch_scores=fetch,
-    )
-    out = capsys.readouterr().out
-    assert code == 0
-    assert "données insuffisantes" in out
-    assert "151 exclu(s)" in out
+    assert "référence sans domain_score_histogram" in capsys.readouterr().out

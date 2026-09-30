@@ -977,3 +977,11 @@ async def test_mild_nfkc_inflation_within_the_limit_is_accepted(make_deps) -> No
     events = await run(with_guardrail(make_deps, guardrail), question="ﬁ" * 4_000)
     assert ends(events)[2] == ("injection", "ok")
     assert guardrail.calls == 1 and injection_attrs(events)["guardrail_units"] == 8
+
+
+async def test_injection_span_carries_model_version_and_length_never_text(make_deps) -> None:
+    events = await run(make_deps(), question=LONG_AD)
+    attrs = injection_attrs(events)
+    assert 400 <= attrs["chars"] <= len(LONG_AD)  # texte replié : longueur à 1 près
+    assert attrs["model_version"]
+    assert all(LONG_AD[:40] not in str(v) for v in attrs.values())

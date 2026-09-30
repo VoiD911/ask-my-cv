@@ -1,26 +1,32 @@
-"""Dérive du classifieur d'injection : PSI des scores de production contre le domaine.
+"""Dérive du classifieur d'injection : PSI des scores de production contre la référence du modèle.
 
-python -m ml.drift --reference metrics.json --days 7 [--threshold 0.5]
+python -m ml.drift --reference metrics.json --days 7 [--threshold 0.5] [--model-version V]
     [--log-group aws/spans] [--region ca-central-1]
 
 Lit les scores `xops.score` des spans `injection` (hors trafic d'évaluation `xops.eval`) dans
-CloudWatch Logs Insights sur `--days` jours, et calcule le PSI (Population Stability Index)
-contre `domain_score_histogram` du `metrics.json` de la release promue.
+CloudWatch Logs Insights sur `--days` jours, **pour la seule version promue** : la requête filtre
+`xops.model_version` (par défaut `onnx-<version>` du `metrics.json`). Sans ce filtre, les jours
+qui suivent une promotion mélangeaient les scores de l'ancien modèle à la référence du nouveau
+(PSI 2,92 au lendemain de la promotion de v1.4.0, issue #124).
 
-Depuis v1.4.0, cette référence décrit le trafic légitime tel qu'il est servi : les questions du
-domaine et les annonces légitimes d'évaluation (jusqu'à ~9 000 caractères), chacune scorée par
-le maximum sur ses fenêtres, comme `xops.score` en production, et sous le seuil comme les scores
-de production retenus. Avant, elle ne comptait que 50 questions courtes et l'arrivée d'annonces
-collées passait pour une dérive. Les deux parts sont aussi publiées à part
-(`domain_question_score_histogram`, `job_ad_score_histogram`).
+Deux populations, séparées par `xops.chars` (longueur de l'entrée, jamais le texte) :
+- `questions` : moins de AD_MIN_CHARS caractères, contre `domain_question_score_histogram` ;
+- `annonces` : AD_MIN_CHARS caractères ou plus (le seuil du second avis Bedrock Guardrails),
+  contre `job_ad_score_histogram`.
+Une référence sans ces histogrammes (modèle antérieur à v1.4.0) retombe sur une seule population,
+contre `domain_score_histogram`. Les spans antérieurs à `xops.chars` n'entrent dans aucune
+population séparée ; ils sont comptés dans le message.
 
-Les scores ≥ `--threshold` (le seuil d'injection servi, `injection_threshold`) sont exclus :
-ce sont des attaques bloquées, pas des questions du domaine, et la référence ne décrit que
-le domaine. Une vague d'attaques ne doit pas passer pour une dérive du modèle. Le minimum de
-MIN_SAMPLES scores s'applique après cette exclusion.
+Les scores ≥ `--threshold` (le seuil d'injection servi, `injection_threshold`) sont exclus des
+deux côtés : ce sont des entrées bloquées, et une vague d'attaques ne doit pas passer pour une
+dérive. Les compartiments de référence au-dessus du seuil sont donc ignorés.
 
-Une référence sans `domain_score_histogram` (modèle antérieur à v1.2.0) produit un
-avertissement et un code de sortie 0 : la dérive n'est pas calculable.
+Sous MIN_SAMPLES scores (après exclusion) dans une population, sa dérive n'est pas calculée :
+« données insuffisantes », code 0, et une note dans le résumé du job GitHub
+(`GITHUB_STEP_SUMMARY`). Le job échoue si le PSI d'une population atteint PSI_FAIL_THRESHOLD.
+
+Une référence sans aucun histogramme (modèle antérieur à v1.2.0) produit un avertissement et un
+code de sortie 0 : la dérive n'est pas calculable.
 """
 
 from __future__ import annotations
@@ -28,32 +34,53 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
+import re
 import sys
 import time
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
-MIN_SAMPLES = 50
+MIN_SAMPLES = 30
 PSI_FAIL_THRESHOLD = 0.2
 PSI_WARN_THRESHOLD = 0.1
 EPSILON = 1e-4
+AD_MIN_CHARS = 400  # même seuil que le second avis (`guardrail_min_chars`)
 
 POLL_INTERVAL_S = 2.0
 MAX_POLLS = 30
 
-# Le span `injection` porte `attributes.xops.score`. Logs Insights aplatit le JSON en
-# `attributes.xops.score` : le nom complet, points compris, se met entre backticks (vérifié sur
-# `aws/spans` le 2026-09-26 ; la forme attributes.`xops.score` renvoie un champ vide). Les
-# spans sans score (étape en erreur avant la mesure) sont écartés par `isPresent`.
-LOGS_INSIGHTS_QUERY = (
-    'filter name = "injection" and not isPresent(`attributes.xops.eval`)'
-    " and isPresent(`attributes.xops.score`)\n"
-    "| fields `attributes.xops.score` as score\n"
-    "| limit 10000"
-)
+MODEL_VERSION_PATTERN = re.compile(r"^onnx-v\d+\.\d+\.\d+$")
+
+
+def logs_insights_query(model_version: str) -> str:
+    """Requête Logs Insights des scores d'une version du modèle.
+
+    Le span `injection` porte `attributes.xops.score`. Logs Insights aplatit le JSON en
+    `attributes.xops.score` : le nom complet, points compris, se met entre backticks (vérifié
+    sur `aws/spans` le 2026-09-26 ; la forme attributes.`xops.score` renvoie un champ vide).
+    Les spans sans score (étape en erreur avant la mesure) sont écartés par `isPresent`. La
+    version est validée avant d'entrer dans la requête.
+    """
+    if not MODEL_VERSION_PATTERN.match(model_version):
+        raise ValueError(f"version de modèle invalide : {model_version!r}")
+    return (
+        'filter name = "injection" and not isPresent(`attributes.xops.eval`)'
+        " and isPresent(`attributes.xops.score`)"
+        f' and `attributes.xops.model_version` = "{model_version}"\n'
+        "| fields `attributes.xops.score` as score, `attributes.xops.chars` as chars\n"
+        "| limit 10000"
+    )
+
+
+@dataclass(frozen=True)
+class Sample:
+    score: float
+    chars: int | None  # None : span antérieur à `xops.chars`
 
 
 class DriftError(RuntimeError):
@@ -80,11 +107,19 @@ def histogram(scores: Sequence[float]) -> list[int]:
     return [int(c) for c in counts]
 
 
-def _row_value(row: list[dict[str, str]], field: str) -> str:
+def _row_value(row: list[dict[str, str]], field: str) -> str | None:
     for entry in row:
         if entry.get("field") == field:
             return entry["value"]
-    raise DriftError(f"champ « {field} » absent de la ligne de résultat : {row}")
+    return None
+
+
+def _sample(row: list[dict[str, str]]) -> Sample:
+    score = _row_value(row, "score")
+    if score is None:
+        raise DriftError(f"champ « score » absent de la ligne de résultat : {row}")
+    chars = _row_value(row, "chars")
+    return Sample(float(score), int(float(chars)) if chars not in (None, "") else None)
 
 
 def fetch_scores(
@@ -92,24 +127,25 @@ def fetch_scores(
     log_group: str,
     start: int,
     end: int,
+    model_version: str,
     *,
     poll_interval: float = POLL_INTERVAL_S,
     max_polls: int = MAX_POLLS,
     sleep: Callable[[float], None] = time.sleep,
-) -> list[float]:
+) -> list[Sample]:
     """Lance la requête Logs Insights et attend les résultats (borné dans le temps)."""
     started = client.start_query(
         logGroupName=log_group,
         startTime=start,
         endTime=end,
-        queryString=LOGS_INSIGHTS_QUERY,
+        queryString=logs_insights_query(model_version),
     )
     query_id = started["queryId"]
     for _ in range(max_polls):
         result = client.get_query_results(queryId=query_id)
         status = result["status"]
         if status == "Complete":
-            return [float(_row_value(row, "score")) for row in result["results"]]
+            return [_sample(row) for row in result["results"]]
         if status == "Failed":
             raise DriftError(f"requête Logs Insights échouée pour {log_group} (queryId={query_id})")
         sleep(poll_interval)
@@ -122,11 +158,57 @@ def _default_client_factory(region: str) -> Any:
     return boto3.client("logs", region_name=region)
 
 
+def below_threshold(counts: Sequence[int], threshold: float) -> list[int]:
+    """Compartiments de référence au-dessus du seuil mis à zéro (entrées bloquées exclues)."""
+    return [c if i / len(counts) < threshold else 0 for i, c in enumerate(counts)]
+
+
+@dataclass(frozen=True)
+class Population:
+    name: str
+    reference: list[int]
+    scores: list[float]
+    excluded: int
+
+
+def populations(reference: dict, samples: list[Sample], threshold: float) -> list[Population]:
+    """Populations à comparer, selon les histogrammes disponibles dans la référence."""
+
+    def build(name: str, key: str, kept: list[Sample]) -> Population:
+        scores = [s.score for s in kept if s.score < threshold]
+        counts = below_threshold(reference[key]["counts"], threshold)
+        return Population(name, counts, scores, len(kept) - len(scores))
+
+    split = "domain_question_score_histogram" in reference and "job_ad_score_histogram" in reference
+    if not split:
+        return [build("domaine", "domain_score_histogram", samples)]
+    known = [s for s in samples if s.chars is not None]
+    return [
+        build(
+            "questions",
+            "domain_question_score_histogram",
+            [s for s in known if s.chars is not None and s.chars < AD_MIN_CHARS],
+        ),
+        build(
+            "annonces",
+            "job_ad_score_histogram",
+            [s for s in known if s.chars is not None and s.chars >= AD_MIN_CHARS],
+        ),
+    ]
+
+
+def _summary(line: str) -> None:
+    path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     client_factory: Callable[[str], Any] = _default_client_factory,
-    fetch_scores: Callable[..., list[float]] = fetch_scores,
+    fetch_scores: Callable[..., list[Sample]] = fetch_scores,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--reference", required=True, help="metrics.json de la release promue")
@@ -136,6 +218,10 @@ def main(
         type=float,
         default=0.5,
         help="seuil d'injection servi : les scores au-dessus (attaques bloquées) sont exclus",
+    )
+    parser.add_argument(
+        "--model-version",
+        help="valeur de xops.model_version à retenir (défaut : onnx-<version du metrics.json>)",
     )
     parser.add_argument("--log-group", default="aws/spans")
     parser.add_argument("--region", default="ca-central-1")
@@ -148,44 +234,41 @@ def main(
             "dérive non calculée"
         )
         return 0
-    reference_counts = reference["domain_score_histogram"]["counts"]
+    model_version = args.model_version or f"onnx-{reference.get('version', '')}"
+    logs_insights_query(model_version)  # refuse une version mal formée avant tout appel AWS
 
     end = int(time.time())
     start = end - args.days * 86400
-
     client = client_factory(args.region)
-    fetched = fetch_scores(client, args.log_group, start, end)
-    # attaques bloquées exclues : la référence ne décrit que les questions du domaine
-    scores = [score for score in fetched if score < args.threshold]
-    excluded = len(fetched) - len(scores)
-
-    if len(scores) < MIN_SAMPLES:
-        print(
-            f"données insuffisantes : {len(scores)} score(s) sous le seuil {args.threshold} "
-            f"sur les {args.days} derniers jours ({excluded} exclu(s), minimum {MIN_SAMPLES})."
-        )
-        return 0
-
-    production_counts = histogram(scores)
-    value = psi(reference_counts, production_counts)
-
-    if value >= PSI_FAIL_THRESHOLD:
-        print(
-            f"dérive du classifieur détectée : PSI={value:.4f} ≥ {PSI_FAIL_THRESHOLD} "
-            f"({len(scores)} scores sur {args.days} jours)."
-        )
-        return 1
-    if value >= PSI_WARN_THRESHOLD:
-        print(
-            f"::warning::dérive du classifieur en observation : PSI={value:.4f} "
-            f"(seuil d'échec {PSI_FAIL_THRESHOLD}, {len(scores)} scores sur {args.days} jours)."
-        )
-        return 0
+    samples = fetch_scores(client, args.log_group, start, end, model_version)
+    unknown = sum(s.chars is None for s in samples)
     print(
-        f"pas de dérive significative : PSI={value:.4f} ({len(scores)} scores, "
-        f"{excluded} attaque(s) bloquée(s) exclue(s))."
+        f"{len(samples)} score(s) de {model_version} sur {args.days} jours"
+        + (f" dont {unknown} sans longueur (spans antérieurs à xops.chars)." if unknown else ".")
     )
-    return 0
+
+    failed = False
+    for pop in populations(reference, samples, args.threshold):
+        n = len(pop.scores)
+        if n < MIN_SAMPLES:
+            message = (
+                f"{pop.name} : données insuffisantes, {n} score(s) sous le seuil {args.threshold} "
+                f"({pop.excluded} exclu(s), minimum {MIN_SAMPLES}) ; dérive non calculée."
+            )
+            print(message)
+            _summary(f"- Dérive {model_version}, {message}")
+            continue
+        value = psi(pop.reference, histogram(pop.scores))
+        detail = f"PSI={value:.4f} ({n} scores, {pop.excluded} bloqué(s) exclu(s))"
+        if value >= PSI_FAIL_THRESHOLD:
+            print(f"{pop.name} : dérive du classifieur détectée : {detail} ≥ {PSI_FAIL_THRESHOLD}.")
+            failed = True
+        elif value >= PSI_WARN_THRESHOLD:
+            print(f"::warning::{pop.name} : dérive du classifieur en observation : {detail}.")
+        else:
+            print(f"{pop.name} : pas de dérive significative : {detail}.")
+        _summary(f"- Dérive {model_version}, {pop.name} : {detail}")
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
