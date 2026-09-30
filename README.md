@@ -298,6 +298,20 @@ Ces quatre étapes sont ignorées (avis `::notice::`, pas d'échec) tant que la 
 appliquée. Variables CI additionnelles : `SITE_BUCKET`, `DISTRIBUTION_ID` (avec `SITE_URL`, déjà
 utilisée par le test de fumée de l'API, qui deviendra `https://job.stevelang.net`).
 
+#### Langues (français, anglais)
+
+Le site existe en français (racine, URL publiques inchangées : `/`, `/architecture/`, `/xops/`,
+`/livraison/…`) et en anglais sous `/en/…`. next-intl sans middleware (incompatible avec
+`output: "export"`) : deux racines de layout, `web/src/app/(fr)` et `web/src/app/en`, fixent
+`<html lang>` et la langue (`setRequestLocale`) ; chaque page partage sa vue (`web/src/views`).
+Textes d'interface dans `web/messages/{fr,en}.json` (clés identiques, vérifiées par Vitest) ;
+contenus longs dans `web/src/lib/*-content.ts` et leur version `*.en.ts` (même forme imposée par
+le typage, preuves et chemins définis une seule fois côté français). Sélecteur de langue en
+simple lien, alternatives `hreflang` (x-default : français) et URL canonique sur chaque page.
+Le CV (`data/cv.md`) et le journal de /livraison restent en français. L'API ne change pas : dans
+l'interface anglaise, ses messages de blocage et sa phrase de refus (exacte, en français) sont
+rendus en anglais, l'original du refus restant affiché.
+
 #### CSP
 
 Scripts : aucun `'unsafe-inline'` effectif. L'export statique de Next.js contient des scripts en
@@ -326,7 +340,8 @@ est modifié).
 Vérification : le serveur e2e (`web/e2e/serve.mjs`) sert l'en-tête de production, lu dans
 `variables.tf`. Chaque test e2e écoute `securitypolicyviolation` dans chaque document ainsi que
 les messages console CSP : aucune violation tolérée. `web/e2e/csp.spec.ts` contrôle en plus, pour
-`/`, `/404.html`, `/_not-found/` et une page inexistante, que la meta est en tête du `<head>`,
+`/`, `/architecture/`, `/xops/`, `/en/`, `/en/xops/`, `/en/livraison/1a/`, `/404.html`,
+`/_not-found/` et une page inexistante, que la meta est en tête du `<head>`,
 avant tout `<script>`, et que le hash de chaque script en ligne du DOM y figure ; un témoin vérifie qu'un script
 en ligne non haché est bien bloqué et que la violation est détectée.
 

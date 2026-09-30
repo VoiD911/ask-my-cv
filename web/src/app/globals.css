@@ -14,6 +14,8 @@
   --color-silk-faint: #4b5a54;
   --color-copper: #9a6a42;
   --color-copper-faint: #2a2119;
+  /* Cuivre éclairci pour le texte (contraste ≥ 4,5:1 sur les fonds de carte). */
+  --color-copper-text: #c08a5c;
   --color-pulse: #74d8ff;
   --color-ok: #46d27a;
   --color-blocked: #ff5b4f;
@@ -855,6 +857,13 @@ body {
   overflow-wrap: anywhere;
 }
 
+/* Refus traduit (interface anglaise) : la phrase d'origine, en français, reste visible. */
+.answer__original {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--color-silk-dim);
+}
+
 .cite {
   font-family: var(--font-mono);
   font-size: 0.78em;
@@ -1316,6 +1325,13 @@ body {
   box-shadow: inset 0 -2px var(--color-pulse);
 }
 
+/* Sélecteur de langue : simple lien vers la même page dans l'autre langue (sans JavaScript). */
+.site-nav__lang {
+  margin-left: auto;
+  border-left: 1px solid var(--color-board-line);
+  border-radius: 0 4px 4px 0;
+}
+
 .delivery-page {
   max-width: 1180px;
 }
@@ -1428,7 +1444,7 @@ body {
 }
 
 .delivery-chain li span {
-  color: var(--color-copper);
+  color: var(--color-copper-text);
 }
 
 .delivery-heading {
@@ -1473,7 +1489,7 @@ body {
 }
 
 .delivery-plan__top span:first-child {
-  color: var(--color-copper);
+  color: var(--color-copper-text);
 }
 
 .delivery-plan h3 {

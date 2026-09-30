@@ -1,6 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useLocale, useTranslations } from "next-intl";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+
+import type { Locale } from "@/i18n/locales";
 
 import { AskError, ask } from "@/lib/ask";
 import type { AskEvent } from "@/lib/events";
@@ -12,7 +15,7 @@ import { Circuit } from "./Circuit";
 import { DemoFooter } from "./DemoFooter";
 
 type Action =
-  | { type: "start"; id: number; question: string }
+  | { type: "start"; id: number; question: string; locale?: Locale }
   | { type: "event"; id: number; event: AskEvent }
   | { type: "finish"; id: number; status: Exclude<ExchangeStatus, "running">; error?: string };
 
@@ -22,7 +25,12 @@ export function exchangesReducer(state: Exchange[], action: Action): Exchange[] 
     case "start":
       return [
         ...state,
-        { id: action.id, question: action.question, run: createInitialState(), status: "running" },
+        {
+          id: action.id,
+          question: action.question,
+          run: createInitialState(action.locale),
+          status: "running",
+        },
       ];
     case "event":
       return state.map((x) => (x.id === action.id ? { ...x, run: reduce(x.run, action.event) } : x));
@@ -35,20 +43,15 @@ export function exchangesReducer(state: Exchange[], action: Action): Exchange[] 
   }
 }
 
-const ERROR_TEXT: Record<AskError["kind"], string> = {
-  invalid_question: "Question refusée : elle doit compter entre 1 et 10 000 caractères.",
-  signature: "Requête refusée par le réseau de diffusion (signature du corps invalide).",
-  unavailable: "Le service ne répond pas. Réessaie dans un instant.",
-};
-
 function isAbort(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
 
-const IDLE = createInitialState();
-
 /** La démo : console de questions, circuit du pipeline et relevé, reliés au flux SSE. */
 export function Demo() {
+  const locale = useLocale();
+  const errorText = useTranslations("errors");
+  const idle = useMemo(() => createInitialState(locale), [locale]);
   const [exchanges, dispatch] = useReducer(exchangesReducer, []);
   const [models, setModels] = useState<readonly ModelInfo[]>([]);
   const [model, setModel] = useState<string | null>(null);
@@ -83,7 +86,7 @@ export function Demo() {
       const id = nextId.current++;
       const ac = new AbortController();
       controller.current = ac;
-      dispatch({ type: "start", id, question });
+      dispatch({ type: "start", id, question, locale });
       try {
         await ask({
           question,
@@ -96,14 +99,14 @@ export function Demo() {
         if (isAbort(error)) {
           dispatch({ type: "finish", id, status: "stopped" });
         } else {
-          const text = error instanceof AskError ? ERROR_TEXT[error.kind] : ERROR_TEXT.unavailable;
+          const text = errorText(error instanceof AskError ? error.kind : "unavailable");
           dispatch({ type: "finish", id, status: "failed", error: text });
         }
       } finally {
         if (controller.current === ac) controller.current = null;
       }
     },
-    [loadModels, model, models.length],
+    [errorText, loadModels, locale, model, models.length],
   );
 
   const onStop = useCallback(() => controller.current?.abort(), []);
@@ -123,7 +126,7 @@ export function Demo() {
         />
       </div>
       <div className="bench__circuit">
-        <Circuit state={current?.run ?? IDLE} />
+        <Circuit state={current?.run ?? idle} />
         <DemoFooter done={current?.run.done ?? null} />
       </div>
     </div>

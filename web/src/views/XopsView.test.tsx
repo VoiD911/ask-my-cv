@@ -1,9 +1,9 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@/test/intl";
 
 import { externalUrl, imageCommands, modelCommands, proofHref, pullUrl, xops, type Xops } from "@/lib/xops";
 import { disciplines, type External } from "@/lib/xops-content";
 
-import XOps from "./page";
+import { XopsView as XOps } from "./XopsView";
 
 const GH = "https://github.com/VoiD911/ask-my-cv";
 

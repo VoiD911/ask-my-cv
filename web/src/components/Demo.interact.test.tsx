@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@/test/intl";
 import { afterEach, describe as suite, expect, it, vi } from "vitest";
 
 import { SUGGESTIONS } from "./Chat";

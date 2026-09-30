@@ -1,10 +1,10 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@/test/intl";
 
 import { architecture, layers, sourceUrl } from "@/lib/architecture";
 import { jobText, roleText, stageText } from "@/lib/architecture-content";
 import { STAGES } from "@/lib/pipeline";
 
-import Architecture from "./page";
+import { ArchitectureView as Architecture } from "./ArchitectureView";
 
 describe("données d'architecture", () => {
   it("les étapes publiées sont celles du circuit de l'accueil, chacune décrite", () => {

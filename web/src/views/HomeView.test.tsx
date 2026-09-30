@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import Home from "./page";
+import { render, screen } from "@/test/intl";
+import { HomeView as Home } from "./HomeView";
 
 describe("page d'accueil", () => {
   it("affiche le nom, le titre du profil et le contact", () => {

@@ -6,6 +6,10 @@
  * `isAskEvent` dans le client `ask.ts` : une seule source de vérité.
  */
 
+import { DEFAULT_LOCALE, FORMAT_LOCALE, type Locale } from "@/i18n/locales";
+import { MESSAGES } from "@/i18n/messages";
+import { translator } from "@/i18n/translator";
+
 import type { AskEvent, DoneEvent, StageStatus as ApiStageStatus } from "./events";
 
 export type { DoneEvent } from "./events";
@@ -46,44 +50,53 @@ export type RunState = {
   done: DoneEvent | null;
   blockedAt: string | null;
   startedAt: number | null;
+  /** Langue de l'interface : libellés, nombres et résumé aria-live. */
+  locale: Locale;
 };
 
-export const STATUS_LABELS: Record<StageStatus, string> = {
-  idle: "en attente",
-  active: "en cours",
-  ok: "terminée",
-  blocked: "bloquée",
-  error: "en erreur",
-  fallback: "en repli",
-};
+/** Libellés des statuts (catalogue `circuit.status`). */
+export function statusLabel(status: StageStatus, locale: Locale = DEFAULT_LOCALE): string {
+  return MESSAGES[locale].circuit.status[status];
+}
 
-const STAGE_LABELS: Record<KnownStage, string> = {
-  reception: "réception",
-  quota: "quota",
-  injection: "injection",
-  embedding: "embedding",
-  retrieval: "recherche",
-  prompt: "prompt",
-  llm: "LLM",
-  output_guard: "garde-fou de sortie",
-};
+/** Libellés français des statuts, conservés pour les appelants existants. */
+export const STATUS_LABELS: Record<StageStatus, string> = MESSAGES.fr.circuit.status;
 
-export function stageLabel(name: string): string {
-  return STAGE_LABELS[name as KnownStage] ?? name;
+export function stageLabel(name: string, locale: Locale = DEFAULT_LOCALE): string {
+  const labels: Record<string, string> = MESSAGES[locale].circuit.stages;
+  return Object.hasOwn(labels, name) ? (labels[name] as string) : name;
+}
+
+/** Formate un nombre dans la langue voulue, sans décimales inutiles. */
+export function formatNumber(n: number, locale: Locale = DEFAULT_LOCALE): string {
+  return new Intl.NumberFormat(FORMAT_LOCALE[locale], { maximumFractionDigits: 3 }).format(n);
 }
 
 /** Formate un nombre pour l'affichage en français (fr-FR), sans décimales inutiles. */
 export function formatNumberFr(n: number): string {
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 3 }).format(n);
+  return formatNumber(n, "fr");
+}
+
+/** Montant en dollars américains : « 0,0012 $ » en français, « $0.0012 » en anglais. */
+export function formatUsd(
+  usd: number,
+  locale: Locale,
+  digits: { min?: number; max: number },
+): string {
+  const text = new Intl.NumberFormat(FORMAT_LOCALE[locale], {
+    minimumFractionDigits: digits.min ?? 0,
+    maximumFractionDigits: digits.max,
+  }).format(usd);
+  return locale === "fr" ? `${text} $` : `$${text}`;
 }
 
 /** Convertit une valeur d'attribut quelconque en chaîne affichable. */
-function formatAttrValue(value: unknown): string {
+function formatAttrValue(value: unknown, locale: Locale): string {
   if (typeof value === "number") {
-    return formatNumberFr(value);
+    return formatNumber(value, locale);
   }
   if (typeof value === "boolean") {
-    return value ? "vrai" : "faux";
+    return MESSAGES[locale].circuit[value ? "true" : "false"];
   }
   if (value === null || value === undefined) {
     return "—";
@@ -98,10 +111,10 @@ function formatAttrValue(value: unknown): string {
   }
 }
 
-function formatAttrs(attrs: Record<string, unknown>): Record<string, string> {
+function formatAttrs(attrs: Record<string, unknown>, locale: Locale): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(attrs)) {
-    out[key] = formatAttrValue(value);
+    out[key] = formatAttrValue(value, locale);
   }
   return out;
 }
@@ -115,7 +128,7 @@ function initStages(): Record<string, StageState> {
 }
 
 /** État initial du pipeline, avant tout événement. */
-export function createInitialState(): RunState {
+export function createInitialState(locale: Locale = DEFAULT_LOCALE): RunState {
   return {
     stages: initStages(),
     order: [...STAGES],
@@ -125,6 +138,7 @@ export function createInitialState(): RunState {
     done: null,
     blockedAt: null,
     startedAt: null,
+    locale,
   };
 }
 
@@ -174,7 +188,7 @@ export function reduce(state: RunState, event: PipelineEvent): RunState {
           [event.name]: {
             status: event.status,
             durationMs: event.duration_ms,
-            attrs: formatAttrs(event.attrs),
+            attrs: formatAttrs(event.attrs, withStage.locale),
           },
         },
       };
@@ -211,35 +225,40 @@ function findFirstBlocked(state: RunState): string | null {
   return null;
 }
 
-/** Phrase française pour la zone `aria-live`, résumant le dernier changement pertinent. */
+/** Phrase pour la zone `aria-live`, résumant le dernier changement pertinent. */
 export function describe(state: RunState): string {
+  const { locale } = state;
+  const t = translator(locale);
+  const stage = (name: string) => stageLabel(name, locale);
   if (state.done) {
     if (state.blockedAt) {
-      return `Terminé : étape ${stageLabel(state.blockedAt)} bloquée.`;
+      return t("circuit.doneBlocked", { stage: stage(state.blockedAt) });
     }
-    return `Terminé en ${formatNumberFr(state.done.latency_ms)} ms, ${formatNumberFr(state.done.tokens_out)} jetons générés.`;
+    return t("circuit.done", {
+      ms: formatNumber(state.done.latency_ms, locale),
+      tokens: formatNumber(state.done.tokens_out, locale),
+    });
   }
 
   if (state.blockedAt) {
-    const stage = state.stages[state.blockedAt];
-    const score = stage?.attrs.score;
+    const score = state.stages[state.blockedAt]?.attrs.score;
     if (score !== undefined) {
-      return `Étape ${stageLabel(state.blockedAt)} : bloquée, score ${score}.`;
+      return t("circuit.blockedScore", { stage: stage(state.blockedAt), score });
     }
-    return `Étape ${stageLabel(state.blockedAt)} : bloquée.`;
+    return t("circuit.blocked", { stage: stage(state.blockedAt) });
   }
 
   // Dernière étape active ou terminée, dans l'ordre d'affichage (la plus avancée en premier).
   for (let i = state.order.length - 1; i >= 0; i -= 1) {
     const name = state.order[i];
     if (name === undefined) continue;
-    const stage = state.stages[name];
-    if (!stage || stage.status === "idle") continue;
-    if (stage.status === "active") {
-      return `Étape ${stageLabel(name)} : en cours.`;
+    const current = state.stages[name];
+    if (!current || current.status === "idle") continue;
+    if (current.status === "active") {
+      return t("circuit.active", { stage: stage(name) });
     }
-    return `Étape ${stageLabel(name)} : ${STATUS_LABELS[stage.status]}.`;
+    return t("circuit.stageStatus", { stage: stage(name), status: statusLabel(current.status, locale) });
   }
 
-  return "En attente de la requête.";
+  return t("circuit.waiting");
 }

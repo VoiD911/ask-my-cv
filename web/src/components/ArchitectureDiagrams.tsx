@@ -3,10 +3,13 @@
  * Même langage visuel que le circuit de l'accueil (carte, puces, pistes cuivre, impulsion
  * cyan) mais en listes HTML : lisibles au clavier et au lecteur d'écran, empilées sur mobile.
  */
+import { useLocale } from "next-intl";
 import type { ReactNode } from "react";
 
+import type { Locale } from "@/i18n/locales";
 import { layers as byLayer, shortType, sourceUrl, type InfraRole, type InfraResource, type Workflow } from "@/lib/architecture";
-import { jobText, page, roleText, triggerText, type SourceLink } from "@/lib/architecture-content";
+import type { SourceLink } from "@/lib/architecture-content";
+import { architectureContent } from "@/lib/architecture-content.en";
 
 export type Node = { ref: string; label: string; detail: string; key?: string };
 
@@ -22,6 +25,8 @@ export function Board({
   alt: string;
   children: ReactNode;
 }) {
+  const locale = useLocale();
+  const { page } = architectureContent(locale);
   return (
     <figure className="circuit arch-board">
       <div className="circuit__bar">
@@ -30,7 +35,11 @@ export function Board({
       </div>
       {children}
       <figcaption className="arch-board__alt">
-        <span>{page.readingLabel} :</span> {alt}
+        <span>
+          {page.readingLabel}
+          {locale === "fr" ? " :" : ":"}
+        </span>{" "}
+        {alt}
       </figcaption>
     </figure>
   );
@@ -62,6 +71,7 @@ export function Flow({ nodes, label, tone }: { nodes: Node[]; label: string; ton
 }
 
 export function InfraBanks({ groups }: { groups: { role: InfraRole; resources: InfraResource[] }[] }) {
+  const { roleText } = architectureContent(useLocale());
   return (
     <ul className="arch-banks">
       {groups.map((group) => {
@@ -96,6 +106,7 @@ export function WorkflowGraph({ wf, layerLabel, stepsLabel }: {
   layerLabel: (n: number) => string;
   stepsLabel: (id: string) => string;
 }) {
+  const { jobText, page } = architectureContent(useLocale());
   return (
     <ol className="arch-layers">
       {byLayer(wf.jobs).map((jobs, index) => (
@@ -112,7 +123,8 @@ export function WorkflowGraph({ wf, layerLabel, stepsLabel }: {
                 {j.steps.length ? (
                   <details className="arch-steps">
                     <summary>
-                      {j.steps.length} étapes<span className="sr-only"> — {stepsLabel(j.id)}</span>
+                      {page.stepsCount(j.steps.length)}
+                      <span className="sr-only"> — {stepsLabel(j.id)}</span>
                     </summary>
                     <ol>
                       {j.steps.map((s, i) => (
@@ -130,11 +142,13 @@ export function WorkflowGraph({ wf, layerLabel, stepsLabel }: {
   );
 }
 
-export function triggerLabel(triggers: string[]): string {
+export function triggerLabel(triggers: string[], locale: Locale = "fr"): string {
+  const { triggerText } = architectureContent(locale);
   return triggers.map((t) => triggerText[t] ?? t).join(" · ");
 }
 
 export function Sources({ links }: { links: SourceLink[] }) {
+  const { page } = architectureContent(useLocale());
   return (
     <div className="arch-sources">
       <h3 className="arch-sources__title">{page.sourcesLabel}</h3>

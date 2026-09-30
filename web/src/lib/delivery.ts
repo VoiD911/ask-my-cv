@@ -1,3 +1,5 @@
+import type { Locale } from "@/i18n/locales";
+
 import archive from "./delivery-archive.json";
 import issueNumbers from "./issue-links.json";
 
@@ -66,8 +68,14 @@ export function eventLinks(links: string[]): string[] {
   );
 }
 
-export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("fr-CA", {
+/** Libellé d'étape du journal (« Tâche 3 », « Tâches 1-2 ») dans la langue de l'interface. */
+export function taskLabel(label: string, locale: Locale): string {
+  if (locale === "fr") return label;
+  return label.replace(/^Tâches (\d+)-(\d+)$/, "Tasks $1-$2").replace(/^Tâche (\d+)$/, "Task $1");
+}
+
+export function formatDate(iso: string, locale: Locale = "fr"): string {
+  return new Intl.DateTimeFormat(locale === "fr" ? "fr-CA" : "en-CA", {
     day: "2-digit",
     month: "short",
     year: "numeric",
