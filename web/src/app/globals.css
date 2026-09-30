@@ -2036,6 +2036,312 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
+/* Glossaire partagé : sigles définis, infobulle au survol et au focus */
+/* ------------------------------------------------------------------ */
+
+.term {
+  position: relative;
+  display: inline;
+}
+
+.term__link {
+  color: inherit;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--color-pulse);
+  text-underline-offset: 3px;
+}
+
+.term__link abbr {
+  text-decoration: none;
+}
+
+.term__tip {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  width: max-content;
+  max-width: min(320px, 80vw);
+  padding: 8px 10px;
+  border: 1px solid var(--color-pulse);
+  border-radius: 4px;
+  background: var(--color-board);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.45;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-silk);
+  pointer-events: none;
+  /* display: none tant qu'elle est masquée : n'élargit pas la page (bords d'écran) et reste
+     lue par aria-describedby. */
+  display: none;
+}
+
+.term:hover .term__tip,
+.term:focus-within .term__tip {
+  display: block;
+}
+
+.glossary {
+  display: grid;
+  gap: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 10px;
+  background: var(--color-board-raised);
+  scroll-margin-top: 16px;
+}
+
+.glossary h2 {
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  font-weight: 550;
+  letter-spacing: -0.02em;
+}
+
+.glossary > p {
+  max-width: 85ch;
+  font-size: 14px;
+  color: var(--color-silk-dim);
+}
+
+.glossary dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 12px 24px;
+}
+
+.glossary__entry {
+  scroll-margin-top: 16px;
+}
+
+.glossary__entry:target {
+  outline: 1px solid var(--color-pulse);
+  outline-offset: 4px;
+}
+
+.glossary dt {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--color-silk);
+}
+
+.glossary dt abbr {
+  text-decoration: none;
+  color: var(--color-pulse);
+}
+
+.glossary dt span {
+  color: var(--color-silk-dim);
+}
+
+.glossary dd {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-silk-dim);
+}
+
+/* ------------------------------------------------------------------ */
+/* XOps : matrice des pratiques, cases à preuves                       */
+/* ------------------------------------------------------------------ */
+
+.xops-matrix-wrap {
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.xops-matrix {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+
+.xops-matrix th,
+.xops-matrix td {
+  padding: 10px 12px;
+  border-bottom: 1px dashed var(--color-board-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.xops-matrix thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-silk-dim);
+}
+
+.xops-matrix td:nth-child(n + 3) {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.xops-matrix tbody th a {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-silk);
+}
+
+.xops-matrix__practices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  list-style: none;
+}
+
+.xops-matrix__practices a {
+  color: var(--color-silk);
+  text-decoration: underline;
+  text-decoration-color: var(--color-board-line);
+  text-underline-offset: 3px;
+}
+
+.xops-matrix__practices li[data-status="partiel"] a {
+  text-decoration-color: var(--color-fallback);
+}
+
+.xops-matrix__flag {
+  color: var(--color-fallback);
+}
+
+.xops-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 22px 18px;
+  list-style: none;
+}
+
+.xops-cell {
+  height: auto;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  scroll-margin-top: 16px;
+}
+
+.xops-cell .chip__label {
+  scroll-margin-top: 16px;
+}
+
+.xops-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chip-accent);
+}
+
+.xops-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.xops-status[data-status="partiel"]::before {
+  background: transparent;
+  border: 1.5px solid currentColor;
+}
+
+.xops-cell__claim,
+.xops-cell__gap {
+  font-family: var(--font-sans);
+  font-stretch: 100%;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-silk-dim);
+}
+
+.xops-cell__gap {
+  padding: 8px 10px;
+  border-left: 2px solid var(--color-fallback);
+  background: color-mix(in oklab, var(--color-fallback) 7%, transparent);
+  font-size: 13px;
+}
+
+.xops-cell__gap strong {
+  color: var(--color-silk);
+  font-weight: 600;
+}
+
+.xops-proofs {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--color-board-line);
+}
+
+.xops-proofs__title {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-silk-dim);
+}
+
+.xops-proofs ul {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+  list-style: none;
+}
+
+.xops-proofs a {
+  font-size: 12px;
+  color: var(--color-pulse);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  overflow-wrap: anywhere;
+}
+
+.xops-proof__line {
+  color: var(--color-silk-dim);
+}
+
+.xops-verify-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr));
+  gap: 18px;
+}
+
+.xops-verify {
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 10px;
+  background: var(--color-board-raised);
+  scroll-margin-top: 16px;
+}
+
+.xops-verify h3 {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.xops-verify > p {
+  margin-top: 8px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-silk-dim);
+}
+
+.xops-cmd {
+  margin-top: 12px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  border: 1px solid var(--color-board-line);
+  border-radius: 6px;
+  background: var(--color-board);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-silk);
+  user-select: all;
+}
+
+/* ------------------------------------------------------------------ */
 /* Réduction des animations : l'état reste lisible, rien ne bouge      */
 /* ------------------------------------------------------------------ */
 
