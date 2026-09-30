@@ -10,12 +10,17 @@
  *
  * Partition figée dans le fichier : dev (≈ 60 %) et test tenu à l'écart (≈ 40 %), stratifiée
  * par étiquette (et à part pour les cas adversariaux), par tri sur sha256("judge-split-v1:"+id).
- * La consigne du juge ne s'ajuste que sur les échecs de dev ; test mesure la généralisation.
+ * La consigne du juge ne s'ajuste que sur les échecs de dev ; test mesure la généralisation,
+ * comme borne haute : ses cas viennent des mêmes revues que dev. Pas de fuite (vérifiée par
+ * checkLeakage) : une réponse identique après normalisation, ou une famille de quasi-doublons
+ * (champ `family`), ne peut pas être à la fois en dev et en test ; les jumeaux sont en dev.
+ * `fresh` : lot aveugle evals/fixtures/judge_fresh.jsonl, rédigé sans voir la consigne du juge
+ * (fourni à part ; `split` absent ou « fresh »), seule mesure sur du non vu.
  * `ambiguous` : rapporté à part, exclu de l'accord et des critères d'acceptation.
  *
  * Appelle Bedrock (mêmes code, consigne et profils que la suite de nuit : judge.js) :
- *   AWS_PROFILE=… node evals/judge_calibration.js [--split dev|test|all] [--model haiku|sonnet]
- *                                                 [--file chemin.jsonl] [--json sortie.json]
+ *   AWS_PROFILE=… node evals/judge_calibration.js [--split dev|test|fresh|all] [--model haiku|sonnet]
+ *                     [--file chemin.jsonl] [--fresh-file judge_fresh.jsonl] [--json sortie.json]
  * Code de sortie 0, sauf jeu ou option invalide (2).
  */
 
@@ -25,9 +30,41 @@ const { judge, resolveModel, REGION } = require('./judge');
 
 const LABELS = new Set(['honest', 'invented', 'ambiguous']);
 const SPLITS = new Set(['dev', 'test']);
+const FRESH_FILE = path.join(__dirname, 'fixtures', 'judge_fresh.jsonl');
 
-/** Lit le JSONL étiqueté ; lève une erreur précise (ligne) si un cas est invalide. */
-function parseDataset(text) {
+/** Forme normalisée d'une réponse : casse, citations [n], ponctuation et espaces ignorées. */
+function normalizeAnswer(answer) {
+  return answer
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/\[\d+\]/g, '')
+    .replace(/[’']/g, "'")
+    .replace(/[^\p{L}\p{N}']+/gu, ' ')
+    .trim();
+}
+
+/** Lève une erreur si un doublon normalisé ou une famille traverse dev et test. */
+function checkLeakage(rows) {
+  const groups = new Map();
+  for (const r of rows) {
+    for (const key of [`answer:${normalizeAnswer(r.answer)}`, ...(r.family ? [`family:${r.family}`] : [])]) {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r);
+    }
+  }
+  for (const [key, members] of groups) {
+    const splits = new Set(members.map((r) => r.split));
+    if (splits.has('dev') && splits.has('test')) {
+      throw new Error(`fuite dev/test (${key.split(':')[0]}) : ${members.map((r) => `${r.id}/${r.split}`).join(', ')}`);
+    }
+  }
+}
+
+/**
+ * Lit le JSONL étiqueté ; lève une erreur précise (ligne) si un cas est invalide.
+ * `defaultSplit` : partition des lignes qui n'en portent pas (lot fresh).
+ */
+function parseDataset(text, { defaultSplit, allowedSplits = SPLITS } = {}) {
   const rows = [];
   const ids = new Set();
   text.split(/\r?\n/).forEach((line, i) => {
@@ -41,7 +78,13 @@ function parseDataset(text) {
     if (!row || typeof row.id !== 'string' || !row.id) throw new Error(`ligne ${i + 1} : id manquant`);
     if (ids.has(row.id)) throw new Error(`ligne ${i + 1} : id en double (${row.id})`);
     if (!LABELS.has(row.label)) throw new Error(`ligne ${i + 1} : label « ${row.label} » (honest|invented|ambiguous attendu)`);
-    if (!SPLITS.has(row.split)) throw new Error(`ligne ${i + 1} : split « ${row.split} » (dev|test attendu)`);
+    if (row.split === undefined && defaultSplit) row.split = defaultSplit;
+    if (!allowedSplits.has(row.split)) {
+      throw new Error(`ligne ${i + 1} : split « ${row.split} » (${[...allowedSplits].join('|')} attendu)`);
+    }
+    if (row.family !== undefined && (typeof row.family !== 'string' || !row.family)) {
+      throw new Error(`ligne ${i + 1} : family invalide`);
+    }
     if (typeof row.answer !== 'string' || !row.answer.trim()) throw new Error(`ligne ${i + 1} : answer vide`);
     if (typeof row.absentSkills !== 'string' || !row.absentSkills.split('|').some((s) => s.trim())) {
       throw new Error(`ligne ${i + 1} : absentSkills vide`);
@@ -56,8 +99,14 @@ function parseDataset(text) {
 
 function selectSplit(rows, split) {
   if (split === 'all') return rows;
-  if (!SPLITS.has(split)) throw new Error(`--split « ${split} » (dev|test|all attendu)`);
+  if (!SPLITS.has(split) && split !== 'fresh') throw new Error(`--split « ${split} » (dev|test|fresh|all attendu)`);
   return rows.filter((r) => r.split === split);
+}
+
+/** Lot aveugle `fresh` : fichier séparé, chaque ligne en partition fresh. */
+function loadFresh(file = FRESH_FILE) {
+  if (!fs.existsSync(file)) throw new Error(`lot fresh absent : ${file}`);
+  return parseDataset(fs.readFileSync(file, 'utf8'), { defaultSplit: 'fresh', allowedSplits: new Set(['fresh']) });
 }
 
 /** Juge chaque cas (séquentiel : quelques dizaines d'appels, pas de rafale). */
@@ -147,7 +196,13 @@ async function main(argv) {
   let model;
   try {
     model = resolveModel(argValue(argv, '--model'));
-    rows = selectSplit(parseDataset(fs.readFileSync(file, 'utf8')), split);
+    if (split === 'fresh') {
+      rows = loadFresh(argValue(argv, '--fresh-file', FRESH_FILE));
+    } else {
+      const all = parseDataset(fs.readFileSync(file, 'utf8'));
+      checkLeakage(all);
+      rows = selectSplit(all, split);
+    }
   } catch (err) {
     process.stderr.write(`Calibration impossible (${file}) : ${err.message}\n`);
     return 2;
@@ -182,4 +237,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { parseDataset, selectSplit, runCalibration, aggregate, formatReport, main };
+module.exports = { parseDataset, checkLeakage, normalizeAnswer, loadFresh, selectSplit, runCalibration, aggregate, formatReport, main };

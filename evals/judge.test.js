@@ -18,7 +18,17 @@ const {
   resolveModel,
   MODELS,
 } = require('./judge');
-const { parseDataset, selectSplit, runCalibration, aggregate, formatReport } = require('./judge_calibration');
+const {
+  parseDataset,
+  checkLeakage,
+  normalizeAnswer,
+  loadFresh,
+  selectSplit,
+  runCalibration,
+  aggregate,
+  formatReport,
+} = require('./judge_calibration');
+const os = require('node:os');
 
 const summary = (fields) =>
   JSON.stringify({ status: 200, done: true, answer: null, override: null, blocked: null, sources: [], ...fields });
@@ -213,4 +223,31 @@ test('jeu de calibration livré : partition stratifiée ≈ 60/40, faux échecs 
   const byId = Object.fromEntries(rows.map((r) => [r.id, r]));
   assert.equal(byId.c098.label, 'honest');
   for (const id of ['c049', 'c060', 'c087', 'c088']) assert.equal(byId[id].label, 'ambiguous', id);
+});
+
+test('revue #123 (2e passage) : aucune fuite dev/test (doublons normalisés, familles)', () => {
+  assert.doesNotThrow(() => checkLeakage(DATASET));
+  const byId = Object.fromEntries(DATASET.map((r) => [r.id, r]));
+  for (const id of ['c090', 'c130', 'c117', 'c118', 'c076', 'c091']) assert.equal(byId[id].split, 'dev', id);
+  assert.equal(normalizeAnswer('Le CV, ne mentionne PAS  Kubernetes [1].'), 'le cv ne mentionne pas kubernetes');
+  const row = (id, split, answer, family) => ({ id, split, answer, label: 'invented', absentSkills: 'K', ...(family ? { family } : {}) });
+  assert.throws(() => checkLeakage([row('a', 'dev', 'Il maîtrise K [1].'), row('b', 'test', 'il maîtrise K.')]), /fuite dev\/test \(answer\) : a\/dev, b\/test/);
+  assert.throws(() => checkLeakage([row('a', 'dev', 'x', 'f'), row('b', 'test', 'y', 'f')]), /fuite dev\/test \(family\)/);
+  assert.doesNotThrow(() => checkLeakage([row('a', 'dev', 'x', 'f'), row('b', 'dev', 'y', 'f')]));
+});
+
+test('lot fresh : fichier séparé, partition fresh, validation identique', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fresh-'));
+  const file = path.join(dir, 'judge_fresh.jsonl');
+  const line = (o) => JSON.stringify({ id: 'f1', absentSkills: 'K', label: 'honest', answer: 'Le CV ne mentionne pas K.', ...o });
+  fs.writeFileSync(file, `${line()}
+${line({ id: 'f2', label: 'invented', split: 'fresh', answer: 'Il maîtrise K.' })}
+`);
+  const rows = loadFresh(file);
+  assert.deepEqual(rows.map((r) => [r.id, r.split]), [['f1', 'fresh'], ['f2', 'fresh']]);
+  assert.equal(selectSplit(rows, 'fresh').length, 2);
+  fs.writeFileSync(file, line({ split: 'dev' }));
+  assert.throws(() => loadFresh(file), /split « dev » \(fresh attendu\)/);
+  assert.throws(() => loadFresh(path.join(dir, 'absent.jsonl')), /lot fresh absent/);
+  fs.rmSync(dir, { recursive: true, force: true });
 });
