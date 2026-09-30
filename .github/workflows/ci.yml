@@ -166,6 +166,9 @@ jobs:
           NEXT_TELEMETRY_DISABLED: "1"
       - name: Navigateur Playwright (chromium)
         run: npx --prefix web playwright install --with-deps chromium
+      # PDF du CV : le parcours /cv vérifie leur téléchargement.
+      - name: PDF du CV (e2e)
+        run: npm --prefix web run pdf
       - name: Parcours e2e (Playwright, API locale)
         run: npm --prefix web run e2e
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -213,10 +216,13 @@ jobs:
       # le JSON commité correspondre aux sources (version du modèle, identités de signature...).
       - name: Données de la page XOps à jour
         run: node web/scripts/sync-xops.mjs --check
+      # Données de /cv : CV français (data/cv.md) et anglais (data/cv.en.md) de même structure.
+      - name: Données de la page CV à jour
+        run: node web/scripts/sync-cv.mjs --check
       - run: npm --prefix web run lint
       - run: npm --prefix web run typecheck
       - run: npm --prefix web test -- --run
-      - name: Tests des scripts de build (CSP, données Architecture et XOps)
+      - name: Tests des scripts de build (CSP, données Architecture, XOps et CV)
         run: node --test web/scripts/*.test.mjs
       # build = next build puis scripts/csp.mjs, qui insère la meta CSP (hashes des scripts en ligne) dans web/out.
       - run: npm --prefix web run build
@@ -228,6 +234,17 @@ jobs:
         run: |
           missing=$(grep -rL --include='*.html' 'http-equiv="Content-Security-Policy"' web/out || true)
           if [ -n "$missing" ]; then echo "::error::pages sans meta CSP : $missing"; exit 1; fi
+      # PDF du CV (FR, EN) imprimés par Chromium depuis /cv/ et /en/cv/ de l'export : étape
+      # distincte du build (qui reste possible sans navigateur), avant l'artefact publié.
+      - name: Navigateur Playwright (chromium) pour les PDF du CV
+        run: npx --prefix web playwright install --with-deps chromium
+      - name: PDF du CV
+        run: npm --prefix web run pdf
+      - name: PDF du CV présents et non vides
+        run: |
+          for f in web/out/cv/Steve-Lang-CV-fr.pdf web/out/en/cv/Steve-Lang-CV-en.pdf; do
+            [ -s "$f" ] && head -c 5 "$f" | grep -q '%PDF-' || { echo "::error::$f absent ou invalide"; exit 1; }
+          done
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: web-out-${{ github.sha }}
@@ -550,6 +567,10 @@ jobs:
         run: |
           curl -fsS "${SITE_URL%/}/" | grep -q "Interroge mon CV"
           curl -fsS "${SITE_URL%/}/api/healthz" | grep -q '"status"'
+          # PDF du CV publiés avec leur type (aws s3 sync le déduit de l'extension .pdf)
+          for pdf in cv/Steve-Lang-CV-fr.pdf en/cv/Steve-Lang-CV-en.pdf; do
+            curl -fsSI "${SITE_URL%/}/$pdf" | grep -qi '^content-type: application/pdf'
+          done
       - name: Retour arrière si le test de fumée échoue
         if: failure() && steps.smoke.outcome == 'failure' && env.PREVIOUS_IMAGE != ''
         env:

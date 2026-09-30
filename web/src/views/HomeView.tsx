@@ -2,8 +2,7 @@ import { useTranslations } from "next-intl";
 
 import { Demo } from "@/components/Demo";
 import { SiteNav } from "@/components/SiteNav";
-
-const CONTACT = "job@stevelang.net";
+import { CONTACT_EMAIL as CONTACT, LINKEDIN_URL } from "@/lib/cv";
 
 /** Page d'accueil (démo), commune aux racines française et anglaise. */
 export function HomeView() {
@@ -30,6 +29,14 @@ export function HomeView() {
             <dt>{t("contactTerm")}</dt>
             <dd>
               <a href={`mailto:${CONTACT}`}>{CONTACT}</a>
+            </dd>
+          </div>
+          <div>
+            <dt>{t("linkedinTerm")}</dt>
+            <dd>
+              <a href={LINKEDIN_URL} rel="me noopener">
+                steve-cl-lang
+              </a>
             </dd>
           </div>
         </dl>

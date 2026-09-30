@@ -11,6 +11,7 @@
     "delivery": "Delivery",
     "architecture": "Architecture",
     "xops": "XOps",
+    "cv": "CV",
     "switch": "Français",
     "switchLabel": "Lire cette page en français"
   },
@@ -21,7 +22,8 @@
     "sourceValue": "Public CV, written in French: answers are drawn from it",
     "modelTerm": "model",
     "contactTerm": "contact",
-    "privacy": "Questions are processed in the United States by Amazon Bedrock. Traces keep neither the text of your question nor your IP address; the per-visitor quota relies on a salted pseudonym."
+    "privacy": "Questions are processed in the United States by Amazon Bedrock. Traces keep neither the text of your question nor your IP address; the per-visitor quota relies on a salted pseudonym.",
+    "linkedinTerm": "linkedin"
   },
   "chat": {
     "title": "questions for the CV",
@@ -205,5 +207,20 @@
       "changes": "changes requested",
       "unknown": "undetermined"
     }
+  },
+  "cv": {
+    "title": "Resume — Steve Lang",
+    "description": "Resume of Steve Lang, principal architect in hyperautomation, generative AI and cloud: experience, skills, education. Downloadable PDF version.",
+    "eyebrow": "Curriculum vitae",
+    "role": "Principal Architect — Hyperautomation, Generative AI and Cloud",
+    "download": "Download the resume (PDF)",
+    "contactLabel": "Contact",
+    "emailTerm": "email",
+    "linkedinTerm": "LinkedIn",
+    "linkedinText": "linkedin.com/in/steve-cl-lang",
+    "askTitle": "A question about this background?",
+    "ask": "Ask the assistant in the demo: it answers from this same CV (French source).",
+    "askLink": "Ask the CV",
+    "source": "Page generated at build time from data/cv.en.md, an English translation of the French CV the assistant uses."
   }
 }

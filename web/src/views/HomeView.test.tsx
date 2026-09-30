@@ -12,6 +12,9 @@ describe("page d'accueil", () => {
       "href",
       "mailto:job@stevelang.net",
     );
+    const linkedin = screen.getByRole("link", { name: "steve-cl-lang" });
+    expect(linkedin).toHaveAttribute("href", "https://www.linkedin.com/in/steve-cl-lang/");
+    expect(linkedin).toHaveAttribute("rel", "me noopener");
   });
 
   it("montre le circuit au repos et le relevé vide", () => {
