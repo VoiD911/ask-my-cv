@@ -811,43 +811,6 @@ async def test_throttling_fails_open_and_counts_for_the_breaker(make_deps) -> No
     assert ends(events)[-1] == ("output_guard", "ok")
 
 
-async def test_breaker_fails_closed_for_ads_after_consecutive_errors(make_deps) -> None:
-    from ask_my_cv.guardrail import FakeGuardrail, GuardrailBreaker
-
-    guardrail = FakeGuardrail(error=throttling())
-    llm = FakeLLM(id="fake:echo")
-    deps = with_guardrail(make_deps, guardrail, providers={"fake:echo": llm})
-    deps.breaker = GuardrailBreaker(max_failures=2, max_visitor_failures=99, cooldown_s=60)
-    for _ in range(2):
-        await run(deps, question=LONG_AD)
-    calls_before = llm.calls
-    events = await run(deps, question=LONG_AD)
-    assert ends(events)[-1] == ("injection", "blocked")
-    assert injection_attrs(events)["guardrail"] == "unavailable"
-    assert done(events).answer_override == BLOCK_MESSAGES["guardrail_unavailable"]
-    assert BLOCK_MESSAGES["guardrail_unavailable"] != BLOCK_MESSAGES["injection_detected"]
-    assert guardrail.calls == 2 and llm.calls == calls_before
-    # les questions courtes ne dépendent pas du garde-fou
-    short = await run(deps)
-    assert ends(short) == [(name, "ok") for name in STAGES]
-
-
-async def test_breaker_fails_closed_for_one_visitor_with_repeated_errors(make_deps) -> None:
-    from ask_my_cv.guardrail import FakeGuardrail, GuardrailBreaker
-
-    guardrail = FakeGuardrail(delay_s=5.0)
-    deps = with_guardrail(make_deps, guardrail, guardrail_timeout_s=0.02)
-    deps.breaker = GuardrailBreaker(max_failures=99, max_visitor_failures=2, cooldown_s=60)
-    for _ in range(2):
-        await run(deps, question=LONG_AD)
-    events: list[Event] = []
-    await run_pipeline(LONG_AD, deps.settings.default_model, "visitor", deps, events.append)
-    assert injection_attrs(events)["guardrail"] == "unavailable"
-    other: list[Event] = []
-    await run_pipeline(LONG_AD, deps.settings.default_model, "someone-else", deps, other.append)
-    assert injection_attrs(other)["guardrail"] == "error"  # appelé à nouveau, pas bloqué
-
-
 async def test_guardrail_latency_is_traced_and_logged_as_a_metric(make_deps, caplog) -> None:
     from ask_my_cv.guardrail import FakeGuardrail
 
@@ -943,3 +906,74 @@ async def test_guardrail_min_chars_can_be_overridden(make_deps) -> None:
     guardrail = FakeGuardrail()
     await run(with_guardrail(make_deps, guardrail, guardrail_min_chars=10), question="a" * 20)
     assert guardrail.calls == 1
+
+
+async def test_breaker_fails_closed_for_ads_once_three_visitors_fail(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail, GuardrailBreaker
+
+    guardrail = FakeGuardrail(error=throttling())
+    llm = FakeLLM(id="fake:echo")
+    deps = with_guardrail(make_deps, guardrail, providers={"fake:echo": llm})
+    deps.breaker = GuardrailBreaker(max_failures=3, max_visitor_failures=99, min_visitors=3)
+    for visitor in ("a", "b", "c"):
+        await run_pipeline(LONG_AD, deps.settings.default_model, visitor, deps, lambda e: None)
+    calls_before = llm.calls
+    events = await run(deps, question=LONG_AD)
+    assert ends(events)[-1] == ("injection", "blocked")
+    assert injection_attrs(events)["guardrail"] == "unavailable"
+    assert done(events).answer_override == BLOCK_MESSAGES["guardrail_unavailable"]
+    assert BLOCK_MESSAGES["guardrail_unavailable"] != BLOCK_MESSAGES["injection_detected"]
+    assert guardrail.calls == 3 and llm.calls == calls_before
+    short = await run(deps)  # les questions courtes ne dépendent pas du garde-fou
+    assert ends(short) == [(name, "ok") for name in STAGES]
+
+
+async def test_cancellation_is_not_an_error_for_metrics_or_breaker(make_deps, caplog) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail, GuardrailBreaker
+
+    guardrail = FakeGuardrail(delay_s=5.0)
+    deps = with_guardrail(make_deps, guardrail)
+    deps.breaker = GuardrailBreaker(max_failures=1, max_visitor_failures=1, min_visitors=1)
+    with caplog.at_level("INFO", logger="ask_my_cv.guardrail.metrics"):
+        task = asyncio.create_task(
+            run_pipeline(LONG_AD, deps.settings.default_model, "v", deps, lambda e: None)
+        )
+        for _ in range(200):
+            if guardrail.calls:
+                break
+            await asyncio.sleep(0.01)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    lines = [r.getMessage() for r in caplog.records if r.name == "ask_my_cv.guardrail.metrics"]
+    assert lines and lines[-1].split()[1] == "cancelled"
+    assert deps.breaker.state == "closed" and deps.breaker.admit("v", time.time()) is not None
+
+
+async def test_nfkc_inflation_beyond_the_limit_is_refused_before_the_detectors(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail()
+    calls: list[str] = []
+
+    class Spy(ScoreDetector):
+        def score(self, text: str) -> float:
+            calls.append(text)
+            return 0.0
+
+    deps = make_deps(detector=Spy(0.0))
+    deps.guardrail = guardrail
+    events = await run(deps, question="ﷺ" * 1_000)  # 1 000 → 18 000 après NFKC
+    assert ends(events)[-1] == ("reception", "blocked")
+    assert done(events).answer_override == BLOCK_MESSAGES["invalid_question"]
+    assert calls == [] and guardrail.calls == 0
+
+
+async def test_mild_nfkc_inflation_within_the_limit_is_accepted(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail()
+    # « ﬁ » (1) → « fi » (2) : 4 000 → 8 000 caractères, sous la limite
+    events = await run(with_guardrail(make_deps, guardrail), question="ﬁ" * 4_000)
+    assert ends(events)[2] == ("injection", "ok")
+    assert guardrail.calls == 1 and injection_attrs(events)["guardrail_units"] == 8

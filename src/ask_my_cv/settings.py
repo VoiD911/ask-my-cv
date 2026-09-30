@@ -81,10 +81,13 @@ class Settings(BaseModel):
     guardrail_version: str | None = None
     guardrail_timeout_s: float = Field(default=2.0, gt=0.0, le=10.0)
     guardrail_min_chars: int = Field(default=400, ge=1)
-    # disjoncteur : échec fermé des annonces après ces échecs (tous visiteurs / un visiteur)
+    # disjoncteur (par processus) : échec fermé des annonces après ces échecs sur la fenêtre
+    # glissante (tous visiteurs, dont au moins min_visitors distincts / un visiteur)
     guardrail_breaker_failures: int = Field(default=5, ge=1)
     guardrail_breaker_visitor_failures: int = Field(default=3, ge=1)
     guardrail_breaker_cooldown_s: float = Field(default=60.0, gt=0.0)
+    guardrail_breaker_window_s: float = Field(default=60.0, gt=0.0)
+    guardrail_breaker_min_visitors: int = Field(default=3, ge=1)
 
     @field_validator("ollama_url")
     @classmethod

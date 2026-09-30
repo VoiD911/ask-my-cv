@@ -115,9 +115,77 @@ resource "aws_cloudwatch_log_metric_filter" "guardrail_latency" {
 
 # Aucun sujet SNS n'existait (le budget écrit directement à alert_email) : sujet des alarmes
 # d'exploitation, abonnement courriel à confirmer une fois après le premier apply.
+# Clé KMS gérée par le client (environ 1 USD par mois) : une alarme CloudWatch ne peut pas
+# publier vers un sujet chiffré par la clé gérée par AWS (alias/aws/sns), dont la politique
+# n'autorise pas cloudwatch.amazonaws.com.
+data "aws_iam_policy_document" "alerts_key" {
+  statement {
+    sid       = "AccountAdministration"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${local.account}:root"]
+    }
+  }
+  statement {
+    sid       = "CloudWatchAlarmsPublish"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey*"]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account]
+    }
+  }
+}
+
+resource "aws_kms_key" "alerts" {
+  description             = "Chiffrement du sujet SNS des alarmes ask-my-cv"
+  enable_key_rotation     = true
+  deletion_window_in_days = 7
+  policy                  = data.aws_iam_policy_document.alerts_key.json
+}
+
+resource "aws_kms_alias" "alerts" {
+  name          = "alias/ask-my-cv-alerts"
+  target_key_id = aws_kms_key.alerts.key_id
+}
+
 resource "aws_sns_topic" "alerts" {
   name              = "ask-my-cv-alerts"
-  kms_master_key_id = "alias/aws/sns"
+  kms_master_key_id = aws_kms_key.alerts.arn
+}
+
+data "aws_iam_policy_document" "alerts_topic" {
+  statement {
+    sid       = "CloudWatchAlarmsPublish"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.alerts.arn]
+    principals {
+      type        = "Service"
+      identifiers = ["cloudwatch.amazonaws.com"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "aws:SourceAccount"
+      values   = [local.account]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "aws:SourceArn"
+      values   = ["arn:aws:cloudwatch:${var.region}:${local.account}:alarm:ask-my-cv-*"]
+    }
+  }
+}
+
+resource "aws_sns_topic_policy" "alerts" {
+  arn    = aws_sns_topic.alerts.arn
+  policy = data.aws_iam_policy_document.alerts_topic.json
 }
 
 resource "aws_sns_topic_subscription" "alerts_email" {

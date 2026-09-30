@@ -131,8 +131,11 @@ uv run python -m ml.train --version v0.0.0 --out dist
   71 % des injections arrêtées, 13 % des annonces légitimes bloquées). **Limite connue** : une
   injection de moins de 400 caractères ne rencontre que le classifieur et le prompt ; les 71 %
   ne valent que pour les annonces de 400 caractères et plus. Échec isolé du garde-fou : décision
-  du classifieur ; échecs répétés : disjoncteur, annonces refusées quelques minutes
-  (`src/ask_my_cv/guardrail.py`, alarme `ask-my-cv-guardrail-errors`).
+  du classifieur ; échecs répétés (5 sur 60 s venant d'au moins 3 visiteurs, ou 3 d'un même
+  visiteur) : disjoncteur, annonces refusées une minute (`src/ask_my_cv/guardrail.py`, alarme
+  `ask-my-cv-guardrail-errors`). L'état du disjoncteur est propre à chaque instance Lambda :
+  les seuils ne sont pas globaux au service. Tout texte dépassant 10 000 caractères, avant ou
+  après repli NFKC, est refusé (422) avant les détecteurs.
 
 ## Production (AWS, `ca-central-1`)
 

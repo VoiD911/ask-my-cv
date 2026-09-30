@@ -176,7 +176,8 @@ async def _second_opinion(
     settings = deps.settings
     if deps.guardrail is None or not is_ad_like(text, settings.guardrail_min_chars):
         return "skipped"
-    if not deps.breaker.allows(visitor, now()):
+    admission = deps.breaker.admit(visitor, now())
+    if admission is None:
         log_metric("unavailable", 0.0)
         return "unavailable"
     units = text_units(text)
@@ -187,12 +188,17 @@ async def _second_opinion(
             result = await deps.guardrail.check(text)
         units = result.units
         status = "block" if result.intervened else "pass"
-        deps.breaker.success()
+        deps.breaker.record(visitor, now(), "success", admission)
+    except asyncio.CancelledError:
+        # visiteur déconnecté : ni échec du garde-fou (métriques), ni succès (disjoncteur)
+        status = "cancelled"
+        deps.breaker.record(visitor, now(), "cancelled", admission)
+        raise
     except Exception as exc:
         # jamais le texte : seulement le type d'erreur
         logger.warning("guardrail_status=error error=%s", type(exc).__name__)
         recorder.set(guardrail_error=type(exc).__name__)
-        deps.breaker.failure(visitor, now())
+        deps.breaker.record(visitor, now(), "failure", admission)
     finally:
         # aussi pendant une annulation (visiteur déconnecté) : Bedrock facture quand même
         elapsed_ms = (time.perf_counter() - started) * 1000
@@ -247,7 +253,10 @@ async def run_pipeline(
         try:
             async with stage("reception", emit) as st:
                 question = question.strip()
-                if not question or len(question) > MAX_QUESTION_CHARS:
+                # NFKC peut multiplier la taille (U+FDFA : 18 caractères) : plafond aussi
+                # après repli, avant tout détecteur (coût, fenêtres ONNX, garde-fou)
+                screened = fold_format(question)
+                if not question or max(len(question), len(screened)) > MAX_QUESTION_CHARS:
                     raise StageBlocked("invalid_question", length=len(question))
                 if model_id not in settings.public_model_ids():
                     raise StageBlocked("unknown_model", model_len=len(model_id))
@@ -277,7 +286,6 @@ async def run_pipeline(
                 if evaluation:
                     st.set(eval=True)
                 # même texte replié (NFKC, sans Cf) pour la longueur et les deux détecteurs
-                screened = fold_format(question)
                 verdict = check_input(deps.detector, screened, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
                 if verdict.blocked:

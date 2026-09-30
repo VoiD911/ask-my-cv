@@ -145,5 +145,7 @@ def build_deps(settings: Settings) -> Deps:
             max_failures=settings.guardrail_breaker_failures,
             max_visitor_failures=settings.guardrail_breaker_visitor_failures,
             cooldown_s=settings.guardrail_breaker_cooldown_s,
+            window_s=settings.guardrail_breaker_window_s,
+            min_visitors=settings.guardrail_breaker_min_visitors,
         ),
     )
