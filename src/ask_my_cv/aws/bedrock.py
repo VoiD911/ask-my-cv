@@ -5,6 +5,7 @@ import contextlib
 import json
 import threading
 from collections.abc import AsyncGenerator
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from ask_my_cv.guardrail import GuardrailResult, guardrail_request, text_units
@@ -130,9 +131,13 @@ class BedrockGuardrail:
         self.guardrail_id = guardrail_id
         self.version = version
         self.client = client
+        # pool dédié : un appel abandonné après le délai ne retarde pas les écritures du
+        # registre des dépenses (executor par défaut)
+        self._executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="guardrail")
 
     async def check(self, text: str) -> GuardrailResult:
-        return await asyncio.to_thread(self._apply, text)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(self._executor, self._apply, text)
 
     def _apply(self, text: str) -> GuardrailResult:
         response = self.client.apply_guardrail(

@@ -1,4 +1,6 @@
+import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -35,6 +37,21 @@ def isolated_aws(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempP
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "testing")
     monkeypatch.setenv("AWS_SESSION_TOKEN", "testing")
     monkeypatch.setenv("AWS_DEFAULT_REGION", "ca-central-1")
+
+
+@pytest.fixture
+def promoted_model() -> Path:
+    """Modèle promu téléchargé (`models/model.onnx`) : ignoré s'il manque, sauf en CI.
+
+    `REQUIRE_PROMOTED_MODEL=1` (job `test` de ci.yml, après téléchargement et cosign) change
+    l'absence en échec : la promotion est toujours testée avec le vrai modèle avant fusion.
+    """
+    path = Path("models/model.onnx")
+    if not path.exists():
+        if os.environ.get("REQUIRE_PROMOTED_MODEL") == "1":
+            pytest.fail("REQUIRE_PROMOTED_MODEL=1 mais models/model.onnx est absent")
+        pytest.skip("modèle promu non téléchargé")
+    return path
 
 
 @pytest.fixture

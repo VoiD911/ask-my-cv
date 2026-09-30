@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -9,6 +11,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ask_my_cv.visitor import TrustedProxy
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(ValueError):
@@ -77,6 +81,10 @@ class Settings(BaseModel):
     guardrail_version: str | None = None
     guardrail_timeout_s: float = Field(default=2.0, gt=0.0, le=10.0)
     guardrail_min_chars: int = Field(default=400, ge=1)
+    # disjoncteur : échec fermé des annonces après ces échecs (tous visiteurs / un visiteur)
+    guardrail_breaker_failures: int = Field(default=5, ge=1)
+    guardrail_breaker_visitor_failures: int = Field(default=3, ge=1)
+    guardrail_breaker_cooldown_s: float = Field(default=60.0, gt=0.0)
 
     @field_validator("ollama_url")
     @classmethod
@@ -98,7 +106,9 @@ class Settings(BaseModel):
     def _guardrail_is_complete(self) -> Settings:
         if (self.guardrail_id is None) != (self.guardrail_version is None):
             raise ValueError("guardrail_id et guardrail_version vont ensemble")
-        if self.guardrail_version is not None and not self.guardrail_version.isdigit():
+        if self.guardrail_version is not None and not re.fullmatch(
+            r"[0-9]+", self.guardrail_version
+        ):
             raise ValueError("guardrail_version doit être une version publiée (nombre, pas DRAFT)")
         if self.guardrail_id is not None and not self.guardrail_id:
             raise ValueError("guardrail_id ne doit pas être vide")
@@ -182,8 +192,15 @@ def load_settings(path: Path | None = None) -> Settings:
     path = path or Path(os.environ.get("ASK_SETTINGS", "settings.yaml"))
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     for env_name, field in _ENV_OVERRIDES.items():
-        if value := os.environ.get(env_name):
-            data[field] = value
+        value = os.environ.get(env_name)
+        if value is None:
+            continue
+        if not value.strip():
+            # variable présente mais vide (ex. sortie Terraform vide) : traitée comme absente,
+            # et signalée plutôt que d'effacer silencieusement la valeur du fichier
+            logger.warning("variable %s vide : ignorée", env_name)
+            continue
+        data[field] = value
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:

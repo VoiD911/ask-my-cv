@@ -7,7 +7,7 @@ import logging
 import secrets
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
@@ -15,9 +15,11 @@ from ask_my_cv.events import Answer, Done, LLMProgress
 from ask_my_cv.guardrail import (
     GUARDRAIL_PROVIDER_ID,
     USD_PER_UNIT,
+    GuardrailBreaker,
     GuardrailChecker,
     GuardrailStatus,
     is_ad_like,
+    log_metric,
     text_units,
 )
 from ask_my_cv.input_guard import InjectionDetector, check_input
@@ -27,6 +29,7 @@ from ask_my_cv.output_guard import check_output
 from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
 from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage, tracer
+from ask_my_cv.text import fold_format
 from ask_my_cv.vectorstore import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -40,6 +43,10 @@ BLOCK_MESSAGES = {
     "budget_exceeded": "Le budget du jour est atteint : la démo passe en mode rediffusion.",
     "injection_detected": (
         "Requête bloquée par le détecteur d'injection. Rien n'a été envoyé au LLM."
+    ),
+    "guardrail_unavailable": (
+        "L'analyse des annonces est momentanément indisponible : réessaie dans quelques "
+        "minutes. Les questions courtes restent possibles."
     ),
     "prompt_leak": "Réponse retirée : elle exposait des instructions internes.",
     "pii": "Réponse retirée : elle contenait des données personnelles.",
@@ -63,6 +70,8 @@ class Deps:
     settings: Settings
     # second avis sur les annonces collées ; None : classifieur seul (local, CI, non configuré)
     guardrail: GuardrailChecker | None = None
+    # disjoncteur du garde-fou, un par processus (container.build_deps)
+    breaker: GuardrailBreaker = field(default_factory=GuardrailBreaker)
 
 
 def _provider_chain(model_id: str, deps: Deps) -> list[LLMProvider]:
@@ -150,34 +159,51 @@ async def _stream_llm(
 
 
 async def _second_opinion(
-    question: str,
+    text: str,
+    visitor: str,
     deps: Deps,
     recorder: StageRecorder,
     record_spend: Callable[[str, float], None],
+    now: Callable[[], float],
 ) -> GuardrailStatus:
-    """Garde-fou Bedrock sur une annonce que le classifieur laisse passer.
+    """Garde-fou Bedrock sur une annonce que le classifieur laisse passer (`text` déjà replié).
 
-    Échec ouvert (voir `ask_my_cv.guardrail`) : délai dépassé ou erreur renvoient `error` et la
-    décision du classifieur s'applique. Les unités sont facturées même en cas d'échec (estimation :
-    la requête a pu être traitée), au poste du garde-fou, dans le même plafond journalier.
+    Échec isolé : ouvert, `error`, la décision du classifieur s'applique. Échecs répétés : le
+    disjoncteur renvoie `unavailable` (échec fermé, voir `ask_my_cv.guardrail`). Les unités
+    sont facturées même en cas d'échec ou d'annulation (estimation : la requête a pu être
+    traitée), au poste du garde-fou, dans le même plafond journalier.
     """
     settings = deps.settings
-    if deps.guardrail is None or not is_ad_like(question, settings.guardrail_min_chars):
+    if deps.guardrail is None or not is_ad_like(text, settings.guardrail_min_chars):
         return "skipped"
-    units = text_units(question)
+    if not deps.breaker.allows(visitor, now()):
+        log_metric("unavailable", 0.0)
+        return "unavailable"
+    units = text_units(text)
+    status: GuardrailStatus = "error"
+    started = time.perf_counter()
     try:
         async with asyncio.timeout(settings.guardrail_timeout_s):
-            result = await deps.guardrail.check(question)
+            result = await deps.guardrail.check(text)
         units = result.units
-        status: GuardrailStatus = "block" if result.intervened else "pass"
+        status = "block" if result.intervened else "pass"
+        deps.breaker.success()
     except Exception as exc:
         # jamais le texte : seulement le type d'erreur
         logger.warning("guardrail_status=error error=%s", type(exc).__name__)
         recorder.set(guardrail_error=type(exc).__name__)
-        status = "error"
-    cost = units * USD_PER_UNIT
-    record_spend(GUARDRAIL_PROVIDER_ID, cost)
-    recorder.set(guardrail_units=units, guardrail_cost_usd=round(cost, 6))
+        deps.breaker.failure(visitor, now())
+    finally:
+        # aussi pendant une annulation (visiteur déconnecté) : Bedrock facture quand même
+        elapsed_ms = (time.perf_counter() - started) * 1000
+        cost = units * USD_PER_UNIT
+        record_spend(GUARDRAIL_PROVIDER_ID, cost)
+        recorder.set(
+            guardrail_units=units,
+            guardrail_cost_usd=round(cost, 6),
+            guardrail_ms=round(elapsed_ms, 1),
+        )
+        log_metric(status, elapsed_ms)
     return status
 
 
@@ -250,16 +276,20 @@ async def run_pipeline(
             async with stage("injection", emit) as st:
                 if evaluation:
                     st.set(eval=True)
-                verdict = check_input(deps.detector, question, settings.injection_threshold)
+                # même texte replié (NFKC, sans Cf) pour la longueur et les deux détecteurs
+                screened = fold_format(question)
+                verdict = check_input(deps.detector, screened, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
                 if verdict.blocked:
                     # le classifieur suffit : pas d'appel payant au garde-fou
                     st.set(guardrail="skipped")
                     raise StageBlocked("injection_detected")
-                status = await _second_opinion(question, deps, st, record_spend)
+                status = await _second_opinion(screened, visitor, deps, st, record_spend, now)
                 st.set(guardrail=status)
                 if status == "block":
                     raise StageBlocked("injection_detected", blocked_by="guardrail")
+                if status == "unavailable":
+                    raise StageBlocked("guardrail_unavailable")
 
             async with stage("embedding", emit) as st:
                 async with asyncio.timeout(settings.stage_timeout_s):

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import html
-import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 
 from ask_my_cv.language import LABELS, Language, detect_language
+from ask_my_cv.text import fold_format
 from ask_my_cv.vectorstore import Hit
 
 SUBMITTED_OPEN = "<texte_soumis>"
@@ -36,8 +36,7 @@ def neutralize_submitted(text: str) -> str:
     for _ in range(_MAX_PASSES):
         previous = text
         text = html.unescape(text)
-        text = unicodedata.normalize("NFKC", text)
-        text = "".join(c for c in text if unicodedata.category(c) != "Cf")
+        text = fold_format(text)
         if text == previous:
             break
     else:

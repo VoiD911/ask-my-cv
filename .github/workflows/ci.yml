@@ -47,7 +47,6 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run pyright
-      - run: uv run pytest -q
       - name: Récupérer et vérifier le modèle promu
         env:
           GH_TOKEN: ${{ github.token }}
@@ -68,6 +67,10 @@ jobs:
             --bundle models/model.onnx.sigstore.json \
             --certificate-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/train.yml@refs/heads/main" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com
+      # avant pytest : les tests du modèle promu échouent (au lieu d'être ignorés) s'il manque
+      - run: uv run pytest -q
+        env:
+          REQUIRE_PROMOTED_MODEL: ${{ env.COSIGN_NEEDED }}
       - run: docker build -t ask-my-cv:ci .
       - name: Imports de chaque module dans l'image
         run: docker run --rm --entrypoint .venv/bin/python ask-my-cv:ci scripts/check_imports.py

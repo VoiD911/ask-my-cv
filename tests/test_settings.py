@@ -374,3 +374,21 @@ def test_production_settings_tolerate_missing_guardrail_variables(
     monkeypatch.delenv("ASK_GUARDRAIL_VERSION", raising=False)
     settings = load_settings(Path("settings.aws.yaml"))
     assert settings.guardrail_id is None
+
+
+def test_guardrail_version_accepts_ascii_digits_only() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_id="abc123", guardrail_version="١"))
+
+
+def test_empty_guardrail_variable_is_unset_and_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_GUARDRAIL_ID", "")
+    monkeypatch.setenv("ASK_GUARDRAIL_VERSION", " ")
+    with caplog.at_level("WARNING"):
+        settings = load_settings(path)
+    assert settings.guardrail_id is None and settings.guardrail_version is None
+    assert "ASK_GUARDRAIL_ID vide" in caplog.text

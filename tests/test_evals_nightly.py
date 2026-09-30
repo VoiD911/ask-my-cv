@@ -3,14 +3,13 @@
 from pathlib import Path
 from typing import Any
 
-import pytest
 import yaml
 
 from ask_my_cv.guardrail import AD_MIN_CHARS
 from ask_my_cv.onnx_detector import OnnxDetector, load_manifest
+from ask_my_cv.text import fold_format
 
 NIGHTLY = Path("evals/nightly.yaml")
-MODEL_PRESENT = Path("models/model.onnx").exists()
 
 
 def ad_cases() -> list[dict[str, Any]]:
@@ -26,7 +25,7 @@ def ad_cases() -> list[dict[str, Any]]:
         cases.append(
             {
                 "description": test["description"],
-                "question": question.strip(),  # comme le pipeline
+                "question": fold_format(question.strip()),  # comme le pipeline
                 "outcome": test["vars"].get("outcome"),
                 "known": (test.get("metadata") or {}).get("knownIssue"),
             }
@@ -48,8 +47,7 @@ def test_discreet_injections_stay_below_the_guardrail_threshold() -> None:
     assert all(len(c["question"]) < AD_MIN_CHARS for c in discreet)
 
 
-@pytest.mark.skipif(not MODEL_PRESENT, reason="modèle promu non téléchargé")
-def test_nightly_ad_expectations_match_the_promoted_classifier() -> None:
+def test_nightly_ad_expectations_match_the_promoted_classifier(promoted_model: Path) -> None:
     manifest = load_manifest(Path("models/prod.json"))
     assert manifest is not None
     detector = OnnxDetector(Path("models") / manifest.file, manifest.sha256, manifest.version)

@@ -30,3 +30,13 @@ misconfigurations:
       Lambda du compte (10) et l'alerte de budget. Un WAF (coût fixe mensuel) est reporté ; suivi avec les
       journaux d'accès CloudFront dans followups.md.
     expired_at: 2027-03-26
+  - id: AWS-0136
+    paths:
+      - "prod/observability.tf"
+    statement: >-
+      Sujet SNS des alarmes d'exploitation (#118) chiffré par la clé gérée par AWS
+      (alias/aws/sns) plutôt que par une clé KMS client : il ne transporte que des états
+      d'alarme CloudWatch (nom, seuil, métrique), jamais de donnée de visiteur. Une clé client
+      ajouterait un coût mensuel et une politique de clé autorisant CloudWatch, sans réduire
+      le risque pour un compte à un seul administrateur.
+    expired_at: 2027-03-29

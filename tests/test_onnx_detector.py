@@ -238,10 +238,7 @@ def test_repository_promotes_v1_4_0_with_a_sha256() -> None:
     assert len(data["sha256"]) == 64 and all(c in "0123456789abcdef" for c in data["sha256"])
 
 
-@pytest.mark.skipif(
-    not Path("models/model.onnx").exists(), reason="modèle promu non téléchargé (CI : étape dédiée)"
-)
-def test_promoted_model_loads_with_its_windows_and_normalization() -> None:
+def test_promoted_model_loads_with_its_windows_and_normalization(promoted_model: Path) -> None:
     manifest = load_manifest(Path("models/prod.json"))
     assert manifest is not None
     detector = OnnxDetector(Path("models") / manifest.file, manifest.sha256, manifest.version)

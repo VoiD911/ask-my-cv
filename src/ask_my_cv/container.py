@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ask_my_cv.budget import BudgetLedger, InMemoryLedger
 from ask_my_cv.embeddings import EmbeddingProvider, HashEmbedder
-from ask_my_cv.guardrail import GuardrailChecker
+from ask_my_cv.guardrail import GuardrailBreaker, GuardrailChecker
 from ask_my_cv.input_guard import HeuristicDetector, InjectionDetector
 from ask_my_cv.llm import FakeLLM, LLMProvider, ModelPricing, OllamaLLM
 from ask_my_cv.onnx_detector import ModelIntegrityError, OnnxDetector, load_manifest
@@ -12,6 +13,8 @@ from ask_my_cv.pipeline import Deps
 from ask_my_cv.prompting import load_template
 from ask_my_cv.settings import ModelConfig, Settings
 from ask_my_cv.vectorstore import InMemoryVectorStore, VectorStore
+
+logger = logging.getLogger(__name__)
 
 # (connexion, lecture) en secondes, par service. DynamoDB doit échouer vite : `check` (une seule
 # lecture) tourne dans un thread du pool avec un timeout d'étape (étape quota de pipeline.py) et
@@ -113,7 +116,10 @@ def build_detector(settings: Settings) -> InjectionDetector:
 
 def build_guardrail(settings: Settings) -> GuardrailChecker | None:
     if settings.guardrail_id is None or settings.guardrail_version is None:
+        # état visible au démarrage : un garde-fou manquant en production doit se voir
+        logger.warning("garde-fou annonces désactivé : classifieur seul")
         return None
+    logger.warning("garde-fou annonces activé (version %s)", settings.guardrail_version)
     from ask_my_cv.aws.bedrock import BedrockGuardrail
 
     client = aws_client(
@@ -135,4 +141,9 @@ def build_deps(settings: Settings) -> Deps:
         providers={m.id: build_provider(m, settings) for m in settings.models},
         settings=settings,
         guardrail=build_guardrail(settings),
+        breaker=GuardrailBreaker(
+            max_failures=settings.guardrail_breaker_failures,
+            max_visitor_failures=settings.guardrail_breaker_visitor_failures,
+            cooldown_s=settings.guardrail_breaker_cooldown_s,
+        ),
     )

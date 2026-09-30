@@ -96,3 +96,62 @@ async def test_bedrock_guardrail_runs_off_the_event_loop() -> None:
     await BedrockGuardrail("gid", "2", Spy()).check("x")
     assert seen and seen[0] != main
     await asyncio.sleep(0)
+
+
+def test_breaker_opens_after_consecutive_failures_and_recloses_after_cooldown() -> None:
+    from ask_my_cv.guardrail import GuardrailBreaker
+
+    breaker = GuardrailBreaker(max_failures=2, max_visitor_failures=99, cooldown_s=10)
+    breaker.failure("a", 0.0)
+    assert breaker.allows("b", 0.0)
+    breaker.failure("b", 1.0)
+    assert not breaker.allows("c", 5.0)
+    assert breaker.allows("c", 11.5)  # refroidissement écoulé : demi-ouvert
+    breaker.failure("c", 12.0)  # échec immédiat : rouvert
+    assert not breaker.allows("d", 13.0)
+    breaker.success()
+    assert breaker.allows("d", 22.5)
+
+
+def test_success_resets_the_consecutive_count() -> None:
+    from ask_my_cv.guardrail import GuardrailBreaker
+
+    breaker = GuardrailBreaker(max_failures=2, max_visitor_failures=99)
+    breaker.failure("a", 0.0)
+    breaker.success()
+    breaker.failure("a", 1.0)
+    assert breaker.allows("b", 2.0)
+
+
+def test_breaker_isolates_a_failing_visitor_for_the_cooldown() -> None:
+    from ask_my_cv.guardrail import GuardrailBreaker
+
+    breaker = GuardrailBreaker(max_failures=99, max_visitor_failures=2, cooldown_s=10)
+    breaker.failure("a", 0.0)
+    breaker.failure("a", 1.0)
+    assert not breaker.allows("a", 2.0)
+    assert breaker.allows("b", 2.0)
+    assert breaker.allows("a", 11.5)
+
+
+def test_breaker_memory_is_bounded() -> None:
+    from ask_my_cv.guardrail import GuardrailBreaker
+
+    breaker = GuardrailBreaker(max_failures=10**9)
+    for i in range(GuardrailBreaker.MAX_VISITORS + 50):
+        breaker.failure(str(i), 0.0)
+    assert len(breaker._visitors) <= GuardrailBreaker.MAX_VISITORS
+
+
+async def test_bedrock_guardrail_uses_its_own_executor() -> None:
+    import threading
+
+    names: list[str] = []
+
+    class Spy(FakeRuntime):
+        def apply_guardrail(self, **kwargs: Any) -> dict[str, Any]:
+            names.append(threading.current_thread().name)
+            return {"action": "NONE"}
+
+    await BedrockGuardrail("gid", "2", Spy()).check("x")
+    assert names[0].startswith("guardrail")

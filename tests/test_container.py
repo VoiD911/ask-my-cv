@@ -62,3 +62,11 @@ def test_guardrail_is_built_with_a_fast_failing_client() -> None:
     config = guardrail.client.meta.config
     assert (config.connect_timeout, config.read_timeout) == (1, 2)
     assert config.retries["total_max_attempts"] == 1
+
+
+def test_guardrail_state_is_logged_at_startup(caplog) -> None:
+    from ask_my_cv.container import build_guardrail
+
+    with caplog.at_level("WARNING"):
+        build_guardrail(aws_settings())
+    assert "garde-fou annonces désactivé" in caplog.text

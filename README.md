@@ -125,6 +125,14 @@ uv run python -m ml.train --version v0.0.0 --out dist
   (Sigstore keyless) ; la CI vérifie la signature avant de construire l'image.
 - `models/prod.json` désigne le modèle en production ; il ne change que par PR.
 - En local, pour utiliser le modèle promu : `gh release download model-<version> -p model.onnx -D models`.
+- Annonces collées (#118) : un texte d'au moins 400 caractères (mesurés après NFKC et retrait
+  des caractères de format, comme pour les deux détecteurs) que le classifieur laisse passer est
+  soumis au garde-fou Bedrock « annonces » ; il est bloqué si l'un des deux le signale (mesuré :
+  71 % des injections arrêtées, 13 % des annonces légitimes bloquées). **Limite connue** : une
+  injection de moins de 400 caractères ne rencontre que le classifieur et le prompt ; les 71 %
+  ne valent que pour les annonces de 400 caractères et plus. Échec isolé du garde-fou : décision
+  du classifieur ; échecs répétés : disjoncteur, annonces refusées quelques minutes
+  (`src/ask_my_cv/guardrail.py`, alarme `ask-my-cv-guardrail-errors`).
 
 ## Production (AWS, `ca-central-1`)
 
