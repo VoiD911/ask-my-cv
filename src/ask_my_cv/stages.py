@@ -15,6 +15,19 @@ tracer = trace.get_tracer("ask_my_cv")
 
 Emit = Callable[[Event], None]
 
+# Ordre des étapes de `run_pipeline`, lu aussi par le site (web/scripts/sync-architecture.mjs).
+# tests/test_stages.py vérifie que pipeline.py ouvre exactement ces étapes, dans cet ordre.
+PIPELINE_STAGES: tuple[str, ...] = (
+    "reception",
+    "quota",
+    "injection",
+    "embedding",
+    "retrieval",
+    "prompt",
+    "llm",
+    "output_guard",
+)
+
 
 class StageBlocked(Exception):
     """Une porte de sécurité refuse la requête : le pipeline s'arrête proprement."""

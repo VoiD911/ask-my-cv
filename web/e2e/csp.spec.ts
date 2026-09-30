@@ -5,6 +5,7 @@ import { expect, test } from "./csp-fixture";
 
 const PAGES = [
   { path: "/", status: 200 },
+  { path: "/architecture/", status: 200 },
   { path: "/404.html", status: 200 },
   { path: "/_not-found/", status: 200 },
   { path: "/page-inexistante/", status: 404 },

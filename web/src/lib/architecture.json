@@ -1,0 +1,513 @@
+{
+  "version": 1,
+  "repository": "VoiD911/ask-my-cv",
+  "pipeline": {
+    "source": "src/ask_my_cv/stages.py",
+    "stages": [
+      "reception",
+      "quota",
+      "injection",
+      "embedding",
+      "retrieval",
+      "prompt",
+      "llm",
+      "output_guard"
+    ],
+    "guardrailMinChars": 400
+  },
+  "infra": [
+    {
+      "role": "edge",
+      "resources": [
+        {
+          "type": "aws_cloudfront_origin_access_control",
+          "name": "api",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_cloudfront_function",
+          "name": "strip_api",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_cloudfront_function",
+          "name": "site_index",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_cloudfront_response_headers_policy",
+          "name": "site",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_cloudfront_distribution",
+          "name": "site",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_s3_bucket",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_s3_bucket_ownership_controls",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_s3_bucket_server_side_encryption_configuration",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_s3_bucket_versioning",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_s3_bucket_policy",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_cloudfront_origin_access_control",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_acm_certificate",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        },
+        {
+          "type": "aws_acm_certificate_validation",
+          "name": "site",
+          "file": "infra/prod/site.tf"
+        }
+      ]
+    },
+    {
+      "role": "compute",
+      "resources": [
+        {
+          "type": "aws_ecr_repository",
+          "name": "api",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_ecr_lifecycle_policy",
+          "name": "api",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_lambda_permission",
+          "name": "cloudfront_url",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_lambda_permission",
+          "name": "cloudfront_invoke",
+          "file": "infra/prod/cdn.tf"
+        },
+        {
+          "type": "aws_lambda_function",
+          "name": "api",
+          "file": "infra/prod/lambda.tf"
+        },
+        {
+          "type": "aws_lambda_function_url",
+          "name": "api",
+          "file": "infra/prod/lambda.tf"
+        }
+      ]
+    },
+    {
+      "role": "data",
+      "resources": [
+        {
+          "type": "aws_s3_bucket",
+          "name": "state",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_s3_bucket_versioning",
+          "name": "state",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_s3_bucket_public_access_block",
+          "name": "state",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_s3_bucket_policy",
+          "name": "state",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_s3_bucket_lifecycle_configuration",
+          "name": "state",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "awscc_dynamodb_table",
+          "name": "chunks",
+          "file": "infra/prod/data.tf"
+        },
+        {
+          "type": "aws_dynamodb_table",
+          "name": "ledger",
+          "file": "infra/prod/data.tf"
+        }
+      ]
+    },
+    {
+      "role": "ai",
+      "resources": [
+        {
+          "type": "aws_bedrock_guardrail",
+          "name": "annonces",
+          "file": "infra/prod/guardrail.tf"
+        },
+        {
+          "type": "aws_bedrock_guardrail_version",
+          "name": "annonces",
+          "file": "infra/prod/guardrail.tf"
+        }
+      ]
+    },
+    {
+      "role": "security",
+      "resources": [
+        {
+          "type": "aws_iam_openid_connect_provider",
+          "name": "github",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_iam_role",
+          "name": "deploy",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_iam_role_policy",
+          "name": "deploy",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_iam_role",
+          "name": "nightly",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_iam_role_policy",
+          "name": "nightly",
+          "file": "infra/bootstrap/main.tf"
+        },
+        {
+          "type": "aws_iam_role",
+          "name": "api",
+          "file": "infra/prod/lambda.tf"
+        },
+        {
+          "type": "aws_iam_role_policy",
+          "name": "api",
+          "file": "infra/prod/lambda.tf"
+        },
+        {
+          "type": "aws_kms_key",
+          "name": "alerts",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_kms_alias",
+          "name": "alerts",
+          "file": "infra/prod/observability.tf"
+        }
+      ]
+    },
+    {
+      "role": "observability",
+      "resources": [
+        {
+          "type": "aws_cloudwatch_log_group",
+          "name": "api",
+          "file": "infra/prod/lambda.tf"
+        },
+        {
+          "type": "aws_cloudwatch_log_resource_policy",
+          "name": "xray",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_cloudwatch_log_metric_filter",
+          "name": "guardrail_errors",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_cloudwatch_log_metric_filter",
+          "name": "guardrail_unavailable",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_cloudwatch_log_metric_filter",
+          "name": "guardrail_latency",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_sns_topic",
+          "name": "alerts",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_sns_topic_policy",
+          "name": "alerts",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_sns_topic_subscription",
+          "name": "alerts_email",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_cloudwatch_metric_alarm",
+          "name": "guardrail_errors",
+          "file": "infra/prod/observability.tf"
+        }
+      ]
+    },
+    {
+      "role": "cost",
+      "resources": [
+        {
+          "type": "aws_budgets_budget",
+          "name": "monthly",
+          "file": "infra/prod/observability.tf"
+        }
+      ]
+    }
+  ],
+  "workflows": [
+    {
+      "file": ".github/workflows/ci.yml",
+      "name": "ci",
+      "triggers": [
+        "push",
+        "pull_request"
+      ],
+      "jobs": [
+        {
+          "id": "security",
+          "needs": [],
+          "steps": [
+            "Secrets (gitleaks, tout l'historique)",
+            "Code (semgrep)",
+            "Dépendances (osv-scanner)",
+            "IaC (trivy config)"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "test",
+          "needs": [],
+          "steps": [
+            "uv sync --frozen --python 3.12 --group ml",
+            "uv run ruff check .",
+            "uv run ruff format --check .",
+            "uv run pyright",
+            "Récupérer et vérifier le modèle promu",
+            "Vérifier la signature du modèle",
+            "uv run pytest -q",
+            "docker build -t ask-my-cv:ci .",
+            "Imports de chaque module dans l'image",
+            "Scan de l'image (trivy)",
+            "SBOM CycloneDX (syft)",
+            "Test de fumée du conteneur"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "evals",
+          "needs": [],
+          "steps": [
+            "uv sync --frozen --python 3.12",
+            "Récupérer et vérifier le modèle promu",
+            "Vérifier la signature du modèle",
+            "Index du CV",
+            "Démarrer l'API locale (faux LLM)",
+            "npm ci --prefix evals --ignore-scripts --no-audit --no-fund",
+            "SDK Bedrock du juge résolu",
+            "Tests du lecteur SSE et des assertions",
+            "Suite promptfoo (PR)",
+            "Site statique pour l'e2e",
+            "Navigateur Playwright (chromium)",
+            "Parcours e2e (Playwright, API locale)",
+            "Journal de l'API"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "web",
+          "needs": [],
+          "steps": [
+            "npm ci --prefix web --ignore-scripts --no-audit --no-fund",
+            "Données de la page Architecture à jour",
+            "npm --prefix web run lint",
+            "npm --prefix web run typecheck",
+            "npm --prefix web test -- --run",
+            "Tests des scripts de build (CSP, données Architecture)",
+            "npm --prefix web run build",
+            "Meta CSP présente dans chaque page",
+            "Chrome préinstallé (garde-fou anti-téléchargement)",
+            "Lighthouse CI (desktop)",
+            "Lighthouse CI (mobile)",
+            "Rapport Lighthouse (artefact)"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "terraform",
+          "needs": [],
+          "steps": [
+            "terraform fmt -check -recursive infra"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "deploy",
+          "needs": [
+            "test",
+            "evals",
+            "terraform",
+            "security",
+            "web"
+          ],
+          "steps": [
+            "Vérifier le masquage du compte AWS",
+            "Récupérer et vérifier le modèle promu",
+            "Construire et pousser l'image",
+            "Miroir public sur GHCR (même digest)",
+            "SBOM de l'image poussée",
+            "Signer l'image et attester le SBOM (Sigstore keyless)",
+            "Provenance SLSA (GHCR)",
+            "Attestation du SBOM (GHCR)",
+            "Vérifier signature et attestation avant déploiement",
+            "Déployer (par digest)",
+            "Test de fumée de production",
+            "Publication du site ignorée (SITE_BUCKET non défini)",
+            "Récupérer l'export statique du site (job web)",
+            "Publier le site (S3)",
+            "Invalider le cache CloudFront (site)",
+            "Test de fumée du site statique",
+            "Retour arrière si le test de fumée échoue"
+          ],
+          "layer": 1
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/nightly.yml",
+      "name": "nightly",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        {
+          "id": "redteam",
+          "needs": [],
+          "steps": [
+            "Vérifier le masquage du compte AWS",
+            "npm ci --prefix evals --ignore-scripts --no-audit --no-fund",
+            "Suite promptfoo (nuit)",
+            "Résumé de l'évaluation"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "drift",
+          "needs": [],
+          "steps": [
+            "Vérifier le masquage du compte AWS",
+            "uv sync --frozen --python 3.12",
+            "Récupérer les métriques du modèle promu",
+            "Mesurer la dérive (PSI, 7 derniers jours)"
+          ],
+          "layer": 0
+        },
+        {
+          "id": "report",
+          "needs": [
+            "redteam",
+            "drift"
+          ],
+          "steps": [
+            "Signaler l'échec (issue étiquetée nightly)"
+          ],
+          "layer": 1
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/train.yml",
+      "name": "train",
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        {
+          "id": "train",
+          "needs": [],
+          "steps": [
+            "Refuser une version invalide ou une branche autre que main",
+            "uv sync --frozen --python 3.12 --group ml",
+            "uv run python -m ml.fetch",
+            "Générer les annonces d'entraînement (graine versionnée, éval vérifiée)",
+            "Entraîner et appliquer la porte d'évaluation",
+            "Signer le modèle (Sigstore keyless)",
+            "Attester la provenance (dépôt public uniquement)",
+            "Publier la release"
+          ],
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/mirror.yml",
+      "name": "mirror",
+      "triggers": [
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        {
+          "id": "lambda-adapter",
+          "needs": [],
+          "steps": [
+            "Copier (crane copy, digest préservé)"
+          ],
+          "layer": 0
+        }
+      ]
+    }
+  ],
+  "model": {
+    "manifest": "models/prod.json",
+    "version": "v1.4.0",
+    "prompt": "prompts/answer@v7.md",
+    "promptVersion": "v7",
+    "promptVersions": [
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+      "v7"
+    ]
+  }
+}
