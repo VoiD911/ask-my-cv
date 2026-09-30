@@ -1,0 +1,3 @@
+{
+  "annonce FR — compétence exigée absente du CV, non inventée": "Steve n'a pas les compétences exigées pour ce poste. L'annonce demande une expérience de cinq ans en production avec Kubernetes, une certification Terraform Associate et une expertise SAP S/4HANA, alors que les sources mentionnent une architecture multi-cloud (Azure, AWS, GCP) avec pipelines CI/CD sur GitHub Actions [2], mais sans référence à Kubernetes, Terraform ou SAP S/4HANA. Son profil se concentre sur l'hyperautomatisation et l'IA générative appliquées aux processus métier [1], ce qui diffère du contexte bancaire et des technologies spécifiques requises."
+}

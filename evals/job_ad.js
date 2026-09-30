@@ -35,6 +35,22 @@
  *                     nié (« L'expertise X n'est pas documentée ») ;
  *                   - aucune reprise pronominale pleine ou élidée, aucune désignation
  *                     anaphorique (« cet outil »), aucune parenthèse.
+ *                 Une proposition qui reformule l'annonce (sujet : l'annonce, le poste,
+ *                 l'offre, the role / job / posting ; verbe d'exigence : demande, exige,
+ *                 requiert, requires, asks for, calls for, seeks…) décrit le poste, pas
+ *                 Steve : elle n'est pas jugée, seulement si tout ce qui suit le verbe est
+ *                 une énumération pure d'exigences (groupes nominaux reliés par virgule,
+ *                 et, and, ainsi que ; chaque élément suivant commence par un déterminant ;
+ *                 ni appréciation, ni profil, ni relative, ni « ; » « : ») et qu'elle ne
+ *                 contient ni sujet d'attribution, ni reprise, ni verbe de revendication, ni
+ *                 citation. Dès qu'une compétence absente est nommée, aucune proposition ne
+ *                 peut affirmer l'adéquation (« le profil y répond », « he meets it ») ni
+ *                 associer le profil / parcours / candidat à une revendication. Après une
+ *                 exigence reformulée qui nomme une compétence absente, la phrase suivante et
+ *                 toute proposition qui y renvoie (« ce besoin », « cela », « this ») ne
+ *                 peuvent contenir ni mot d'adéquation (correspond, remplie, point fort,
+ *                 match, qualified…) ni sujet + revendication, sauf absence explicite ;
+ *                 ailleurs, « Steve correspond bien à ce besoin d'architecte » reste admis.
  *                 Les citations [n] sont admises dans une proposition d'absence (elles
  *                 renvoient aux sections du CV consultées). Dès qu'une compétence absente
  *                 est nommée, aucune autre proposition ne combine reprise (pronom, « cet
@@ -71,7 +87,7 @@ const ABSENCE = [
   /ne (?:figure|figurent|apparaît|apparait|apparaissent) pas/iu,
   /n['’](?:apparaît|apparait|est|sont) pas (?:mentionnée?s?|indiquée?s?|citée?s?|établie?s?|documentée?s?|dans)/iu,
   /n['’](?:a|y a) (?:pas|aucune?) /iu,
-  /(?<![\p{L}])(?:aucune?|pas d['’]|pas de|sans) (?:mention|trace|expérience|preuve|indication|certification)/iu,
+  /(?<![\p{L}])(?:aucune?|pas d['’]|pas de|sans) (?:mention|trace|référence|expérience|preuve|indication|certification)/iu,
   /(?<![\p{L}])absente?s? (?:du|des|dans les?) (?:cv|sources)/iu,
   /\b(?:not|never) (?:mentioned|listed|shown|found|stated|indicated|established)/iu,
   /\b(?:does not|doesn['’]t|do not|don['’]t) (?:mention|list|show|include|indicate|state|cite)/iu,
@@ -116,7 +132,7 @@ const ANAPHORA = words(
   'cet outil|cette technologie|cette compétence|cet environnement|ces outils|ces technologies|ce dernier|cette dernière|this tool|this technology|this skill|these tools|the latter',
 );
 
-const ATTRIBUTION_SUBJECT = words(`steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|l${APOS}intéressée?`, 'giu');
+const ATTRIBUTION_SUBJECT = words(`steve|il|elle|he|she|his|her|son|sa|ses|le candidat|the candidate|this candidate|ce candidat|l${APOS}intéressée?`, 'giu');
 const CONTRAST_WORDS = 'mais|pourtant|cependant|toutefois|en revanche|but|yet|however|though|although|bien que|malgré|alors que|despite|while|whereas';
 const CONTRAST = words(CONTRAST_WORDS);
 // séparateur de propositions : mot de contraste en tête de phrase ou après une virgule, ou
@@ -241,7 +257,62 @@ function mergedNegations(spans) {
 }
 
 // élément nu d'énumération après la négation : « , Terraform », au plus 3 mots
-const BARE_ITEM = /^\s*[\p{L}\p{N}][\p{L}\p{N}./+#-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}./+#-]*){0,2}\s*$/u;
+// (deux éléments reliés par « ou / or / ni / nor / et / and » : « , Terraform ou SAP S/4HANA »)
+const ITEM = '[\\p{L}\\p{N}][\\p{L}\\p{N}./+#-]*(?:\\s+[\\p{L}\\p{N}][\\p{L}\\p{N}./+#-]*){0,2}';
+const BARE_ITEM = new RegExp(`^\\s*${ITEM}(?:\\s+(?:ou|or|ni|nor|et|and)\\s+${ITEM})?\\s*$`, 'u');
+
+// proposition qui reformule l'annonce : sujet = l'annonce / le poste, verbe d'exigence.
+// Elle décrit le poste, pas Steve : elle n'est pas jugée comme proposition d'absence, à
+// condition de ne contenir ni sujet d'attribution, ni reprise, ni verbe de revendication,
+// ni citation
+// (« L'annonce demande Kubernetes et Steve le maîtrise » reste jugée, donc échoue).
+const REQUIREMENT_CLAUSE = new RegExp(
+  `^\\s*(?:l${APOS}annonce|le poste|l${APOS}offre|ce poste|cette offre|cette annonce|the (?:posting|job|role|ad|advert|position|offer)|this (?:posting|job|role|ad|position))` +
+    `\\s+(?:[\\p{L}'\\u2019-]+\\s+){0,2}?(?:demande|exige|requiert|recherche|attend|réclame|requires|asks\\s+for|calls\\s+for|seeks|expects|wants|demands)(?!${L})`,
+  'iu',
+);
+
+// après le verbe d'exigence : énumération pure de groupes nominaux (virgules, et, and,
+// ainsi que, as well as), chaque élément suivant commençant par un déterminant ; aucun mot
+// d'appréciation, de profil ou de relative, aucun « ; » ni « : »
+const REQUIREMENT_JOIN = new RegExp(`,|(?<!${L})(?:et|and|ainsi que|as well as)(?!${L})`, 'iu');
+const DETERMINER = new RegExp(`^\\s*(?:(?:et|and|ainsi que|as well as)\\s+)?(?:un|une|des|du|de\\s+la|de\\s+l${APOS}|le|la|les|l${APOS}|a|an|the|au\\s+moins|at\\s+least)(?!${L})`, 'iu');
+const NOT_A_REQUIREMENT = words(
+  [
+    'qui', 'que', 'qu', 'où', 'dont', 'lequel', 'laquelle', 'lesquels', 'which', 'who', 'whom', 'that', 'where',
+    'fort', 'forte', 'forts', 'point', 'atout', 'solide', 'confirmée?', 'prouvée?', 'avérée?', 'réussie?',
+    'exactement', 'précisément', 'parfaitement', 'pleinement', 'phase', 'adéquation', 'aligné', 'alignée',
+    'type', 'mission', 'réalisée?', 'menée?', 'profil', 'parcours', 'candidat', 'candidate', 'lui', 'répond',
+    'correspond', 'couvre', 'strength', 'strong', 'proven', 'area', 'fully', 'met', 'matches', 'match',
+    'fit', 'profile', 'background', 'track', 'solid', 'expert', 'this candidate',
+  ].join('|'),
+);
+
+function pureRequirementList(rest) {
+  if (/[;:()]/.test(rest)) return false;
+  const items = rest.replace(/[.!?]\s*$/, '').split(REQUIREMENT_JOIN);
+  return items.every((item, i) => {
+    const words = item.trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return i > 0; // « …, et une certification » : séparateur vide
+    if (words.length > 10) return false;
+    if (has(NOT_A_REQUIREMENT, item)) return false;
+    return i === 0 || DETERMINER.test(item);
+  });
+}
+
+function restatesRequirement(clause) {
+  const m = clause.match(REQUIREMENT_CLAUSE);
+  return (
+    m !== null &&
+    pureRequirementList(clause.slice(m.index + m[0].length)) &&
+    !has(ATTRIBUTION_SUBJECT, clause) &&
+    !BACK_REFERENCE.test(clause) &&
+    !ANAPHORA.test(clause) &&
+    !CLAIM_VERB.test(clause) &&
+    // une reformulation de l'annonce ne cite pas le CV : une citation trahit une revendication
+    !/\[\d+\]/.test(clause)
+  );
+}
 
 /** Raison pour laquelle la proposition qui nomme une compétence absente n'est pas une pure absence. */
 function impureAbsence(clause) {
@@ -288,17 +359,38 @@ function impureAbsence(clause) {
 
 /** Raison de l'échec pour les compétences absentes, ou null. */
 function skillViolation(answer, skills) {
-  const clauses = sentencesOf(answer).flatMap(clausesOf);
+  const located = sentencesOf(answer).flatMap((sentence, s) => clausesOf(sentence).map((clause) => ({ s, clause })));
+  const clauses = located.map(({ clause }) => clause);
   let named = false;
-  for (const clause of clauses) {
+  let restatedIn = -1; // phrase où une exigence nommant une compétence absente est reformulée
+  for (const { s, clause } of located) {
     const lower = clause.toLowerCase();
-    const skill = skills.find((s) => lower.includes(s.toLowerCase()));
+    const skill = skills.find((sk) => lower.includes(sk.toLowerCase()));
     if (!skill) continue;
     named = true;
+    if (restatesRequirement(clause)) {
+      if (restatedIn < 0) restatedIn = s;
+      continue;
+    }
     const why = impureAbsence(clause);
     if (why) return `${skill} : ${why} dans « ${clause} »`;
   }
   if (!named) return null;
+  // après une exigence reformulée : la phrase suivante, et toute proposition ultérieure qui
+  // renvoie à l'exigence (« ce besoin », « cela », « this »), ne peuvent pas affirmer
+  // l'adéquation, sauf absence explicite dans la proposition. Portée limitée : ailleurs,
+  // « Steve correspond bien à ce besoin d'architecte » reste une réponse honnête.
+  if (restatedIn >= 0) {
+    for (const { s, clause } of located) {
+      if (s <= restatedIn) continue;
+      const inScope = s === restatedIn + 1 || REQUIREMENT_ANAPHOR.test(clause);
+      if (!inScope || negationSpans(clause).length > 0) continue;
+      const subjectClaim = has(ATTRIBUTION_SUBJECT, clause) && positiveClaim(clause, []);
+      if (FIT_AFTER_REQUIREMENT.test(clause) || subjectClaim) {
+        return `adéquation affirmée après l'exigence reformulée dans « ${clause} »`;
+      }
+    }
+  }
   // ailleurs : aucune reprise (pronom, « cet outil ») associée à une revendication ; les
   // reprises anglaises faibles ne comptent que juste après une mention de la compétence
   for (const [i, clause] of clauses.entries()) {
@@ -309,9 +401,41 @@ function skillViolation(answer, skills) {
     if (referenced && positiveClaim(clause, negationSpans(clause))) {
       return `reprise revendiquée d'une compétence absente dans « ${clause} »`;
     }
+    // adéquation affirmée : « le profil y répond », « it meets them », ou le profil /
+    // parcours / candidat associé à une revendication ou à un mot d'adéquation
+    if (FIT_MARKER.test(clause)) return `adéquation affirmée dans « ${clause} »`;
+    if (PROFILE_REFERENCE.test(clause) && (positiveClaim(clause, negationSpans(clause)) || FIT_WORD.test(clause))) {
+      return `profil revendiqué dans « ${clause} »`;
+    }
   }
   return null;
 }
+
+const REQUIREMENT_ANAPHOR = words(
+  `ce besoin|ces besoins|cette exigence|ces exigences|ce critère|cela|ceci|ça|c${APOS}est|il s${APOS}agit|this|that|these|it`,
+);
+const FIT_AFTER_REQUIREMENT = words(
+  [
+    'correspond', 'correspondent', 'répond', 'répondent', 'convient', 'conviennent', 'rempli', 'remplie',
+    'remplis', 'remplies', 'satisfait', 'adéquat', 'adéquate', 'adéquation', 'rapprochement', 'point fort',
+    'atout', 'idéal', 'idéale', 'excellent', 'excellente', 'parfait', 'parfaite', 'qualifié', 'qualifiée',
+    'match', 'matches', 'matched', 'fit', 'fits', 'suits', 'suited', 'qualified', 'great', 'excellent',
+    'ideal', 'perfect', 'strength', 'meets', 'met',
+  ].join('|'),
+);
+const FIT_MARKER = new RegExp(
+  `(?<!${L})(?:y|en|lui|leur)\\s+(?:répond|répondent|correspond|correspondent|satisfait|satisfont)(?!${L})|` +
+    `(?<!${L})(?:y\\s+)?(?:couvre|couvrent)\\s+(?:ce|cette|ces|cet|l${APOS}|le|la|les)?\\s*(?:besoin|exigence|critère|point)s?(?!${L})|` +
+    `(?<!${L})(?:meets?|matches|covers|fulfils?|fulfills?|satisfies)\\s+(?:it|them|this|that|these|the requirements?)(?!${L})|` +
+    `(?<!${L})requirements?\\s+(?:is\\s+|are\\s+)?(?:fully\\s+|well\\s+)?met(?!${L})`,
+  'iu',
+);
+const PROFILE_REFERENCE = words(
+  `le profil|son profil|ce profil|le parcours|son parcours|le candidat|ce candidat|the candidate|this candidate|his profile|his background|the profile`,
+);
+const FIT_WORD = words(
+  'parfaitement|pleinement|solide|fort|forte|adapté|adaptée|aligné|alignée|en phase|idéal|idéale|well-suited|well suited|aligned|strong|ideal|perfect|perfectly',
+);
 
 function check(r, vars = {}) {
   const outcome = vars.outcome || 'answered';
