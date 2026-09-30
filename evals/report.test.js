@@ -61,3 +61,25 @@ test('#122 : verdict du juge LLM mis en regard de la règle lexicale informative
   // sans cas jugé, pas de section
   assert.doesNotMatch(summarize({ results: { results: [] } }), /Compétences absentes/);
 });
+
+test('revue #123 : texte du juge expurgé (ARN, compte) et Markdown neutralisé dans le résumé', () => {
+  const judge = { type: 'javascript', value: 'file://judge.js' };
+  const reason = 'juge : invented — voir [clic](https://x.example) ![i](y) <img src=x> arn:aws:iam::123456789012:role/r 123456789012';
+  const report = {
+    results: {
+      results: [
+        {
+          success: false,
+          testCase: { description: 'annonce C' },
+          gradingResult: { reason, componentResults: [{ pass: false, reason, assertion: judge }] },
+        },
+      ],
+    },
+  };
+  const md = summarize(report);
+  assert.doesNotMatch(md, /123456789012/);
+  assert.doesNotMatch(md, /arn:aws:iam/);
+  assert.doesNotMatch(md, /<img/);
+  assert.ok(md.includes('\\[clic\\]\\(https://x.example\\)'), md);
+  assert.ok(md.includes('\\!\\[i\\]\\(y\\)'), md);
+});

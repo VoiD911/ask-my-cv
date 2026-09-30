@@ -147,6 +147,11 @@ jobs:
             web/package-lock.json
       # --ignore-scripts : aucun script d'installation des dépendances n'est exécuté
       - run: npm ci --prefix evals --ignore-scripts --no-audit --no-fund
+      # le juge LLM de nuit (evals/judge.js) charge le SDK Bedrock : dépendance directe, vérifiée
+      # ici puisque la suite PR (faux LLM) ne l'exerce pas
+      - name: SDK Bedrock du juge résolu
+        run: |
+          node -e "require.resolve('@aws-sdk/client-bedrock-runtime', { paths: ['evals'] })"
       - name: Tests du lecteur SSE et des assertions
         run: node --test evals/*.test.js
       - name: Suite promptfoo (PR)

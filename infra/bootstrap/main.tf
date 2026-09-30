@@ -256,30 +256,47 @@ data "aws_iam_policy_document" "nightly" {
   # dans chaque région de destination ; le second énoncé n'accepte le modèle qu'à travers ce
   # profil (clé de condition bedrock:InferenceProfileArn), jamais en appel direct.
   statement {
-    sid       = "JudgeViaUsProfile"
+    sid       = "JudgeViaUsProfiles"
     actions   = ["bedrock:InvokeModel"]
-    resources = [local.judge_profile_arn]
+    resources = values(local.judge_profile_arns)
   }
-  statement {
-    sid       = "JudgeModelThroughProfile"
-    actions   = ["bedrock:InvokeModel"]
-    resources = [for r in local.judge_destination_regions : "arn:aws:bedrock:${r}::foundation-model/${local.judge_model}"]
-    condition {
-      test     = "StringEquals"
-      variable = "bedrock:InferenceProfileArn"
-      values   = [local.judge_profile_arn]
+  dynamic "statement" {
+    for_each = var.judge_models
+    content {
+      sid       = "JudgeModelThroughProfile${statement.key}"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [for r in statement.value.regions : "arn:aws:bedrock:${r}::foundation-model/${statement.value.model}"]
+      condition {
+        test     = "StringEquals"
+        variable = "bedrock:InferenceProfileArn"
+        values   = [local.judge_profile_arns[statement.value.model]]
+      }
     }
   }
 }
 
-# Juge : Claude Haiku 4.5, profil géographique US appelé depuis ca-central-1 (pas de profil
-# `ca.` pour ce modèle ; `global.` pourrait router hors d'Amérique du Nord). Destinations du
-# profil depuis ca-central-1 (fiche du modèle, documentation Bedrock) : ca-central-1,
-# us-east-1, us-east-2, us-west-2.
+# Modèles du juge, chacun appelé par son profil US depuis ca-central-1 (pas de profil `ca.` ;
+# `global.` pourrait router hors d'Amérique du Nord). `regions` : destinations du profil depuis
+# ca-central-1, à reprendre de `aws bedrock get-inference-profile --inference-profile-identifier
+# us.<modèle>` (champ models[].modelArn). Défaut : Claude Haiku 4.5 (fiche du modèle, doc
+# Bedrock). Pour comparer ou adopter Claude Sonnet 5, ajouter par exemple :
+#   { model = "anthropic.claude-sonnet-5", regions = [<destinations lues dans get-inference-profile>] }
+# (la fiche indique seulement « régions US et Canada » : ne pas deviner la liste).
+variable "judge_models" {
+  type = list(object({ model = string, regions = list(string) }))
+  default = [
+    { model = "anthropic.claude-haiku-4-5-20251001-v1:0", regions = ["ca-central-1", "us-east-1", "us-east-2", "us-west-2"] },
+  ]
+  validation {
+    condition     = length(var.judge_models) > 0 && alltrue([for m in var.judge_models : length(m.regions) > 0])
+    error_message = "judge_models : au moins un modèle, chacun avec ses régions de destination."
+  }
+}
+
 locals {
-  judge_model               = "anthropic.claude-haiku-4-5-20251001-v1:0"
-  judge_profile_arn         = "arn:aws:bedrock:${var.region}:${local.account}:inference-profile/us.${local.judge_model}"
-  judge_destination_regions = ["ca-central-1", "us-east-1", "us-east-2", "us-west-2"]
+  judge_profile_arns = {
+    for m in var.judge_models : m.model => "arn:aws:bedrock:${var.region}:${local.account}:inference-profile/us.${m.model}"
+  }
 }
 
 resource "aws_iam_role_policy" "nightly" {

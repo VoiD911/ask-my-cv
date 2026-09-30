@@ -12,8 +12,13 @@
 
 const fs = require('node:fs');
 const { INFO_PREFIX } = require('./job_ad');
+const { redact } = require('./judge');
 
-const oneLine = (text) => String(text).replace(/\s+/g, ' ').slice(0, 200);
+// texte de modèle ou d'erreur inséré dans le résumé public : ARN et numéros de compte
+// expurgés, Markdown et HTML neutralisés (pas de lien, d'image ni de balise arbitraires)
+const escapeMd = (text) =>
+  text.replace(/[\\`*_[\]()!|#~]/g, '\\$&').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const oneLine = (text) => escapeMd(redact(String(text).replace(/\s+/g, ' ').slice(0, 200)));
 
 /** Juge LLM vs règle lexicale, pour les cas passés par judge.js. */
 function skillComparison(rows) {

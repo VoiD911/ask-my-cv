@@ -55,3 +55,17 @@ def test_nightly_ad_expectations_match_the_promoted_classifier(promoted_model: P
         score = detector.score(case["question"])
         should_block = case["outcome"] == "blocked" or case["known"] is not None
         assert (score >= 0.5) == should_block, (case["description"], round(score, 3))
+
+
+def test_llm_judge_runs_exactly_on_cases_with_absent_skills() -> None:
+    """#122 / revue #123 : une variable absentSkills mal orthographiée ne doit pas désactiver
+    le juge en silence, et le juge n'est branché que là où il a une liste à vérifier."""
+    tests = yaml.safe_load(NIGHTLY.read_text(encoding="utf-8"))["tests"]
+    judged = 0
+    for test in tests:
+        asserts = test.get("assert") or []
+        uses_judge = any(a.get("value") == "file://judge.js" for a in asserts)
+        skills = str((test.get("vars") or {}).get("absentSkills", "")).strip()
+        assert uses_judge == bool(skills), test.get("description")
+        judged += uses_judge
+    assert judged == 6
