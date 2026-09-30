@@ -17,6 +17,8 @@ evals/output/
 web/node_modules/
 web/.next/
 web/out/
+# copie des rediffusions pour l'export (scripts/sync-replays.mjs)
+web/public/replays/
 web/test-results/
 web/playwright-report/
 web/lhci-report/

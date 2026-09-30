@@ -45,15 +45,22 @@ function TraceId({ id }: { id: string | null }) {
   );
 }
 
-type DemoFooterProps = { done: DoneEvent | null };
+/** `recorded` : échange rejoué, les valeurs sont celles de l'enregistrement. */
+type DemoFooterProps = { done: DoneEvent | null; recorded?: boolean };
 
 /** Relevé de la dernière question : latence, jetons, coût, identifiant de trace. */
-export function DemoFooter({ done }: DemoFooterProps) {
+export function DemoFooter({ done, recorded = false }: DemoFooterProps) {
   const t = useTranslations("readout");
   const locale = useLocale();
   const dash = <dd className="readout__value readout__value--dim">—</dd>;
   return (
-    <section className="readout" aria-label={t("label")} data-testid="demo-footer">
+    <section
+      className="readout"
+      aria-label={recorded ? t("recordedLabel") : t("label")}
+      data-recorded={recorded || undefined}
+      data-testid="demo-footer"
+    >
+      {recorded && <p className="readout__recorded">{t("recorded")}</p>}
       <dl className="readout__grid">
         <div className="readout__cell" data-testid="readout-latency">
           <dt>{t("latency")}</dt>

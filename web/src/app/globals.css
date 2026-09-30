@@ -658,6 +658,81 @@ body {
   text-decoration-color: var(--color-pulse);
 }
 
+/* Mode rediffusion : le direct est en pause, un échange enregistré est rejoué. */
+.replay-banner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px 16px;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in oklab, var(--color-fallback) 45%, var(--color-board-line));
+  border-left: 3px solid var(--color-fallback);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--color-fallback) 7%, var(--color-board));
+}
+
+.replay-banner__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-fallback);
+}
+
+.replay-banner__title .led {
+  background: var(--color-fallback);
+}
+
+.replay-banner__text {
+  grid-column: 1;
+  margin: 0;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: var(--color-silk);
+}
+
+.replay-banner__next {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+@media (max-width: 640px) {
+  .replay-banner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .replay-banner__next {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}
+
+.readout__recorded {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fallback);
+}
+
+.replay-tag {
+  margin-right: 6px;
+  padding: 1px 5px;
+  border: 1px solid var(--color-fallback);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fallback);
+}
+
 /* Établi : console à gauche, circuit et relevé à droite (dessous sur mobile). */
 .bench {
   display: grid;
@@ -822,6 +897,10 @@ body {
   line-height: 1.4;
   color: var(--color-silk);
   overflow-wrap: anywhere;
+}
+
+.exchange__qtext {
+  min-width: 0;
 }
 
 .exchange__long-question {
