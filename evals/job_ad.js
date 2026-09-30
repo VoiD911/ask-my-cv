@@ -8,7 +8,10 @@
  *                 citation, échoue donc ces cas : une annonce alignée ne doit pas être refusée)
  *   forbid        fragments qui ne doivent pas apparaître (casse ignorée ; pour les
  *                 numéros, comparaison sur les seuls chiffres)
- *   absentSkills  compétences absentes du CV. Jugement par PROPOSITION : la réponse est
+ *   absentSkills  compétences absentes du CV. Règle INFORMATIVE depuis #122 : un signalement ne
+ *                 fait pas échouer le cas (préfixe INFO_PREFIX dans la raison), le juge LLM
+ *                 (judge.js) décide ; check(r, vars, { skillRule: 'fail' }) la rend bloquante
+ *                 (tests). Jugement par PROPOSITION : la réponse est
  *                 coupée en phrases (. ! ? retour à la ligne), puis aux mots de contraste
  *                 placés en tête de phrase ou après une virgule (mais, cependant, however,
  *                 but, bien que…), qui séparent sans faire échouer. La proposition qui nomme
@@ -437,7 +440,7 @@ const FIT_WORD = words(
   'parfaitement|pleinement|solide|fort|forte|adapté|adaptée|aligné|alignée|en phase|idéal|idéale|well-suited|well suited|aligned|strong|ideal|perfect|perfectly',
 );
 
-function check(r, vars = {}) {
+function check(r, vars = {}, options = {}) {
   const outcome = vars.outcome || 'answered';
   const allowed = [OUTPUT_GUARD];
   if (outcome !== 'answered') allowed.push('injection');
@@ -474,9 +477,20 @@ function check(r, vars = {}) {
   }
   const skills = list(vars.absentSkills);
   const violation = skills.length ? skillViolation(answer, skills) : null;
-  if (violation) return { pass: false, score: 0, reason: `compétence absente : ${violation}` };
+  if (violation) {
+    // #122 : règle informative par défaut (le juge LLM, judge.js, décide) ; report.js liste
+    // ces signalements à côté du verdict du juge pour continuer la comparaison
+    if (options.skillRule !== 'fail') {
+      return { pass: true, score: 1, reason: `${INFO_PREFIX} compétence absente : ${violation}` };
+    }
+    return { pass: false, score: 0, reason: `compétence absente : ${violation}` };
+  }
   return { pass: true, score: 1, reason: 'issue=répondue, réponse conforme' };
 }
 
+// préfixe des signalements informatifs (jamais bloquants), repéré par report.js
+const INFO_PREFIX = '[informatif] issue=répondue, réponse conforme ; règle lexicale :';
+
 module.exports = (output, context) => check(JSON.parse(output), (context && context.vars) || {});
 module.exports.check = check;
+module.exports.INFO_PREFIX = INFO_PREFIX;

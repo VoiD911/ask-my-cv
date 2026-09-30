@@ -229,7 +229,7 @@ resource "aws_iam_role_policy" "deploy" {
   policy = data.aws_iam_policy_document.deploy.json
 }
 
-# --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
+# --- Nuit (red team + dérive) depuis GitHub Actions : CloudWatch Logs Insights (lecture), juge Bedrock ---
 # Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
@@ -250,6 +250,52 @@ data "aws_iam_policy_document" "nightly" {
     sid       = "LogsInsightsResults"
     actions   = ["logs:GetQueryResults", "logs:StopQuery"]
     resources = ["*"]
+  }
+  # #122 : juge LLM de la suite de nuit (evals/judge.js), InvokeModel sans flux. Un profil
+  # d'inférence inter-régions exige l'autorisation sur le profil ET sur le modèle de fondation
+  # dans chaque région de destination ; le second énoncé n'accepte le modèle qu'à travers ce
+  # profil (clé de condition bedrock:InferenceProfileArn), jamais en appel direct.
+  statement {
+    sid       = "JudgeViaUsProfiles"
+    actions   = ["bedrock:InvokeModel"]
+    resources = values(local.judge_profile_arns)
+  }
+  dynamic "statement" {
+    for_each = var.judge_models
+    content {
+      sid       = "JudgeModelThroughProfile${statement.key}"
+      actions   = ["bedrock:InvokeModel"]
+      resources = [for r in statement.value.regions : "arn:aws:bedrock:${r}::foundation-model/${statement.value.model}"]
+      condition {
+        test     = "StringEquals"
+        variable = "bedrock:InferenceProfileArn"
+        values   = [local.judge_profile_arns[statement.value.model]]
+      }
+    }
+  }
+}
+
+# Modèles du juge, chacun appelé par son profil US depuis ca-central-1 (pas de profil `ca.` ;
+# `global.` pourrait router hors d'Amérique du Nord). `regions` : destinations du profil depuis
+# ca-central-1, à reprendre de `aws bedrock get-inference-profile --inference-profile-identifier
+# us.<modèle>` (champ models[].modelArn). Défaut : Claude Haiku 4.5 (fiche du modèle, doc
+# Bedrock). Pour comparer ou adopter Claude Sonnet 5, ajouter par exemple :
+#   { model = "anthropic.claude-sonnet-5", regions = [<destinations lues dans get-inference-profile>] }
+# (la fiche indique seulement « régions US et Canada » : ne pas deviner la liste).
+variable "judge_models" {
+  type = list(object({ model = string, regions = list(string) }))
+  default = [
+    { model = "anthropic.claude-haiku-4-5-20251001-v1:0", regions = ["ca-central-1", "us-east-1", "us-east-2", "us-west-2"] },
+  ]
+  validation {
+    condition     = length(var.judge_models) > 0 && alltrue([for m in var.judge_models : length(m.regions) > 0])
+    error_message = "judge_models : au moins un modèle, chacun avec ses régions de destination."
+  }
+}
+
+locals {
+  judge_profile_arns = {
+    for m in var.judge_models : m.model => "arn:aws:bedrock:${var.region}:${local.account}:inference-profile/us.${m.model}"
   }
 }
 

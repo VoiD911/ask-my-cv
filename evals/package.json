@@ -1,6 +1,10 @@
 {
   "private": true,
+  "engines": {
+    "npm": ">=11.19.0"
+  },
   "devDependencies": {
+    "@aws-sdk/client-bedrock-runtime": "3.1141.0",
     "promptfoo": "0.123.1"
   }
 }
