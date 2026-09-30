@@ -26,7 +26,20 @@ function fakeAsk(...attempts: Script[]) {
   return impl;
 }
 
-const ok: Script = async ({ onEvent }) => onEvent(START);
+const DONE: AskEvent = {
+  type: "done",
+  tokens_in: 1,
+  tokens_out: 1,
+  cost_usd: 0,
+  latency_ms: 1,
+  sources: [],
+  answer_override: null,
+  trace_id: null,
+};
+const ok: Script = async ({ onEvent }) => {
+  onEvent(START);
+  onEvent(DONE);
+};
 const outage: Script = async () => {
   throw new AskError("unavailable", "service indisponible (503)", 503);
 };
@@ -51,13 +64,14 @@ suite("askResilient", () => {
     const { outcome, events } = run(impl);
     await expect(outcome).resolves.toEqual({ kind: "ok" });
     expect(impl).toHaveBeenCalledTimes(1);
-    expect(events).toEqual([START]);
+    expect(events).toEqual([START, DONE]);
   });
 
   it("budget atteint (réponse 200 bloquée au quota) : pause « budget », sans nouvelle tentative", async () => {
     const impl = fakeAsk(async ({ onEvent }) => {
       onEvent(START);
       onEvent(BUDGET_END);
+      onEvent({ ...DONE, answer_override: "Le budget du jour est atteint : la démo passe en mode rediffusion." });
     });
     const { outcome } = run(impl);
     await expect(outcome).resolves.toEqual({ kind: "paused", reason: "budget" });
@@ -84,6 +98,22 @@ suite("askResilient", () => {
       onEvent(START);
       throw new AskError("unavailable", "flux interrompu");
     });
+    await expect(run(impl).outcome).resolves.toEqual({ kind: "paused", reason: "unavailable" });
+    expect(impl).toHaveBeenCalledTimes(1);
+  });
+
+  it("flux clos proprement sans done ni événement : nouvelle tentative, puis pause", async () => {
+    const empty: Script = async () => {};
+    const impl = fakeAsk(empty);
+    await expect(run(impl).outcome).resolves.toEqual({ kind: "paused", reason: "unavailable" });
+    expect(impl).toHaveBeenCalledTimes(2);
+    const recovered = fakeAsk(empty, ok);
+    await expect(run(recovered).outcome).resolves.toEqual({ kind: "ok" });
+  });
+
+  it("flux clos sans done après des événements : pause sans nouvelle tentative", async () => {
+    const truncated: Script = async ({ onEvent }) => onEvent(START);
+    const impl = fakeAsk(truncated);
     await expect(run(impl).outcome).resolves.toEqual({ kind: "paused", reason: "unavailable" });
     expect(impl).toHaveBeenCalledTimes(1);
   });

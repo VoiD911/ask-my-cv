@@ -24,7 +24,7 @@ import { attacksFor, Chat, type Exchange, type ExchangeStatus } from "./Chat";
 import { Circuit } from "./Circuit";
 import { DemoFooter } from "./DemoFooter";
 import { ReplayBanner, type ReplayReason } from "./ReplayBanner";
-import { useReducedMotion } from "./useReducedMotion";
+import { prefersReducedMotion } from "./useReducedMotion";
 
 type Action =
   | { type: "start"; id: number; question: string; locale?: Locale; replayOf?: string }
@@ -91,12 +91,20 @@ export function Demo() {
       });
   }, []);
 
-  useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    const ac = new AbortController();
+    life.current = ac;
+    return () => {
+      ac.abort();
+      controller.current?.abort();
+    };
+  }, []);
 
   const current = exchanges.at(-1);
   const busy = current?.status === "running";
 
-  const reducedMotion = useReducedMotion();
+  // Durée de vie du composant : toute lecture s'arrête au démontage.
+  const life = useRef<AbortController | null>(null);
   const forced = useRef<boolean | null>(null);
   const [mode, setMode] = useState<{ reason: ReplayReason; recordedAt: string } | null>(null);
   const replays = useRef<Promise<readonly Replay[]> | null>(null);
@@ -112,22 +120,24 @@ export function Demo() {
   const startReplay = useCallback(
     async (kind: ReplayKind | null, reason: ReplayReason): Promise<boolean> => {
       const replay = pickReplay(await getReplays(), kind, turn.current);
-      if (!replay) return false;
+      if (!replay || life.current?.signal.aborted) return false;
       turn.current += 1;
       const id = nextId.current++;
       const ac = new AbortController();
       controller.current = ac;
       setMode({ reason, recordedAt: replay.recordedAt });
       dispatch({ type: "start", id, question: replay.question, locale, replayOf: replay.recordedAt });
+      const signals = life.current ? [ac.signal, life.current.signal] : [ac.signal];
       const result = await play(replay.frames, (event) => dispatch({ type: "event", id, event }), {
-        reducedMotion,
-        signal: ac.signal,
+        // Lue au lancement : `?replay=1` démarre avant qu'un rendu ait pu voir la préférence.
+        reducedMotion: prefersReducedMotion(),
+        signal: AbortSignal.any(signals),
       });
       dispatch({ type: "finish", id, status: result });
       if (controller.current === ac) controller.current = null;
       return true;
     },
-    [getReplays, locale, reducedMotion],
+    [getReplays, locale],
   );
 
   useEffect(() => {
@@ -160,6 +170,7 @@ export function Demo() {
         });
         if (outcome.kind === "ok") {
           dispatch({ type: "finish", id, status: "done" });
+          setMode(null); // le direct répond de nouveau : fin du mode rediffusion
           return;
         }
         if (controller.current === ac) controller.current = null;
@@ -197,7 +208,10 @@ export function Demo() {
 
   return (
     <>
-      {mode && <ReplayBanner reason={mode.reason} recordedAt={mode.recordedAt} busy={busy} onNext={onNextReplay} />}
+      {/* Région annoncée toujours présente : le bandeau inséré est lu par les lecteurs d'écran. */}
+      <div aria-live="polite" data-testid="replay-live">
+        {mode && <ReplayBanner reason={mode.reason} recordedAt={mode.recordedAt} busy={busy} onNext={onNextReplay} />}
+      </div>
       <div className="bench">
       <div className="bench__chat">
         <Chat
@@ -213,7 +227,7 @@ export function Demo() {
       </div>
       <div className="bench__circuit">
         <Circuit state={current?.run ?? idle} />
-        <DemoFooter done={current?.run.done ?? null} />
+        <DemoFooter done={current?.run.done ?? null} recorded={current?.replayOf !== undefined} />
       </div>
       </div>
     </>

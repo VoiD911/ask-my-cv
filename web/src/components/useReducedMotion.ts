@@ -16,6 +16,11 @@ function subscribe(onChange: () => void): () => void {
   return () => mql.removeEventListener("change", onChange);
 }
 
+/** Préférence lue à l'instant, pour une lecture lancée hors d'un rendu. */
+export function prefersReducedMotion(): boolean {
+  return mediaQuery()?.matches ?? false;
+}
+
 /** `true` si le visiteur a demandé à réduire les animations (faux côté serveur). */
 export function useReducedMotion(): boolean {
   return useSyncExternalStore(

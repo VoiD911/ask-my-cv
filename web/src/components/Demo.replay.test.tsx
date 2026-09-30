@@ -82,6 +82,36 @@ suite("Demo — mode rediffusion", () => {
     expect(within(replayed).getByRole("link", { name: /^source 1 : / })).toBeInTheDocument();
   });
 
+  it("le direct répond de nouveau : fin du mode rediffusion, bandeau retiré, relevé non marqué", async () => {
+    let down = true;
+    const answered = [
+      { type: "stage.start", name: "reception", ts: 1 },
+      { type: "answer", text: "Réponse en direct." },
+      { ...BUDGET_EVENTS[4], answer_override: null },
+    ];
+    stubFetch({ ask: () => (down ? sse(BUDGET_EVENTS) : sse(answered)) });
+    render(<Demo />);
+    fireEvent.click(screen.getByRole("button", { name: SUGGESTIONS[0] }));
+    await screen.findByTestId("replay-banner");
+    await waitFor(() => expect(screen.getByTestId("demo-footer")).toHaveAttribute("data-recorded", "true"));
+    await waitFor(() => expect(screen.getByRole("button", { name: SUGGESTIONS[1] })).toBeEnabled());
+    down = false;
+    fireEvent.click(screen.getByRole("button", { name: SUGGESTIONS[1] }));
+    await screen.findByText("Réponse en direct.");
+    await waitFor(() => expect(screen.queryByTestId("replay-banner")).toBeNull());
+    expect(screen.getByTestId("demo-footer")).not.toHaveAttribute("data-recorded");
+    // Région annoncée persistante, vide hors rediffusion.
+    expect(screen.getByTestId("replay-live")).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("démontage pendant la lecture : plus aucun événement rejoué", async () => {
+    window.history.replaceState(null, "", "/?replay=1");
+    stubFetch({ ask: () => sse([]) });
+    const { unmount } = render(<Demo />);
+    await screen.findByTestId("replay-banner");
+    expect(() => unmount()).not.toThrow();
+  });
+
   it("budget du jour atteint : rediffusion immédiate, sans nouvelle tentative", async () => {
     const mock = stubFetch({ ask: () => sse(BUDGET_EVENTS) });
     render(<Demo />);

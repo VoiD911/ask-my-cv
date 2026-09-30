@@ -121,7 +121,11 @@ export async function loadReplays(
   fetchImpl: typeof fetch = fetch,
 ): Promise<readonly Replay[]> {
   try {
-    const response = await fetchImpl(replaysUrl(locale), { headers: { accept: "application/json" } });
+    const response = await fetchImpl(replaysUrl(locale), {
+      headers: { accept: "application/json" },
+      // Nom de fichier stable : revalidation à chaque chargement, jamais un jeu périmé.
+      cache: "no-cache",
+    });
     if (!response.ok) return [];
     const data: unknown = await response.json();
     if (!isReplaySet(data)) return [];

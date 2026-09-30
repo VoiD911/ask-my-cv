@@ -26,6 +26,8 @@ const WEB = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const REPO = path.resolve(WEB, "..");
 export const PROD_BASE_URL = "https://job.stevelang.net/api";
 export const CONTACT = "job@stevelang.net";
+/** `pipeline.BLOCK_MESSAGES["budget_exceeded"]` : jamais enregistré comme rediffusion. */
+export const BUDGET_MESSAGE = "Le budget du jour est atteint : la démo passe en mode rediffusion.";
 
 const JOB_AD_FR = `Architecte de solutions IA (poste permanent, Montréal, hybride)
 Notre équipe conçoit des assistants génératifs pour des clients des services financiers.
@@ -101,6 +103,9 @@ export function checkOutcome(entry, frames) {
   const events = frames.map((f) => f.event);
   const done = events.at(-1);
   if (!done || done.type !== "done") throw new RecordError(`${entry.id} : flux sans événement done`);
+  if (done.answer_override === BUDGET_MESSAGE) {
+    throw new RecordError(`${entry.id} : budget du jour atteint, rien à enregistrer`);
+  }
   const blocked = events.find((e) => e.type === "stage.end" && e.status !== "ok");
   if (entry.kind === "attack") {
     if (blocked?.name !== "injection" || blocked.status !== "blocked") {

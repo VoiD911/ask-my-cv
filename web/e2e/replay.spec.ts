@@ -119,8 +119,32 @@ test("budget du jour atteint : rediffusion sans nouvelle tentative", async ({ pa
   expect(asked).toBe(1);
 });
 
-test("mouvement réduit : la rediffusion s'affiche d'un coup", async ({ page }) => {
+/** Fixture étirée : 2 s entre chaque événement (plus de 40 s de lecture au rythme normal). */
+function slowFixture(): string {
+  const set = JSON.parse(FIXTURES.fr) as { replays: { frames: { t: number }[] }[] };
+  for (const r of set.replays) r.frames.forEach((f, i) => (f.t = i * 2_000));
+  return JSON.stringify(set);
+}
+
+test("?replay=1 et mouvement réduit : la rediffusion s'affiche d'un coup", async ({ page }) => {
+  await page.route("**/replays/fr.json", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: slowFixture() }),
+  );
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/?replay=1");
-  await expectReplayed(page);
+  const replayed = page.locator('[data-testid="exchange"][data-replay]').last();
+  await expect(replayed).toHaveAttribute("data-status", "done", { timeout: 3_000 });
+  await expect(page.getByTestId("demo-footer")).toHaveAttribute("data-recorded", "true");
+});
+
+test("?replay=1 sans mouvement réduit : rythme d'origine (pas encore fini)", async ({ page }) => {
+  await page.route("**/replays/fr.json", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: slowFixture() }),
+  );
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.goto("/?replay=1");
+  const replayed = page.locator('[data-testid="exchange"][data-replay]').last();
+  await expect(replayed).toHaveAttribute("data-status", "running");
+  await page.waitForTimeout(1_500);
+  await expect(replayed).toHaveAttribute("data-status", "running");
 });

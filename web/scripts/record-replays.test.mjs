@@ -71,13 +71,16 @@ describe("record-replays", () => {
       { t: 0, event: { type: "stage.end", name: "quota", status: "blocked", duration_ms: 1, attrs: {} } },
       { t: 1, event: done("Le budget du jour est atteint : la démo passe en mode rediffusion.") },
     ];
-    assert.throws(() => checkOutcome({ id: "q", kind: "question" }, budget), /budget atteint/);
+    assert.throws(() => checkOutcome({ id: "q", kind: "question" }, budget), /budget du jour atteint/);
     assert.throws(() => checkOutcome({ id: "a", kind: "attack" }, answered), /injection/);
     const blocked = [
       { t: 0, event: { type: "stage.end", name: "injection", status: "blocked", duration_ms: 1, attrs: {} } },
       { t: 1, event: done("Requête bloquée") },
     ];
     checkOutcome({ id: "a", kind: "attack" }, blocked);
+    // Budget atteint : refusé quel que soit le genre, même si l'étape bloquée ressemble à une attaque.
+    const budgetAttack = [blocked[0], { t: 1, event: done("Le budget du jour est atteint : la démo passe en mode rediffusion.") }];
+    assert.throws(() => checkOutcome({ id: "a", kind: "attack" }, budgetAttack), /budget/);
     assert.throws(() => checkOutcome({ id: "q", kind: "question" }, []), /done/);
   });
 

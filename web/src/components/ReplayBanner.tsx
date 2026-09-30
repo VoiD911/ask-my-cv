@@ -40,7 +40,7 @@ export function ReplayBanner({ reason, recordedAt, busy, onNext }: Props) {
         <span className="led" aria-hidden="true" />
         {t("title")}
       </h2>
-      <p className="replay-banner__text" role="status">
+      <p className="replay-banner__text">
         {t("explain", { reason: t(REASON_KEY[reason]), date })}
       </p>
       <button type="button" className="btn replay-banner__next" disabled={busy} onClick={onNext}>

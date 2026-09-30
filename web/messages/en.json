@@ -148,7 +148,9 @@
     "untraced": "not traced",
     "copy": "copy",
     "copied": "copied",
-    "copyLabel": "Copy the trace ID"
+    "copyLabel": "Copy the trace ID",
+    "recordedLabel": "Recorded readout of the replayed exchange",
+    "recorded": "values recorded in production (replay)"
   },
   "delivery": {
     "title": "Delivery — Ask my CV",

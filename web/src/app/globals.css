@@ -712,6 +712,15 @@ body {
   }
 }
 
+.readout__recorded {
+  margin: 0 0 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fallback);
+}
+
 .replay-tag {
   margin-right: 6px;
   padding: 1px 5px;

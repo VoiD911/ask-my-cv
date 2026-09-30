@@ -148,7 +148,9 @@
     "untraced": "non tracée",
     "copy": "copier",
     "copied": "copié",
-    "copyLabel": "Copier l'identifiant de trace"
+    "copyLabel": "Copier l'identifiant de trace",
+    "recordedLabel": "Relevé enregistré de l'échange rejoué",
+    "recorded": "valeurs enregistrées en production (rediffusion)"
   },
   "delivery": {
     "title": "Livraison — Interroge mon CV",

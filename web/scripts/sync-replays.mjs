@@ -15,7 +15,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { findLeaks } from "./record-replays.mjs";
+import { BUDGET_MESSAGE, findLeaks } from "./record-replays.mjs";
 
 const WEB = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const SRC = path.join(WEB, "src/lib/replays");
@@ -47,6 +47,7 @@ export function validateReplaySet(set, locale) {
     }
     const done = r.frames.at(-1).event;
     if (done.type !== "done") fail(`${r.id} : le dernier événement n'est pas done`);
+    if (done.answer_override === BUDGET_MESSAGE) fail(`${r.id} : budget atteint enregistré`);
     if (done.trace_id !== null) fail(`${r.id} : trace_id conservé`);
   }
   const leaks = findLeaks(JSON.stringify(set), process.env.EVAL_TOKEN || undefined);

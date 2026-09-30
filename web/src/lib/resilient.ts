@@ -47,6 +47,9 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
 
 class FirstEventTimeout extends Error {}
 
+/** Flux clos proprement sans événement `done` : réponse tronquée, traitée comme une panne. */
+class MissingDone extends Error {}
+
 /** Une tentative ; `onFirst` signale chaque événement reçu (le délai ne court plus ensuite). */
 async function attempt(
   params: ResilientParams,
@@ -57,6 +60,7 @@ async function attempt(
   const forward = () => local.abort(signal.reason);
   signal.addEventListener("abort", forward, { once: true });
   let timedOut = false;
+  let sawDone = false;
   const timer = setTimeout(() => {
     timedOut = true;
     local.abort();
@@ -68,11 +72,14 @@ async function attempt(
       signal: local.signal,
       onEvent: (event) => {
         clearTimeout(timer);
+        if (event.type === "done") sawDone = true;
         onFirst();
         params.onEvent(event);
       },
     });
+    if (!sawDone) throw new MissingDone("flux clos sans événement done");
   } catch (error) {
+    if (error instanceof MissingDone) throw error;
     if (timedOut && !signal.aborted) throw new FirstEventTimeout("aucun événement reçu à temps");
     throw error;
   } finally {
@@ -110,7 +117,9 @@ export async function askResilient(params: ResilientParams): Promise<AskOutcome>
       return budget ? { kind: "paused", reason: "budget" } : { kind: "ok" };
     } catch (error) {
       if (isUserAbort(error, signal)) throw error;
-      if (!(error instanceof FirstEventTimeout) && !isOutageError(error)) throw error;
+      if (!(error instanceof FirstEventTimeout) && !(error instanceof MissingDone) && !isOutageError(error)) {
+        throw error;
+      }
       if (budget) return { kind: "paused", reason: "budget" };
       // Flux coupé en cours de route, ou seconde tentative ratée : rediffusion. Réessayer
       // après des événements déjà affichés dupliquerait les étapes du circuit.
