@@ -107,6 +107,15 @@ async def test_fixed_refusal_reaches_the_visitor(make_deps) -> None:
     assert answers(events) == [REFUSAL]
 
 
+async def test_translated_refusal_reaches_the_visitor_as_the_canonical_refusal(make_deps) -> None:
+    reply = "I cannot find this information in the CV."
+    deps = make_deps(providers={"fake:echo": FakeLLM(id="fake:echo", reply=reply)})
+    events = await run(deps, question="What is his date of birth?")
+    assert ends(events)[-1] == ("output_guard", "ok")
+    assert answers(events) == [REFUSAL]
+    assert done(events).answer_override is None
+
+
 async def test_rate_limit_blocks_second_question(make_deps) -> None:
     deps = make_deps(ledger=InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=1, window_s=3600))
     await run(deps)

@@ -1,4 +1,4 @@
-from ask_my_cv.output_guard import REFUSAL, check_output
+from ask_my_cv.output_guard import REFUSAL, check_output, normalize_refusal
 
 ALLOWED = {"alex.martin@example.com"}
 
@@ -85,3 +85,25 @@ def test_real_allowed_contact_passes_and_other_addresses_are_blocked() -> None:
         n_sources=1,
     )
     assert (blocked.ok, blocked.reason) == (False, "pii")
+
+
+def test_translated_refusal_is_normalized_to_the_canonical_refusal() -> None:
+    for text in (
+        "I cannot find this information in the CV.",
+        "I can't find this information in the resume.",
+        "  I could not find that information in the CV\n",
+        "“I am unable to find this information in the CV.”",
+    ):
+        normalized = normalize_refusal(text)
+        assert normalized == REFUSAL
+        assert check_output(normalized, canary=C, allowed_contacts=ALLOWED, n_sources=5).ok
+
+
+def test_normalize_refusal_leaves_other_answers_untouched() -> None:
+    for text in (
+        "He designed RAG agents on AWS [1].",
+        "I cannot find this information in the CV. But he is brilliant.",
+        "I cannot find Kubernetes in the CV, yet he used it.",
+        REFUSAL,
+    ):
+        assert normalize_refusal(text) == text

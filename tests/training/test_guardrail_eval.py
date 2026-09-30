@@ -67,7 +67,7 @@ def test_load_cases_repository() -> None:
     ads = groups["job_ads"]
     assert (sum(c.label == 0 for c in ads), sum(c.label == 1 for c in ads)) == (160, 80)
     assert len(groups["fixture"]) == 2
-    assert len(groups["nightly"]) == 12
+    assert len(groups["nightly"]) == 13
     assert all(not c.text.startswith("file://") for c in cases)
     assert sum(c.group == "domain" for c in cases) == 50
     # le jeu complet tient sous le plafond par défaut
