@@ -96,11 +96,11 @@
   "anchors": {
     "job:ci.yml:deploy": {
       "path": ".github/workflows/ci.yml",
-      "line": 290
+      "line": 292
     },
     "job:ci.yml:terraform": {
       "path": ".github/workflows/ci.yml",
-      "line": 274
+      "line": 276
     },
     "job:nightly.yml:drift": {
       "path": ".github/workflows/nightly.yml",
@@ -112,15 +112,15 @@
     },
     "step:ci.yml:deploy:Déployer (par digest)": {
       "path": ".github/workflows/ci.yml",
-      "line": 496
+      "line": 498
     },
     "step:ci.yml:deploy:Retour arrière": {
       "path": ".github/workflows/ci.yml",
-      "line": 551
+      "line": 553
     },
     "step:ci.yml:deploy:Vérifier signature et attestation": {
       "path": ".github/workflows/ci.yml",
-      "line": 481
+      "line": 483
     },
     "step:ci.yml:evals:Suite promptfoo": {
       "path": ".github/workflows/ci.yml",
