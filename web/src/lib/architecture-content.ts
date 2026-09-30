@@ -120,7 +120,7 @@ export const delivery = {
   title: "Du code à la production",
   paragraphs: [
     "En [[CI/CD]], chaque pull request passe par cinq jobs en parallèle : scanners de sécurité, tests Python et image Docker, évaluations du LLM et parcours navigateur, site web (tests, CSP, Lighthouse) et Terraform. Le déploiement n'attend rien d'autre que leur succès à tous.",
-    "Sur main, l'image est construite, signée avec Sigstore ([[cosign]], sans clé), accompagnée d'une provenance [[SLSA]] et d'un [[SBOM]], puis vérifiée avant d'être déployée par son digest : c'est exactement l'image testée qui part en production.",
+    "Sur main, l'image est reconstruite, signée avec Sigstore ([[cosign]], sans clé), accompagnée d'une provenance [[SLSA]] et d'un [[SBOM]], puis vérifiée avant d'être déployée par son digest : signature, SBOM et provenance visent ce digest exact.",
     "Un test de fumée interroge ensuite la production ; s'il échoue, la version précédente est restaurée automatiquement. D'autres workflows tournent à côté : la red team de nuit, l'entraînement du modèle et un miroir d'image.",
   ],
   stepsLabel: (id: string) => `Étapes du job ${id}`,

@@ -61,7 +61,7 @@ export function indexWorkflow(text) {
       jobs.set(job[1], current);
       return;
     }
-    const step = /^ {6}- (?:name|run|uses):\s*(.+)$/.exec(raw);
+    const step = /^ {6}- (?:name|run|uses|if):\s*(.+)$/.exec(raw);
     if (current && step) current.steps.push({ line: i + 1, text: step[1] });
   });
   return jobs;
@@ -87,6 +87,8 @@ export function resolveAnchor(root, anchor, cache = new Map()) {
   }
   if (kind === "tf") {
     const [type, name] = rest.join(":").split(".");
+    if (!/^[\w-]+$/.test(type ?? "") || !/^[\w-]+$/.test(name ?? "")) throw new XopsError(`ancre ${anchor} : forme tf:<type>.<nom>`);
+    // Entrées limitées à [\w-] ci-dessus : rien à échapper dans la RegExp.
     const files = readdirSync(resolve(root, "infra"), { withFileTypes: true, recursive: true })
       .filter((e) => e.isFile() && e.name.endsWith(".tf") && !posix(root, resolve(e.parentPath)).includes("/."))
       .map((e) => posix(root, resolve(e.parentPath, e.name)))

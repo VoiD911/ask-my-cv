@@ -106,7 +106,7 @@ export const disciplines: Discipline[] = [
         id: "iac",
         title: "Infrastructure as Code",
         claim: () =>
-          "Toute l'infrastructure AWS est en Terraform ([[IaC]]), en deux couches (socle et production) ; format et validation vérifiés à chaque PR.",
+          "Toute l'infrastructure AWS est en Terraform ([[IaC]]), en deux couches (socle et production) ; format et validation vérifiés à chaque PR, application (terraform apply) lancée à la main.",
         status: "couvert",
         proofs: [
           { label: "infra/prod", path: "infra/prod" },
@@ -118,10 +118,10 @@ export const disciplines: Discipline[] = [
         id: "deploiement",
         title: "Déploiement et retour arrière",
         claim: () =>
-          "Déploiement par digest (l'image testée est celle qui part), test de fumée sur la production, puis retour automatique à l'image précédente de la Lambda s'il échoue.",
+          "Sur main, l'image est reconstruite, signée, accompagnée de son SBOM et de sa provenance, vérifiée, puis déployée par ce digest exact ; test de fumée sur la production, puis retour automatique à l'image précédente de la Lambda s'il échoue.",
         status: "partiel",
         gap: () =>
-          "Pas de déploiement progressif (canary) : la nouvelle version remplace l'ancienne d'un coup ; le retour arrière ne concerne que la Lambda, pas le site statique.",
+          "Pas de déploiement progressif (canary) : la nouvelle version remplace l'ancienne d'un coup ; l'image déployée est reconstruite, pas promue depuis celle des tests ; le retour arrière ne concerne que la Lambda, pas le site statique.",
         proofs: [
           { label: "ci.yml · Déployer (par digest)", anchor: "step:ci.yml:deploy:Déployer (par digest)" },
           { label: "ci.yml · Retour arrière", anchor: "step:ci.yml:deploy:Retour arrière" },
@@ -195,7 +195,7 @@ export const disciplines: Discipline[] = [
         id: "iac-image",
         title: "Terraform et image",
         claim: () =>
-          "trivy analyse la configuration Terraform et l'image Docker (vulnérabilités élevées et critiques bloquantes).",
+          "trivy analyse la configuration Terraform et l'image Docker ; les vulnérabilités élevées et critiques bloquent (pour l'image, celles qui ont un correctif).",
         status: "couvert",
         proofs: [
           { label: "trivy config", anchor: "step:ci.yml:security:trivy config" },
@@ -311,11 +311,11 @@ export const disciplines: Discipline[] = [
           "Chaque nuit, un job compare les scores de production des sept derniers jours à la référence de la release ([[PSI]]) ; un échec ouvre une issue.",
         status: "partiel",
         gap: () =>
-          "La mesure mélange encore les versions du modèle et les types de texte (questions, annonces) : la correction est en revue.",
+          "La mesure mélange encore les versions du modèle et les types de texte (questions, annonces) : correctif en cours.",
         proofs: [
           { label: "nightly.yml · job drift", anchor: "job:nightly.yml:drift" },
           { label: "ml/drift.py", path: "ml/drift.py" },
-          { label: "PR #125 (correction en revue)", pull: 125 },
+          { label: "PR #125 (correctif)", pull: 125 },
           { label: "Runs de nuit", external: "nightlyRuns" },
         ],
       },
@@ -365,7 +365,7 @@ export const disciplines: Discipline[] = [
         id: "garde-fous",
         title: "Garde-fous d'entrée et de sortie",
         claim: () =>
-          "Classifieur d'injection, puis Bedrock Guardrails sur les longues annonces (refus si le service est indisponible) ; en sortie, détection de fuite du prompt par jeton canari et ancrage au CV ([[RAG]]).",
+          "Classifieur d'injection, puis Bedrock Guardrails sur les longues annonces : un échec isolé garde la décision du classifieur, un disjoncteur refuse les annonces si les échecs se répètent. En sortie, fuite du prompt détectée par jeton canari et citation des passages du CV exigée ([[RAG]]), sans vérification de leur contenu.",
         status: "couvert",
         proofs: [
           { label: "onnx_detector.py", path: "src/ask_my_cv/onnx_detector.py" },

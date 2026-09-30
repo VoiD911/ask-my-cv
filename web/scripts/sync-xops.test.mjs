@@ -42,6 +42,7 @@ const WF = [
   "    needs: security",
   "    steps:",
   "      - uses: actions/checkout@abc # v1",
+  "      - if: failure()",
 ].join("\n");
 
 describe("références du contenu", () => {
@@ -74,6 +75,7 @@ describe("ancres", () => {
       [6, 9],
     );
     assert.equal(jobs.get("deploy").line, 10);
+    assert.deepEqual(jobs.get("deploy").steps.map((s) => s.line), [13, 14]);
   });
 
   test("job, étape, ressource Terraform, texte", () => {
@@ -91,6 +93,7 @@ describe("ancres", () => {
       "step:ci.yml:security:trivy",
       "tf:aws_budgets_budget.autre",
       "tf:aws_sqs_queue.cache", // dossier caché .terraform ignoré
+      "tf:aws_.*.x",
       "text:settings.aws.yaml#absent",
       "text:absent.yaml#a",
       "text:../etc/passwd#root",
