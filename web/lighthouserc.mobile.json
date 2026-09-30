@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "staticDistDir": "./out",
-      "url": ["/", "/architecture/", "/xops/", "/en/", "/en/architecture/"],
+      "url": ["/", "/architecture/", "/xops/", "/cv/", "/en/", "/en/architecture/", "/en/cv/"],
       "numberOfRuns": 3,
       "settings": {
         "chromeFlags": "--no-sandbox --headless=new"

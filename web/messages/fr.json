@@ -11,6 +11,7 @@
     "delivery": "Livraison",
     "architecture": "Architecture",
     "xops": "XOps",
+    "cv": "CV",
     "switch": "English",
     "switchLabel": "Read this page in English"
   },
@@ -21,7 +22,8 @@
     "sourceValue": "CV public, en français",
     "modelTerm": "modèle",
     "contactTerm": "contact",
-    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock. Les traces ne conservent ni le texte de ta question ni ton adresse IP ; le quota par visiteur repose sur un pseudonyme salé."
+    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock. Les traces ne conservent ni le texte de ta question ni ton adresse IP ; le quota par visiteur repose sur un pseudonyme salé.",
+    "linkedinTerm": "linkedin"
   },
   "chat": {
     "title": "questions au CV",
@@ -205,5 +207,20 @@
       "changes": "corrections demandées",
       "unknown": "non déterminé"
     }
+  },
+  "cv": {
+    "title": "CV — Steve Lang",
+    "description": "CV de Steve Lang, architecte principal en hyperautomatisation, IA générative et cloud : expérience, compétences, formation. Version PDF téléchargeable.",
+    "eyebrow": "Curriculum vitæ",
+    "role": "Architecte principal — hyperautomatisation, IA générative et cloud",
+    "download": "Télécharger le CV (PDF)",
+    "contactLabel": "Contact",
+    "emailTerm": "courriel",
+    "linkedinTerm": "LinkedIn",
+    "linkedinText": "linkedin.com/in/steve-cl-lang",
+    "askTitle": "Une question sur ce parcours ?",
+    "ask": "Pose-la à l'assistant de la démo : il répond à partir de ce même CV.",
+    "askLink": "Interroger le CV",
+    "source": "Page générée au build depuis data/cv.md, la même source que l'assistant."
   }
 }

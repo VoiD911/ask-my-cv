@@ -8,3 +8,4 @@ tests
 .env
 .github
 infra
+data/cv.en.md

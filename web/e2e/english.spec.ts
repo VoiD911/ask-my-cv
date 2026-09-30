@@ -20,6 +20,7 @@ const PAGES = [
   { path: "/en/", fr: "/", title: "Ask my CV — Steve Lang", h1: "Steve Lang", tab: "Demo" },
   { path: "/en/architecture/", fr: "/architecture/", title: "Architecture — Ask my CV", h1: "Architecture", tab: "Architecture" },
   { path: "/en/xops/", fr: "/xops/", title: "XOps — Ask my CV", h1: "XOps", tab: "XOps" },
+  { path: "/en/cv/", fr: "/cv/", title: "Resume — Steve Lang", h1: "Steve Lang", tab: "CV" },
   { path: "/en/livraison/", fr: "/livraison/", title: "Delivery — Ask my CV", h1: "Delivery", tab: "Delivery" },
   { path: "/en/livraison/1a/", fr: "/livraison/1a/", title: "Plan 1a — Delivery", h1: "Plan 1a", tab: "Delivery" },
 ];

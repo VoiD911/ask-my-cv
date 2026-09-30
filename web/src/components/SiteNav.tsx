@@ -8,6 +8,7 @@ const ITEMS = [
   { href: "/livraison/", key: "delivery" },
   { href: "/architecture/", key: "architecture" },
   { href: "/xops/", key: "xops" },
+  { href: "/cv/", key: "cv" },
 ] as const;
 
 type NavPath = (typeof ITEMS)[number]["href"];

@@ -2437,6 +2437,174 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
+/* Page CV (/cv, /en/cv) : lecture confortable, gabarit du PDF          */
+/* ------------------------------------------------------------------ */
+
+.cv-page {
+  max-width: 980px;
+}
+
+.cv-head__side {
+  display: grid;
+  gap: 12px;
+}
+
+.cv-download {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--color-pulse);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-stretch: 85%;
+  color: var(--color-pulse);
+  text-decoration: none;
+}
+
+.cv-download:hover {
+  background: rgb(116 216 255 / 0.1);
+}
+
+.cv-main {
+  display: grid;
+  gap: 8px;
+  padding-inline: 4px;
+}
+
+.cv-section {
+  padding: 18px 0 14px;
+  border-top: 1px dashed var(--color-board-line);
+}
+
+.cv-section h2,
+.cv-ask h2 {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-stretch: 85%;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-copper-text);
+}
+
+.cv-section h2::before {
+  content: "› " / "";
+  color: var(--color-pulse);
+}
+
+.cv-section p,
+.cv-ask p {
+  margin-top: 8px;
+  max-width: 75ch;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+.cv-ask {
+  margin-top: 8px;
+  padding: 16px 18px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 6px;
+}
+
+.cv-ask a {
+  color: var(--color-pulse);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Impression et PDF (A4) : fond blanc, texte noir, sans navigation ni boutons. */
+@page {
+  size: A4;
+  margin: 16mm 16mm 18mm;
+}
+
+@media print {
+  :root {
+    color-scheme: light;
+  }
+  body {
+    background: #fff;
+    color: #111;
+  }
+  .cv-page {
+    display: block;
+    max-width: none;
+    min-height: 0;
+    padding: 0;
+  }
+  .cv-page .site-nav,
+  .cv-page .cv-download,
+  .cv-page .cv-ask,
+  .cv-page .colophon,
+  .cv-page .titleblock__eyebrow {
+    display: none;
+  }
+  .cv-page .titleblock {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 24px;
+    padding: 0 0 10px;
+    border: 0;
+    border-bottom: 1.5px solid #111;
+    border-radius: 0;
+    background: none;
+  }
+  .cv-page .titleblock__name {
+    margin: 0;
+    letter-spacing: normal;
+    font-size: 26pt;
+    color: #111;
+  }
+  .cv-page .titleblock__role {
+    color: #333;
+    font-size: 11pt;
+  }
+  .cv-page .titleblock__fields {
+    border: 0;
+    font-size: 9pt;
+  }
+  .cv-page .titleblock__fields > div {
+    grid-template-columns: 64px auto;
+    padding: 1px 0;
+    border: 0;
+  }
+  .cv-page .titleblock__fields a {
+    white-space: nowrap;
+  }
+  .cv-page .titleblock__fields dt,
+  .cv-page .titleblock__fields dd,
+  .cv-page .titleblock__fields a {
+    color: #111;
+  }
+  .cv-section {
+    padding: 8pt 0 2pt;
+    border-top: 0;
+    break-inside: avoid;
+  }
+  .cv-section h2 {
+    font-size: 10pt;
+    color: #111;
+    border-bottom: 0.5pt solid #999;
+    padding-bottom: 2pt;
+    break-after: avoid;
+  }
+  .cv-section h2::before {
+    content: none;
+  }
+  .cv-section p {
+    max-width: none;
+    margin-top: 4pt;
+    font-size: 9.5pt;
+    line-height: 1.45;
+    color: #111;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Réduction des animations : l'état reste lisible, rien ne bouge      */
 /* ------------------------------------------------------------------ */
 

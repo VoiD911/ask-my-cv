@@ -1,0 +1,171 @@
+{
+  "version": 1,
+  "sources": {
+    "fr": "data/cv.md",
+    "en": "data/cv.en.md"
+  },
+  "fr": {
+    "name": "Steve Lang",
+    "sections": [
+      {
+        "id": "profil",
+        "title": "Profil",
+        "paragraphs": [
+          "Architecte principal en hyperautomatisation, IA générative et cloud. Ingénieur en informatique (UTBM, France) et doctorant à l'ÉTS (Montréal), près de 30 ans en développement logiciel. Depuis 2022 : architecture cloud, hyperautomatisation et intégration d'IA générative (agents LLM, RAG) au service de l'automatisation de processus d'affaires. Ouvert aux rôles d'architecte ou de lead technique."
+        ]
+      },
+      {
+        "id": "experience-2025-2026",
+        "title": "Expérience — NeoBotiQc (2025-2026)",
+        "paragraphs": [
+          "Architecte principal chez NeoBotiQc inc. (Montréal), de février 2025 à septembre 2026. Startup en hyperautomatisation intelligente pour la productivité des PME. Conception et déploiement d'applications, de services et d'agents d'IA générative (avec option RAG) pour l'automatisation de processus métier. Cycle complet de livraison : recueil des besoins métier, traduction en spécifications, définition de garde-fous, déploiement incrémental sur Azure et AWS par pipelines CI/CD. Conception d'une plateforme de création d'agents. Architecture multi-cloud (Azure, AWS, GCP) et pipelines CI/CD sur GitHub Actions."
+        ]
+      },
+      {
+        "id": "experience-2022-2025",
+        "title": "Expérience — Solutions Will (2022-2025)",
+        "paragraphs": [
+          "Architecte de solutions chez Solutions Will (Montréal), de septembre 2022 à janvier 2025. L'entreprise mesure, réduit et compense les émissions de gaz à effet de serre et opère la « Communauté Durable du Québec ». Conception et développement d'une plateforme d'automatisation de la saisie et du calcul des réductions de GES pour des projets de communautés durables, bâtie sur le modèle de données Salesforce et Net Zero Cloud. Pipelines de déploiement continu (Azure DevOps) vers plusieurs instances Salesforce (développement, QA, production). Collaboration avec l'équipe de quantification pour la validation métier et les tests du modèle de données. Projet interrompu en 2025."
+        ]
+      },
+      {
+        "id": "experience-2008-2018",
+        "title": "Expérience — Entreprise individuelle (2008-2018)",
+        "paragraphs": [
+          "Travailleur autonome de 2008 à 2018. Conception et développement d'applications Windows pour différentes sociétés (par exemple un CRM sur mesure et un outil de facturation). Développement d'applications pour des projets rémunérés sur la plateforme freelancer.com. Création et mise en place de sites internet professionnels."
+        ]
+      },
+      {
+        "id": "experience-1998-2008",
+        "title": "Expérience — Débuts en France (1998-2008)",
+        "paragraphs": [
+          "Webmaster, responsable informatique et stagiaire ingénieur en France, de 1998 à 2008 : IDIL/3i Lorraine (Nancy), UTBM (Belfort), CEBEA (Strasbourg), DELPHI (Sarreguemines). Mise en place de serveurs web et de bases de données (Linux, MySQL), création de sites internet (HTML, PHP), automatisation de traitements de données (Excel, VBA), support et migration de parc informatique."
+        ]
+      },
+      {
+        "id": "competences",
+        "title": "Compétences",
+        "paragraphs": [
+          "Cloud et infrastructure : Azure, AWS, GCP, Salesforce (Net Zero Cloud), Docker, GitHub Actions. IA et automatisation : agents et chatbots RAG (LLM, pgvector), IA générative appliquée à l'automatisation de processus. Outils de développement et IA : VS Code, Claude Code, Kiro, ingénierie de prompts, création de skills et de plugins IA, Git et GitHub. Frameworks et bases de données : Python, FastAPI, FastMCP, PostgreSQL, Salesforce (Apex, modèle de données). Historique : Dash et Plotly, Perl, Pascal, Java, JavaScript, Visual Basic, PHP, Arduino et Raspberry Pi, MySQL et SQLite, macOS, Linux, Windows, Solaris."
+        ]
+      },
+      {
+        "id": "projet-site",
+        "title": "Projet — Interroge mon CV (ce site)",
+        "paragraphs": [
+          "Assistant RAG sur ce CV, instrumenté de bout en bout : classifieur d'injection de prompt entraîné et signé (ONNX, Sigstore), garde-fou de sortie, quotas et plafond de dépense, traces OpenTelemetry (CloudWatch, Langfuse), déploiement signé sur AWS (Lambda, Bedrock, DynamoDB, CloudFront) avec retour arrière automatique, scans de sécurité et évaluations LLM à chaque changement, red team et suivi de dérive chaque nuit."
+        ]
+      },
+      {
+        "id": "projets-academiques",
+        "title": "Projets académiques",
+        "paragraphs": [
+          "Projet de doctorat à la station d'épuration de la Ville de Montréal (2021-2022) : conception d'interfaces web (Python, Dash, Plotly) pour la numérisation des tournées d'opérations de la station, reliant base de données, historian PI System, Maximo et Google Sheets, hébergées sur un serveur virtuel dédié. Projet de fin d'études d'ingénieur (2008) : plateforme pour médecins urgentistes, avec une interface web (Java) de planification des visites selon la localisation des appels (Google Maps, SIG) et une application mobile PDA (Python, PyCE, Windows Mobile 5) de suivi GPS des déplacements."
+        ]
+      },
+      {
+        "id": "formation",
+        "title": "Formation",
+        "paragraphs": [
+          "Depuis 2019 : doctorat (PhD) à l'ÉTS (École de technologie supérieure, Montréal), département de génie. Sujet : une méthode d'amorce de la transformation numérique dans l'industrie 4.0, par la recherche-action par conception, dans le contexte d'une entité publique (la station d'épuration de la Ville de Montréal). 2005-2008 : diplôme d'ingénieur en informatique, UTBM (Université de technologie de Belfort-Montbéliard), spécialité systèmes mobiles, embarqués et temps réel. 2004-2005 : Institut national polytechnique de Lorraine, préparation à l'entrée en école d'ingénieur (filière Fontanet). 1999 : BTS en informatique industrielle."
+        ]
+      },
+      {
+        "id": "langues",
+        "title": "Langues",
+        "paragraphs": [
+          "Français : langue maternelle. Anglais : courant (TOEIC 860 en 2008). Allemand : niveau scolaire. Espagnol : débutant."
+        ]
+      },
+      {
+        "id": "interets",
+        "title": "Centres d'intérêt",
+        "paragraphs": [
+          "Électronique (Arduino, prototypage), impression 3D, jeux vidéo, voyages, musique (guitare depuis l'âge de 12 ans), tennis et autres sports de raquette."
+        ]
+      }
+    ]
+  },
+  "en": {
+    "name": "Steve Lang",
+    "sections": [
+      {
+        "id": "profil",
+        "title": "Profile",
+        "paragraphs": [
+          "Principal architect in hyperautomation, generative AI and cloud. Computer science engineer (UTBM, France) and PhD candidate at ÉTS (Montréal), with nearly 30 years in software development. Since 2022: cloud architecture, hyperautomation and generative AI integration (LLM agents, RAG) for business process automation. Open to architect or technical lead roles."
+        ]
+      },
+      {
+        "id": "experience-2025-2026",
+        "title": "Experience — NeoBotiQc (2025-2026)",
+        "paragraphs": [
+          "Principal architect at NeoBotiQc inc. (Montréal), from February 2025 to September 2026. Startup in intelligent hyperautomation for SME productivity. Design and deployment of applications, services and generative AI agents (with optional RAG) for business process automation. Full delivery cycle: gathering business requirements, translating them into specifications, defining guardrails, incremental deployment on Azure and AWS through CI/CD pipelines. Design of an agent-building platform. Multi-cloud architecture (Azure, AWS, GCP) and CI/CD pipelines on GitHub Actions."
+        ]
+      },
+      {
+        "id": "experience-2022-2025",
+        "title": "Experience — Solutions Will (2022-2025)",
+        "paragraphs": [
+          "Solutions architect at Solutions Will (Montréal), from September 2022 to January 2025. The company measures, reduces and offsets greenhouse gas emissions and operates the “Communauté Durable du Québec” (Quebec Sustainable Community). Design and development of a platform automating the entry and calculation of GHG reductions for sustainable community projects, built on the Salesforce data model and Net Zero Cloud. Continuous deployment pipelines (Azure DevOps) to several Salesforce instances (development, QA, production). Collaboration with the quantification team on business validation and testing of the data model. Project discontinued in 2025."
+        ]
+      },
+      {
+        "id": "experience-2008-2018",
+        "title": "Experience — Sole proprietorship (2008-2018)",
+        "paragraphs": [
+          "Self-employed from 2008 to 2018. Design and development of Windows applications for various companies (for example a custom CRM and an invoicing tool). Development of applications for paid projects on the freelancer.com platform. Creation and set-up of professional websites."
+        ]
+      },
+      {
+        "id": "experience-1998-2008",
+        "title": "Experience — Early career in France (1998-2008)",
+        "paragraphs": [
+          "Webmaster, IT manager and engineering intern in France, from 1998 to 2008: IDIL/3i Lorraine (Nancy), UTBM (Belfort), CEBEA (Strasbourg), DELPHI (Sarreguemines). Set-up of web servers and databases (Linux, MySQL), website creation (HTML, PHP), data processing automation (Excel, VBA), IT support and hardware fleet migration."
+        ]
+      },
+      {
+        "id": "competences",
+        "title": "Skills",
+        "paragraphs": [
+          "Cloud and infrastructure: Azure, AWS, GCP, Salesforce (Net Zero Cloud), Docker, GitHub Actions. AI and automation: RAG agents and chatbots (LLM, pgvector), generative AI applied to process automation. Development and AI tools: VS Code, Claude Code, Kiro, prompt engineering, building AI skills and plugins, Git and GitHub. Frameworks and databases: Python, FastAPI, FastMCP, PostgreSQL, Salesforce (Apex, data model). Earlier: Dash and Plotly, Perl, Pascal, Java, JavaScript, Visual Basic, PHP, Arduino and Raspberry Pi, MySQL and SQLite, macOS, Linux, Windows, Solaris."
+        ]
+      },
+      {
+        "id": "projet-site",
+        "title": "Project — Ask my CV (this site)",
+        "paragraphs": [
+          "RAG assistant over this CV, instrumented end to end: trained and signed prompt-injection classifier (ONNX, Sigstore), output guardrail, quotas and spending cap, OpenTelemetry traces (CloudWatch, Langfuse), signed deployment on AWS (Lambda, Bedrock, DynamoDB, CloudFront) with automatic rollback, security scans and LLM evaluations on every change, nightly red teaming and drift monitoring."
+        ]
+      },
+      {
+        "id": "projets-academiques",
+        "title": "Academic projects",
+        "paragraphs": [
+          "PhD project at the City of Montréal wastewater treatment plant (2021-2022): design of web interfaces (Python, Dash, Plotly) to digitize the plant's operations rounds, connecting a database, the PI System historian, Maximo and Google Sheets, hosted on a dedicated virtual server. Final-year engineering project (2008): platform for emergency physicians, with a web interface (Java) for scheduling visits based on call locations (Google Maps, GIS) and a PDA mobile application (Python, PyCE, Windows Mobile 5) for GPS tracking of trips."
+        ]
+      },
+      {
+        "id": "formation",
+        "title": "Education",
+        "paragraphs": [
+          "Since 2019: PhD at ÉTS (École de technologie supérieure, Montréal), engineering department. Topic: a method for initiating digital transformation in Industry 4.0, through action design research, in the context of a public entity (the City of Montréal wastewater treatment plant). 2005-2008: engineering degree in computer science, UTBM (Université de technologie de Belfort-Montbéliard), specializing in mobile, embedded and real-time systems. 2004-2005: Institut national polytechnique de Lorraine, engineering school preparatory program (Fontanet track). 1999: BTS (two-year technical degree) in industrial computing."
+        ]
+      },
+      {
+        "id": "langues",
+        "title": "Languages",
+        "paragraphs": [
+          "French: native. English: fluent (TOEIC 860 in 2008). German: school level. Spanish: beginner."
+        ]
+      },
+      {
+        "id": "interets",
+        "title": "Interests",
+        "paragraphs": [
+          "Electronics (Arduino, prototyping), 3D printing, video games, travel, music (guitar since age 12), tennis and other racket sports."
+        ]
+      }
+    ]
+  }
+}
