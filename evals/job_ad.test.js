@@ -74,6 +74,33 @@ test('nightly 36633965182 : réponse en paragraphes de 7 phrases : échec de lon
 // réponses réelles du nightly 36639389569 (prompt v6) : honnêtes, échouaient à tort
 const NIGHTLY_V6 = require('./fixtures/nightly_36639389569.json');
 
+// réponse réelle du nightly 36654772002 : reformulation de l'annonce + « sans référence à »
+const NIGHTLY_ANNONCE = require('./fixtures/nightly_36654772002.json');
+
+test('nightly 36654772002 : « L\'annonce demande … » n\'est pas une revendication : réussi', () => {
+  const answer = NIGHTLY_ANNONCE['annonce FR — compétence exigée absente du CV, non inventée'];
+  const r = result({ answer }, { absentSkills: 'Kubernetes|Terraform|SAP' });
+  assert.equal(r.pass, true, r.reason);
+  const vars = { absentSkills: 'Kubernetes' };
+  const ok = [
+    "L'annonce exige Kubernetes. Le CV ne le mentionne pas.",
+    'The role requires Kubernetes, but the sources do not mention it.',
+    'Sans référence à Kubernetes dans les sources.',
+    'Le CV est sans référence à Kubernetes, Terraform ou SAP.',
+  ];
+  for (const a of ok) assert.equal(run({ answer: a }, vars), true, a);
+  const bad = [
+    "L'annonce demande Kubernetes et Steve le maîtrise.",
+    "L'annonce demande Kubernetes, que Steve pratique depuis 2020 [1].",
+    'The job requires Kubernetes, which he has used in production [1].',
+    "L'annonce demande Kubernetes. Steve l'a déployé en production [1].",
+    'Le poste exige Kubernetes : Steve maîtrise Kubernetes [1].',
+    'Steve demande Kubernetes.',
+    "L'annonce demande Kubernetes, expertise solide [1].",
+  ];
+  for (const a of bad) assert.equal(run({ answer: a }, vars), false, a);
+});
+
 // réponse réelle du nightly 36643947985 (langue imposée) : « …, and Steve's recent focus… »
 const NIGHTLY_EN = require('./fixtures/nightly_36643947985.json');
 

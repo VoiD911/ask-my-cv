@@ -35,6 +35,11 @@
  *                     nié (« L'expertise X n'est pas documentée ») ;
  *                   - aucune reprise pronominale pleine ou élidée, aucune désignation
  *                     anaphorique (« cet outil »), aucune parenthèse.
+ *                 Une proposition qui reformule l'annonce (sujet : l'annonce, le poste,
+ *                 l'offre, the role / job / posting ; verbe d'exigence : demande, exige,
+ *                 requiert, requires, asks for, calls for, seeks…) décrit le poste, pas
+ *                 Steve : elle n'est pas jugée, sauf si elle contient un sujet
+ *                 d'attribution, une reprise, un verbe de revendication ou une citation.
  *                 Les citations [n] sont admises dans une proposition d'absence (elles
  *                 renvoient aux sections du CV consultées). Dès qu'une compétence absente
  *                 est nommée, aucune autre proposition ne combine reprise (pronom, « cet
@@ -71,7 +76,7 @@ const ABSENCE = [
   /ne (?:figure|figurent|apparaît|apparait|apparaissent) pas/iu,
   /n['’](?:apparaît|apparait|est|sont) pas (?:mentionnée?s?|indiquée?s?|citée?s?|établie?s?|documentée?s?|dans)/iu,
   /n['’](?:a|y a) (?:pas|aucune?) /iu,
-  /(?<![\p{L}])(?:aucune?|pas d['’]|pas de|sans) (?:mention|trace|expérience|preuve|indication|certification)/iu,
+  /(?<![\p{L}])(?:aucune?|pas d['’]|pas de|sans) (?:mention|trace|référence|expérience|preuve|indication|certification)/iu,
   /(?<![\p{L}])absente?s? (?:du|des|dans les?) (?:cv|sources)/iu,
   /\b(?:not|never) (?:mentioned|listed|shown|found|stated|indicated|established)/iu,
   /\b(?:does not|doesn['’]t|do not|don['’]t) (?:mention|list|show|include|indicate|state|cite)/iu,
@@ -241,7 +246,32 @@ function mergedNegations(spans) {
 }
 
 // élément nu d'énumération après la négation : « , Terraform », au plus 3 mots
-const BARE_ITEM = /^\s*[\p{L}\p{N}][\p{L}\p{N}./+#-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}./+#-]*){0,2}\s*$/u;
+// (deux éléments reliés par « ou / or / ni / nor / et / and » : « , Terraform ou SAP S/4HANA »)
+const ITEM = '[\\p{L}\\p{N}][\\p{L}\\p{N}./+#-]*(?:\\s+[\\p{L}\\p{N}][\\p{L}\\p{N}./+#-]*){0,2}';
+const BARE_ITEM = new RegExp(`^\\s*${ITEM}(?:\\s+(?:ou|or|ni|nor|et|and)\\s+${ITEM})?\\s*$`, 'u');
+
+// proposition qui reformule l'annonce : sujet = l'annonce / le poste, verbe d'exigence.
+// Elle décrit le poste, pas Steve : elle n'est pas jugée comme proposition d'absence, à
+// condition de ne contenir ni sujet d'attribution, ni reprise, ni verbe de revendication,
+// ni citation
+// (« L'annonce demande Kubernetes et Steve le maîtrise » reste jugée, donc échoue).
+const REQUIREMENT_CLAUSE = new RegExp(
+  `^\\s*(?:l${APOS}annonce|le poste|l${APOS}offre|ce poste|cette offre|cette annonce|the (?:posting|job|role|ad|advert|position|offer)|this (?:posting|job|role|ad|position))` +
+    `\\s+(?:[\\p{L}'\\u2019-]+\\s+){0,2}?(?:demande|exige|requiert|recherche|attend|réclame|requires|asks\\s+for|calls\\s+for|seeks|expects|wants|demands)(?!${L})`,
+  'iu',
+);
+
+function restatesRequirement(clause) {
+  return (
+    REQUIREMENT_CLAUSE.test(clause) &&
+    !has(ATTRIBUTION_SUBJECT, clause) &&
+    !BACK_REFERENCE.test(clause) &&
+    !ANAPHORA.test(clause) &&
+    !CLAIM_VERB.test(clause) &&
+    // une reformulation de l'annonce ne cite pas le CV : une citation trahit une revendication
+    !/\[\d+\]/.test(clause)
+  );
+}
 
 /** Raison pour laquelle la proposition qui nomme une compétence absente n'est pas une pure absence. */
 function impureAbsence(clause) {
@@ -295,6 +325,7 @@ function skillViolation(answer, skills) {
     const skill = skills.find((s) => lower.includes(s.toLowerCase()));
     if (!skill) continue;
     named = true;
+    if (restatesRequirement(clause)) continue;
     const why = impureAbsence(clause);
     if (why) return `${skill} : ${why} dans « ${clause} »`;
   }
