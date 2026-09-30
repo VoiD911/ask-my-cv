@@ -25,7 +25,7 @@ from ask_my_cv.guardrail import (
 from ask_my_cv.input_guard import InjectionDetector, check_input
 from ask_my_cv.language import detect_language
 from ask_my_cv.llm import LLMError, LLMProvider, TokenUsage, estimate_tokens
-from ask_my_cv.output_guard import check_output
+from ask_my_cv.output_guard import check_output, normalize_refusal
 from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
 from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage, tracer
@@ -345,6 +345,7 @@ async def run_pipeline(
                 )
 
             async with stage("output_guard", emit):
+                answer = normalize_refusal(answer)
                 checked = check_output(
                     answer,
                     canary=canary,
