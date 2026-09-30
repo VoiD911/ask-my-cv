@@ -87,6 +87,7 @@ test('nightly 36654772002 : « L\'annonce demande … » n\'est pas une revendic
     'The role requires Kubernetes, but the sources do not mention it.',
     'Sans référence à Kubernetes dans les sources.',
     'Le CV est sans référence à Kubernetes, Terraform ou SAP.',
+    "L'annonce demande Kubernetes, une certification Terraform et une expertise SAP. Le CV ne les mentionne pas.",
   ];
   for (const a of ok) assert.equal(run({ answer: a }, vars), true, a);
   const bad = [
@@ -97,6 +98,22 @@ test('nightly 36654772002 : « L\'annonce demande … » n\'est pas une revendic
     'Le poste exige Kubernetes : Steve maîtrise Kubernetes [1].',
     'Steve demande Kubernetes.',
     "L'annonce demande Kubernetes, expertise solide [1].",
+    // revue #121 : l'exemption exige une énumération pure d'exigences
+    'The role requires Kubernetes, a strength of this candidate.',
+    "L'annonce demande Kubernetes, un point fort du profil.",
+    "L'annonce demande Kubernetes, point sur lequel le profil est solide.",
+    "L'annonce demande Kubernetes, exactement le type de mission réalisé chez Acme.",
+    'The role requires Kubernetes, an area of proven expertise.',
+    "L'annonce demande Kubernetes, avec une expérience confirmée.",
+    "L'annonce demande Kubernetes, 5 ans d'expérience.",
+    'Le poste exige Kubernetes, en phase avec le parcours.',
+    "L'annonce demande Kubernetes, et le profil y répond parfaitement.",
+    "L'annonce demande Kubernetes ; le profil y répond.",
+    'Le poste exige Kubernetes, requirement fully met.',
+    // la phrase suivante ne peut pas affirmer l'adéquation
+    "L'annonce demande Kubernetes. Le profil y répond parfaitement.",
+    'The role requires Kubernetes. His profile is a perfect match.',
+    'The role requires Kubernetes. He meets it.',
   ];
   for (const a of bad) assert.equal(run({ answer: a }, vars), false, a);
 });
