@@ -7,6 +7,7 @@ import threading
 from collections.abc import AsyncGenerator
 from typing import Any
 
+from ask_my_cv.guardrail import GuardrailResult, guardrail_request, text_units
 from ask_my_cv.llm import Chunk, LLMError, ModelPricing, TokenUsage
 
 
@@ -116,3 +117,30 @@ class BedrockEmbedder:
         if len(vector) != self.dim:
             raise ValueError(f"{self.model_id} : {len(vector)} dimensions au lieu de {self.dim}")
         return [float(v) for v in vector]
+
+
+class BedrockGuardrail:
+    """Garde-fou Bedrock publié (ApplyGuardrail), appelé dans un thread : boto3 est synchrone.
+
+    Le client doit échouer vite (délais courts, sans nouvel essai) : le pipeline borne l'appel
+    par `guardrail_timeout_s` et un thread abandonné doit se libérer peu après.
+    """
+
+    def __init__(self, guardrail_id: str, version: str, client: Any) -> None:
+        self.guardrail_id = guardrail_id
+        self.version = version
+        self.client = client
+
+    async def check(self, text: str) -> GuardrailResult:
+        return await asyncio.to_thread(self._apply, text)
+
+    def _apply(self, text: str) -> GuardrailResult:
+        response = self.client.apply_guardrail(
+            **guardrail_request(self.guardrail_id, self.version, text)
+        )
+        usage = response.get("usage") or {}
+        units = usage.get("contentPolicyUnits")
+        return GuardrailResult(
+            intervened=response.get("action") == "GUARDRAIL_INTERVENED",
+            units=units if isinstance(units, int) and units > 0 else text_units(text),
+        )

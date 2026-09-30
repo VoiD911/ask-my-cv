@@ -44,3 +44,21 @@ def test_dynamodb_client_has_short_timeouts() -> None:
 def test_bedrock_runtime_client_has_a_generous_read_timeout() -> None:
     config = aws_client("bedrock-runtime", aws_settings()).meta.config
     assert (config.connect_timeout, config.read_timeout) == (3, 30)
+
+
+def test_guardrail_is_not_built_without_settings() -> None:
+    from ask_my_cv.container import build_guardrail
+
+    assert build_guardrail(aws_settings()) is None
+
+
+def test_guardrail_is_built_with_a_fast_failing_client() -> None:
+    from ask_my_cv.aws.bedrock import BedrockGuardrail
+    from ask_my_cv.container import build_guardrail
+
+    settings = aws_settings().model_copy(update={"guardrail_id": "g", "guardrail_version": "1"})
+    guardrail = build_guardrail(settings)
+    assert isinstance(guardrail, BedrockGuardrail)
+    config = guardrail.client.meta.config
+    assert (config.connect_timeout, config.read_timeout) == (1, 2)
+    assert config.retries["total_max_attempts"] == 1

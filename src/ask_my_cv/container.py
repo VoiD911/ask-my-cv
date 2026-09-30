@@ -4,6 +4,7 @@ from typing import Any
 
 from ask_my_cv.budget import BudgetLedger, InMemoryLedger
 from ask_my_cv.embeddings import EmbeddingProvider, HashEmbedder
+from ask_my_cv.guardrail import GuardrailChecker
 from ask_my_cv.input_guard import HeuristicDetector, InjectionDetector
 from ask_my_cv.llm import FakeLLM, LLMProvider, ModelPricing, OllamaLLM
 from ask_my_cv.onnx_detector import ModelIntegrityError, OnnxDetector, load_manifest
@@ -19,18 +20,26 @@ from ask_my_cv.vectorstore import InMemoryVectorStore, VectorStore
 # thread de l'executor, d'où l'importance de délais courts. Bedrock lit un flux, la lecture
 # borne l'écart maximal entre deux morceaux plutôt que la durée totale.
 _TIMEOUTS = {"dynamodb": (2, 3), "bedrock-runtime": (3, 30)}
+# Garde-fou : borné à `guardrail_timeout_s` (2 s) par le pipeline, sans nouvel essai ; le thread
+# d'un appel abandonné se libère donc en quelques secondes au plus.
+_GUARDRAIL_TIMEOUTS = (1, 2)
 
 
-def aws_client(service: str, settings: Settings) -> Any:
+def aws_client(
+    service: str,
+    settings: Settings,
+    timeouts: tuple[int, int] | None = None,
+    retries: dict[str, Any] | None = None,
+) -> Any:
     import boto3
     from botocore.config import Config
 
-    connect, read = _TIMEOUTS.get(service, (3, 30))
+    connect, read = timeouts or _TIMEOUTS.get(service, (3, 30))
     return boto3.client(
         service,
         region_name=settings.aws_region,
         config=Config(
-            retries={"mode": "standard", "max_attempts": 3},
+            retries=retries or {"mode": "standard", "max_attempts": 3},
             connect_timeout=connect,
             read_timeout=read,
         ),
@@ -102,6 +111,20 @@ def build_detector(settings: Settings) -> InjectionDetector:
     )
 
 
+def build_guardrail(settings: Settings) -> GuardrailChecker | None:
+    if settings.guardrail_id is None or settings.guardrail_version is None:
+        return None
+    from ask_my_cv.aws.bedrock import BedrockGuardrail
+
+    client = aws_client(
+        "bedrock-runtime",
+        settings,
+        timeouts=_GUARDRAIL_TIMEOUTS,
+        retries={"mode": "standard", "total_max_attempts": 1},  # un seul essai
+    )
+    return BedrockGuardrail(settings.guardrail_id, settings.guardrail_version, client)
+
+
 def build_deps(settings: Settings) -> Deps:
     return Deps(
         embedder=build_embedder(settings),
@@ -111,4 +134,5 @@ def build_deps(settings: Settings) -> Deps:
         template=load_template(settings.prompt_path),
         providers={m.id: build_provider(m, settings) for m in settings.models},
         settings=settings,
+        guardrail=build_guardrail(settings),
     )

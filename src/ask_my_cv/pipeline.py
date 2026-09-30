@@ -12,6 +12,14 @@ from dataclasses import dataclass
 from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
 from ask_my_cv.events import Answer, Done, LLMProgress
+from ask_my_cv.guardrail import (
+    GUARDRAIL_PROVIDER_ID,
+    USD_PER_UNIT,
+    GuardrailChecker,
+    GuardrailStatus,
+    is_ad_like,
+    text_units,
+)
 from ask_my_cv.input_guard import InjectionDetector, check_input
 from ask_my_cv.language import detect_language
 from ask_my_cv.llm import LLMError, LLMProvider, TokenUsage, estimate_tokens
@@ -53,6 +61,8 @@ class Deps:
     template: PromptTemplate
     providers: dict[str, LLMProvider]
     settings: Settings
+    # second avis sur les annonces collées ; None : classifieur seul (local, CI, non configuré)
+    guardrail: GuardrailChecker | None = None
 
 
 def _provider_chain(model_id: str, deps: Deps) -> list[LLMProvider]:
@@ -139,6 +149,38 @@ async def _stream_llm(
     raise LLMError(f"tous les fournisseurs ont échoué : {failed}")
 
 
+async def _second_opinion(
+    question: str,
+    deps: Deps,
+    recorder: StageRecorder,
+    record_spend: Callable[[str, float], None],
+) -> GuardrailStatus:
+    """Garde-fou Bedrock sur une annonce que le classifieur laisse passer.
+
+    Échec ouvert (voir `ask_my_cv.guardrail`) : délai dépassé ou erreur renvoient `error` et la
+    décision du classifieur s'applique. Les unités sont facturées même en cas d'échec (estimation :
+    la requête a pu être traitée), au poste du garde-fou, dans le même plafond journalier.
+    """
+    settings = deps.settings
+    if deps.guardrail is None or not is_ad_like(question, settings.guardrail_min_chars):
+        return "skipped"
+    units = text_units(question)
+    try:
+        async with asyncio.timeout(settings.guardrail_timeout_s):
+            result = await deps.guardrail.check(question)
+        units = result.units
+        status: GuardrailStatus = "block" if result.intervened else "pass"
+    except Exception as exc:
+        # jamais le texte : seulement le type d'erreur
+        logger.warning("guardrail_status=error error=%s", type(exc).__name__)
+        recorder.set(guardrail_error=type(exc).__name__)
+        status = "error"
+    cost = units * USD_PER_UNIT
+    record_spend(GUARDRAIL_PROVIDER_ID, cost)
+    recorder.set(guardrail_units=units, guardrail_cost_usd=round(cost, 6))
+    return status
+
+
 async def run_pipeline(
     question: str,
     model_id: str,
@@ -159,6 +201,17 @@ async def run_pipeline(
     answer = ""
     # écritures du registre en cours dans l'executor : référence forte jusqu'à leur fin
     pending: set[asyncio.Future[None]] = set()
+
+    def record_spend(provider_id: str, cost: float) -> None:
+        """Écrit la dépense hors de la boucle, sans attendre (aussi pendant une annulation)."""
+        future = asyncio.get_running_loop().run_in_executor(
+            None, deps.ledger.record, provider_id, cost, now()
+        )
+        pending.add(future)
+        future.add_done_callback(pending.discard)
+        future.add_done_callback(_log_record_failure)
+        usage.cost_usd += cost
+
     with tracer.start_as_current_span("ask") as root:
         root.set_attribute(
             "langfuse.observation.input",
@@ -200,7 +253,13 @@ async def run_pipeline(
                 verdict = check_input(deps.detector, question, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
                 if verdict.blocked:
+                    # le classifieur suffit : pas d'appel payant au garde-fou
+                    st.set(guardrail="skipped")
                     raise StageBlocked("injection_detected")
+                status = await _second_opinion(question, deps, st, record_spend)
+                st.set(guardrail=status)
+                if status == "block":
+                    raise StageBlocked("injection_detected", blocked_by="guardrail")
 
             async with stage("embedding", emit) as st:
                 async with asyncio.timeout(settings.stage_timeout_s):
@@ -221,7 +280,6 @@ async def run_pipeline(
                 st.set(template=f"{deps.template.name}@{deps.template.version}", language=language)
 
             async with stage("llm", emit) as st:
-                loop = asyncio.get_running_loop()
 
                 def account(provider: LLMProvider, text: str, reported: TokenUsage | None) -> None:
                     if reported is not None:
@@ -233,17 +291,9 @@ async def run_pipeline(
                         tokens_in = estimate_tokens(system + user)
                         tokens_out = estimate_tokens(text) if text else 0
                         st.set(usage_source="estimated", stop_reason="")
-                    cost = provider.pricing.cost(tokens_in, tokens_out)
-                    # hors de la boucle, sans attendre : appelé aussi pendant une annulation
-                    future = loop.run_in_executor(
-                        None, deps.ledger.record, provider.id, cost, now()
-                    )
-                    pending.add(future)
-                    future.add_done_callback(pending.discard)
-                    future.add_done_callback(_log_record_failure)
+                    record_spend(provider.id, provider.pricing.cost(tokens_in, tokens_out))
                     usage.tokens_in += tokens_in
                     usage.tokens_out += tokens_out
-                    usage.cost_usd += cost
 
                 chain = _provider_chain(model_id, deps)
                 provider, answer, reported = await _stream_llm(

@@ -649,3 +649,139 @@ async def test_evaluation_still_respects_the_daily_spend_cap(make_deps) -> None:
     )
     assert ends(events)[-1] == ("quota", "blocked")
     assert done(events).answer_override == BLOCK_MESSAGES["budget_exceeded"]
+
+
+# --- second avis du garde-fou Bedrock sur les annonces collées (#118) ---
+
+LONG_AD = (
+    "Architecte de solutions IA, coopérative financière. Vous concevrez des agents d'IA "
+    "générative, leurs garde-fous et leurs pipelines de déploiement sur AWS. "
+) * 4
+
+
+class ScoreDetector:
+    version = "fixed"
+
+    def __init__(self, value: float) -> None:
+        self.value = value
+
+    def score(self, text: str) -> float:
+        return self.value
+
+
+def with_guardrail(make_deps, guardrail, score: float = 0.1, **overrides):
+    deps = make_deps(detector=ScoreDetector(score), **overrides)
+    deps.guardrail = guardrail
+    return deps
+
+
+def injection_attrs(events: list[Event]) -> dict:
+    return next(e.attrs for e in events if isinstance(e, StageEnd) and e.name == "injection")
+
+
+async def test_guardrail_intervention_blocks_like_the_classifier(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    llm = FakeLLM(id="fake:echo")
+    guardrail = FakeGuardrail(intervene=True)
+    deps = with_guardrail(make_deps, guardrail, providers={"fake:echo": llm})
+    events = await run(deps, question=LONG_AD)
+    assert ends(events)[-1] == ("injection", "blocked")
+    assert done(events).answer_override == BLOCK_MESSAGES["injection_detected"]
+    assert llm.calls == 0 and guardrail.calls == 1
+    assert injection_attrs(events)["guardrail"] == "block"
+
+
+async def test_guardrail_pass_lets_the_ad_through(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail(intervene=False)
+    events = await run(with_guardrail(make_deps, guardrail), question=LONG_AD)
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    assert injection_attrs(events)["guardrail"] == "pass"
+
+
+async def test_classifier_block_skips_the_paid_guardrail(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail(intervene=False)
+    events = await run(with_guardrail(make_deps, guardrail, score=0.9), question=LONG_AD)
+    assert ends(events)[-1] == ("injection", "blocked")
+    assert guardrail.calls == 0
+    assert injection_attrs(events)["guardrail"] == "skipped"
+
+
+async def test_short_questions_keep_the_classifier_alone(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail(intervene=True)
+    events = await run(with_guardrail(make_deps, guardrail))
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    assert guardrail.calls == 0
+    assert injection_attrs(events)["guardrail"] == "skipped"
+
+
+async def test_without_guardrail_configured_the_status_is_skipped(make_deps) -> None:
+    events = await run(make_deps(detector=ScoreDetector(0.1)), question=LONG_AD)
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    assert injection_attrs(events)["guardrail"] == "skipped"
+
+
+async def test_guardrail_error_fails_open_to_the_classifier(make_deps, caplog) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail(error=RuntimeError("secret-detail"))
+    with caplog.at_level("WARNING"):
+        events = await run(with_guardrail(make_deps, guardrail), question=LONG_AD)
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    assert injection_attrs(events)["guardrail"] == "error"
+    assert "guardrail_status=error" in caplog.text
+    assert "RuntimeError" in caplog.text
+    assert LONG_AD[:30] not in caplog.text
+
+
+async def test_guardrail_timeout_fails_open(make_deps) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    guardrail = FakeGuardrail(delay_s=5.0)
+    deps = with_guardrail(make_deps, guardrail, guardrail_timeout_s=0.05)
+    started = time.perf_counter()
+    events = await run(deps, question=LONG_AD)
+    assert time.perf_counter() - started < 2.0
+    assert ends(events) == [(name, "ok") for name in STAGES]
+    assert injection_attrs(events)["guardrail"] == "error"
+
+
+async def test_guardrail_cost_is_recorded_and_counted_in_the_daily_spend(make_deps) -> None:
+    from ask_my_cv.guardrail import GUARDRAIL_PROVIDER_ID, USD_PER_UNIT, FakeGuardrail
+
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=100, window_s=3600)
+    deps = with_guardrail(make_deps, FakeGuardrail(intervene=True), ledger=ledger)
+    events = await run(deps, question=LONG_AD)
+    by_provider = ledger.spent_by_provider(time.time())
+    assert by_provider == {GUARDRAIL_PROVIDER_ID: pytest.approx(USD_PER_UNIT)}
+    assert ledger.spent_today(time.time()) == pytest.approx(USD_PER_UNIT)
+    assert done(events).cost_usd == pytest.approx(round(USD_PER_UNIT, 6))
+    attrs = injection_attrs(events)
+    assert attrs["guardrail_units"] == 1
+
+
+async def test_guardrail_timeout_still_bills_the_estimate(make_deps) -> None:
+    from ask_my_cv.guardrail import GUARDRAIL_PROVIDER_ID, FakeGuardrail
+
+    ledger = InMemoryLedger(daily_cap_usd=1.0, per_visitor_limit=100, window_s=3600)
+    deps = with_guardrail(
+        make_deps, FakeGuardrail(delay_s=5.0), ledger=ledger, guardrail_timeout_s=0.05
+    )
+    await run(deps, question=LONG_AD)
+    assert GUARDRAIL_PROVIDER_ID in ledger.spent_by_provider(time.time())
+
+
+async def test_guardrail_span_never_carries_the_text(make_deps, spans) -> None:
+    from ask_my_cv.guardrail import FakeGuardrail
+
+    await run(with_guardrail(make_deps, FakeGuardrail(intervene=False)), question=LONG_AD)
+    span = next(s for s in spans.get_finished_spans() if s.name == "injection")
+    attrs = dict(span.attributes or {})
+    assert attrs["xops.guardrail"] == "pass"
+    assert all(LONG_AD[:30] not in str(v) for v in attrs.values())

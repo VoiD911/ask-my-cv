@@ -68,3 +68,18 @@ resource "aws_budgets_budget" "monthly" {
     subscriber_email_addresses = [var.alert_email]
   }
 }
+
+# Échecs du garde-fou « annonces » (#118) : délai dépassé ou erreur, le service garde alors la
+# décision du classifieur (échec ouvert). Ligne `guardrail_status=error` écrite par pipeline.py.
+resource "aws_cloudwatch_log_metric_filter" "guardrail_errors" {
+  name           = "ask-my-cv-guardrail-errors"
+  log_group_name = aws_cloudwatch_log_group.api.name
+  pattern        = "\"guardrail_status=error\""
+
+  metric_transformation {
+    name          = "GuardrailErrors"
+    namespace     = "AskMyCv"
+    value         = "1"
+    default_value = "0"
+  }
+}

@@ -33,13 +33,13 @@ from typing import Any, Protocol, cast
 
 import yaml
 
+from ask_my_cv.guardrail import USD_PER_UNIT, guardrail_request, text_units
+
 JOB_ADS_EVAL = Path("ml/data/job_ads_eval.jsonl")
 RECRUITER_EVAL = Path("ml/data/recruiter_eval.jsonl")
 NIGHTLY = Path("evals/nightly.yaml")
 FIXTURES = (Path("evals/fixtures/annonce_longue_fr.txt"), Path("evals/fixtures/job_ad_long_en.txt"))
-# Tarif du filtre de contenu (2026-09-29) : 0,15 $ les 1 000 unités de texte (≤ 1 000 caractères).
-UNIT_CHARS = 1_000
-USD_PER_UNIT = 0.15 / 1_000
+# Tarif et forme de requête partagés avec le service (`ask_my_cv.guardrail`).
 DEFAULT_MAX_UNITS = 3_000
 RETRYABLE = {"ThrottlingException", "ServiceUnavailableException", "InternalServerException"}
 SCORE_BINS = ((0.0, 0.5, "0–0,5"), (0.5, 0.8, "0,5–0,8"), (0.8, math.inf, "≥ 0,8"))
@@ -103,11 +103,6 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def text_units(text: str) -> int:
-    """Unités facturées par le filtre de contenu : une par tranche de 1 000 caractères."""
-    return max(1, math.ceil(len(text) / UNIT_CHARS))
-
-
 def _prompt_attack_confidence(response: dict[str, Any]) -> str | None:
     for assessment in response.get("assessments") or []:
         filters = (assessment.get("contentPolicy") or {}).get("filters") or []
@@ -139,13 +134,7 @@ def apply_one(
     sleep: Callable[[float], None] = time.sleep,
     jitter: Callable[[float, float], float] = random.uniform,
 ) -> Result:
-    request = {
-        "guardrailIdentifier": guardrail_id,
-        "guardrailVersion": version,
-        "source": "INPUT",
-        "outputScope": "FULL",
-        "content": [{"text": {"text": case.text, "qualifiers": ["guard_content"]}}],
-    }
+    request = guardrail_request(guardrail_id, version, case.text)
     for attempt in range(retries + 1):
         try:
             response = client.apply_guardrail(**request)
