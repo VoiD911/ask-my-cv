@@ -45,7 +45,12 @@
  *                 contient ni sujet d'attribution, ni reprise, ni verbe de revendication, ni
  *                 citation. Dès qu'une compétence absente est nommée, aucune proposition ne
  *                 peut affirmer l'adéquation (« le profil y répond », « he meets it ») ni
- *                 associer le profil / parcours / candidat à une revendication.
+ *                 associer le profil / parcours / candidat à une revendication. Après une
+ *                 exigence reformulée qui nomme une compétence absente, la phrase suivante et
+ *                 toute proposition qui y renvoie (« ce besoin », « cela », « this ») ne
+ *                 peuvent contenir ni mot d'adéquation (correspond, remplie, point fort,
+ *                 match, qualified…) ni sujet + revendication, sauf absence explicite ;
+ *                 ailleurs, « Steve correspond bien à ce besoin d'architecte » reste admis.
  *                 Les citations [n] sont admises dans une proposition d'absence (elles
  *                 renvoient aux sections du CV consultées). Dès qu'une compétence absente
  *                 est nommée, aucune autre proposition ne combine reprise (pronom, « cet
@@ -354,18 +359,38 @@ function impureAbsence(clause) {
 
 /** Raison de l'échec pour les compétences absentes, ou null. */
 function skillViolation(answer, skills) {
-  const clauses = sentencesOf(answer).flatMap(clausesOf);
+  const located = sentencesOf(answer).flatMap((sentence, s) => clausesOf(sentence).map((clause) => ({ s, clause })));
+  const clauses = located.map(({ clause }) => clause);
   let named = false;
-  for (const clause of clauses) {
+  let restatedIn = -1; // phrase où une exigence nommant une compétence absente est reformulée
+  for (const { s, clause } of located) {
     const lower = clause.toLowerCase();
-    const skill = skills.find((s) => lower.includes(s.toLowerCase()));
+    const skill = skills.find((sk) => lower.includes(sk.toLowerCase()));
     if (!skill) continue;
     named = true;
-    if (restatesRequirement(clause)) continue;
+    if (restatesRequirement(clause)) {
+      if (restatedIn < 0) restatedIn = s;
+      continue;
+    }
     const why = impureAbsence(clause);
     if (why) return `${skill} : ${why} dans « ${clause} »`;
   }
   if (!named) return null;
+  // après une exigence reformulée : la phrase suivante, et toute proposition ultérieure qui
+  // renvoie à l'exigence (« ce besoin », « cela », « this »), ne peuvent pas affirmer
+  // l'adéquation, sauf absence explicite dans la proposition. Portée limitée : ailleurs,
+  // « Steve correspond bien à ce besoin d'architecte » reste une réponse honnête.
+  if (restatedIn >= 0) {
+    for (const { s, clause } of located) {
+      if (s <= restatedIn) continue;
+      const inScope = s === restatedIn + 1 || REQUIREMENT_ANAPHOR.test(clause);
+      if (!inScope || negationSpans(clause).length > 0) continue;
+      const subjectClaim = has(ATTRIBUTION_SUBJECT, clause) && positiveClaim(clause, []);
+      if (FIT_AFTER_REQUIREMENT.test(clause) || subjectClaim) {
+        return `adéquation affirmée après l'exigence reformulée dans « ${clause} »`;
+      }
+    }
+  }
   // ailleurs : aucune reprise (pronom, « cet outil ») associée à une revendication ; les
   // reprises anglaises faibles ne comptent que juste après une mention de la compétence
   for (const [i, clause] of clauses.entries()) {
@@ -386,6 +411,18 @@ function skillViolation(answer, skills) {
   return null;
 }
 
+const REQUIREMENT_ANAPHOR = words(
+  `ce besoin|ces besoins|cette exigence|ces exigences|ce critère|cela|ceci|ça|c${APOS}est|il s${APOS}agit|this|that|these|it`,
+);
+const FIT_AFTER_REQUIREMENT = words(
+  [
+    'correspond', 'correspondent', 'répond', 'répondent', 'convient', 'conviennent', 'rempli', 'remplie',
+    'remplis', 'remplies', 'satisfait', 'adéquat', 'adéquate', 'adéquation', 'rapprochement', 'point fort',
+    'atout', 'idéal', 'idéale', 'excellent', 'excellente', 'parfait', 'parfaite', 'qualifié', 'qualifiée',
+    'match', 'matches', 'matched', 'fit', 'fits', 'suits', 'suited', 'qualified', 'great', 'excellent',
+    'ideal', 'perfect', 'strength', 'meets', 'met',
+  ].join('|'),
+);
 const FIT_MARKER = new RegExp(
   `(?<!${L})(?:y|en|lui|leur)\\s+(?:répond|répondent|correspond|correspondent|satisfait|satisfont)(?!${L})|` +
     `(?<!${L})(?:y\\s+)?(?:couvre|couvrent)\\s+(?:ce|cette|ces|cet|l${APOS}|le|la|les)?\\s*(?:besoin|exigence|critère|point)s?(?!${L})|` +
