@@ -72,6 +72,17 @@ describe("page Architecture", () => {
     for (const j of ci.jobs) expect(container.querySelector(`[data-job="${j.id}"]`)).not.toBeNull();
   });
 
+  it("sigles définis (SSE, OIDC, SLSA…) reliés au glossaire de la page", () => {
+    render(<Architecture />);
+    expect(screen.getByRole("heading", { level: 2, name: "Glossaire" })).toBeInTheDocument();
+    for (const k of ["SSE", "OIDC", "SLSA", "SBOM", "PSI", "ONNX"]) {
+      const link = screen.getAllByRole("link", { name: k })[0]!;
+      expect(link.getAttribute("href")).toMatch(/^#glossaire-/);
+      expect(document.querySelector(link.getAttribute("href")!)).not.toBeNull();
+    }
+    expect(screen.queryByText(/\[\[/)).toBeNull();
+  });
+
   it("les liens de source pointent vers le dépôt public", () => {
     render(<Architecture />);
     const links = screen.getAllByRole("link").filter((a) => a.getAttribute("href")?.startsWith("https://"));

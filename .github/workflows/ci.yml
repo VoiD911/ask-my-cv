@@ -209,10 +209,14 @@ jobs:
       # doit correspondre aux sources, sinon la page décrirait une architecture périmée.
       - name: Données de la page Architecture à jour
         run: node web/scripts/sync-architecture.mjs --check
+      # Données de /xops : chaque preuve citée (fichier, job, étape, ressource) doit exister et
+      # le JSON commité correspondre aux sources (version du modèle, identités de signature...).
+      - name: Données de la page XOps à jour
+        run: node web/scripts/sync-xops.mjs --check
       - run: npm --prefix web run lint
       - run: npm --prefix web run typecheck
       - run: npm --prefix web test -- --run
-      - name: Tests des scripts de build (CSP, données Architecture)
+      - name: Tests des scripts de build (CSP, données Architecture et XOps)
         run: node --test web/scripts/*.test.mjs
       # build = next build puis scripts/csp.mjs, qui insère la meta CSP (hashes des scripts en ligne) dans web/out.
       - run: npm --prefix web run build

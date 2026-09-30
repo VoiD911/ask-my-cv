@@ -357,10 +357,11 @@
           "steps": [
             "npm ci --prefix web --ignore-scripts --no-audit --no-fund",
             "Données de la page Architecture à jour",
+            "Données de la page XOps à jour",
             "npm --prefix web run lint",
             "npm --prefix web run typecheck",
             "npm --prefix web test -- --run",
-            "Tests des scripts de build (CSP, données Architecture)",
+            "Tests des scripts de build (CSP, données Architecture et XOps)",
             "npm --prefix web run build",
             "Meta CSP présente dans chaque page",
             "Chrome préinstallé (garde-fou anti-téléchargement)",

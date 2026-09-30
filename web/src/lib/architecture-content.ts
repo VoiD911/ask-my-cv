@@ -12,7 +12,7 @@ export const page = {
     "Comment « Interroge mon CV » est construit, vérifié, déployé et surveillé : chemin d'une requête, infrastructure AWS, chaîne CI/CD et cycle de vie du modèle.",
   eyebrow: "Vue d'ensemble · schémas générés depuis le code",
   heading: "Architecture",
-  lede: "Quatre schémas pour comprendre en quelques minutes comment une question devient une réponse, sur quelle infrastructure, avec quelles vérifications avant la mise en production, et comment le modèle de sécurité est entraîné puis surveillé.",
+  lede: "Quatre schémas pour comprendre en quelques minutes comment une question devient une réponse ([[RAG]]), sur quelle infrastructure, avec quelles vérifications avant la mise en production, et comment le modèle de sécurité est entraîné puis surveillé.",
   generated:
     "Chaque schéma est régénéré à chaque build depuis les fichiers du dépôt (workflows, Terraform, pipeline Python) ; la CI refuse une page qui ne correspond plus au code.",
   tocLabel: "Sommaire de la page",
@@ -36,8 +36,8 @@ export const request = {
   id: "requete",
   title: "Chemin d'une requête",
   paragraphs: [
-    "Le site est un export statique servi par CloudFront ; la même distribution relaie les appels /api/* vers une fonction Lambda. La Lambda exécute une API FastAPI grâce au Lambda Web Adapter, en mode flux : la réponse part vers le navigateur au fil de l'eau (Server-Sent Events).",
-    "Chaque question traverse les étapes ci-dessous, dans cet ordre. Les portes de sécurité passent avant tout appel payant : si le quota est dépassé ou si le classifieur d'injection bloque, rien n'est envoyé au LLM.",
+    "Le site est un export statique servi par CloudFront ; la même distribution relaie les appels /api/* vers une fonction Lambda. La Lambda exécute une API FastAPI grâce au Lambda Web Adapter, en mode flux : la réponse part vers le navigateur au fil de l'eau ([[SSE]]).",
+    "Chaque question traverse les étapes ci-dessous, dans cet ordre. Les portes de sécurité passent avant tout appel payant : si le quota est dépassé ou si le classifieur d'injection bloque, rien n'est envoyé au [[LLM]].",
     "Chaque étape émet un événement de début et de fin ; c'est ce flux qui anime le circuit en direct sur la page d'accueil. Les coûts sont enregistrés dans un registre DynamoDB qui fait respecter un plafond de dépense quotidien.",
   ],
   edgeIn: [
@@ -78,8 +78,8 @@ export const infra = {
   id: "infrastructure",
   title: "Infrastructure",
   paragraphs: [
-    "Toute l'infrastructure AWS est décrite en Terraform, en deux couches : un socle (état Terraform, identité OIDC pour GitHub Actions, rôles de déploiement) et la production (CDN, Lambda, données, garde-fou, observabilité).",
-    "Aucune clé d'accès longue durée : GitHub obtient des identifiants temporaires par OIDC, avec un rôle distinct pour le déploiement et pour les tests de nuit. Le bucket du site n'est lisible que par CloudFront.",
+    "Toute l'infrastructure AWS est décrite en Terraform ([[IaC]]), en deux couches : un socle (état Terraform, identité OIDC pour GitHub Actions, rôles de déploiement) et la production (CDN, Lambda, données, garde-fou, observabilité).",
+    "Aucune clé d'accès longue durée : GitHub obtient des identifiants temporaires par [[OIDC]], avec un rôle distinct pour le déploiement et pour les tests de nuit. Le bucket du site n'est lisible que par CloudFront.",
     "Les ressources sont regroupées ci-dessous par rôle. Un budget mensuel et des alarmes CloudWatch préviennent par courriel en cas de dérive des coûts ou d'erreurs du garde-fou.",
   ],
   alt: (groups: { label: string; count: number }[]) =>
@@ -119,8 +119,8 @@ export const delivery = {
   id: "livraison-continue",
   title: "Du code à la production",
   paragraphs: [
-    "Chaque pull request passe par cinq jobs en parallèle : scanners de sécurité, tests Python et image Docker, évaluations du LLM et parcours navigateur, site web (tests, CSP, Lighthouse) et Terraform. Le déploiement n'attend rien d'autre que leur succès à tous.",
-    "Sur main, l'image est construite, signée avec Sigstore (cosign, sans clé), accompagnée d'une provenance SLSA et d'un SBOM, puis vérifiée avant d'être déployée par son digest : c'est exactement l'image testée qui part en production.",
+    "En [[CI/CD]], chaque pull request passe par cinq jobs en parallèle : scanners de sécurité, tests Python et image Docker, évaluations du LLM et parcours navigateur, site web (tests, CSP, Lighthouse) et Terraform. Le déploiement n'attend rien d'autre que leur succès à tous.",
+    "Sur main, l'image est reconstruite, signée avec Sigstore ([[cosign]], sans clé), accompagnée d'une provenance [[SLSA]] et d'un [[SBOM]], puis vérifiée avant d'être déployée par son digest : signature, SBOM et provenance visent ce digest exact.",
     "Un test de fumée interroge ensuite la production ; s'il échoue, la version précédente est restaurée automatiquement. D'autres workflows tournent à côté : la red team de nuit, l'entraînement du modèle et un miroir d'image.",
   ],
   stepsLabel: (id: string) => `Étapes du job ${id}`,
@@ -140,9 +140,9 @@ export const lifecycle = {
   id: "cycle-du-modele",
   title: "Cycle de vie du modèle",
   paragraphs: [
-    "Le détecteur d'injection est un petit modèle entraîné pour ce projet. Le workflow train génère des annonces d'entraînement à partir d'une graine versionnée, entraîne, puis applique une porte d'évaluation : seuils de rappel et de faux positifs définis dans gates.yaml.",
+    "Le détecteur d'injection est un petit modèle [[ONNX]] entraîné pour ce projet. Le workflow train génère des annonces d'entraînement à partir d'une graine versionnée, entraîne, puis applique une porte d'évaluation : seuils de rappel et de faux positifs définis dans gates.yaml.",
     "Le modèle retenu est signé (Sigstore) et publié en release. Il n'est utilisé qu'une fois promu dans models/prod.json, par une pull request relue ; la CI et le déploiement vérifient son empreinte et sa signature.",
-    "En production, un job de nuit mesure la dérive de ses scores. Côté LLM, les prompts sont versionnés, chaque pull request est évaluée avec promptfoo, et une red team nocturne attaque la production, notée par un juge LLM.",
+    "En production, un job de nuit mesure la dérive de ses scores ([[PSI]]). Côté [[LLM]], les prompts sont versionnés, chaque pull request est évaluée avec promptfoo, et une red team nocturne attaque la production, notée par un juge LLM.",
   ],
   classifierTitle: "Classifieur d'injection (ONNX)",
   llmTitle: "LLM et prompts",

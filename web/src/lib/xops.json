@@ -1,0 +1,226 @@
+{
+  "version": 1,
+  "repository": "VoiD911/ask-my-cv",
+  "site": "https://job.stevelang.net",
+  "image": "ghcr.io/void911/ask-my-cv",
+  "model": {
+    "version": "v1.4.0",
+    "tag": "model-v1.4.0",
+    "assets": [
+      "model.onnx",
+      "model.onnx.sigstore.json",
+      "metrics.json",
+      "model_card.md"
+    ]
+  },
+  "signing": {
+    "issuer": "https://token.actions.githubusercontent.com",
+    "modelIdentity": "https://github.com/VoiD911/ask-my-cv/.github/workflows/train.yml@refs/heads/main",
+    "imageIdentity": "https://github.com/VoiD911/ask-my-cv/.github/workflows/ci.yml@refs/heads/main",
+    "signerWorkflow": "VoiD911/ask-my-cv/.github/workflows/ci.yml",
+    "sbomType": "cyclonedx",
+    "sbomPredicate": "https://cyclonedx.org/bom"
+  },
+  "prompts": {
+    "current": "v7",
+    "versions": [
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+      "v7"
+    ]
+  },
+  "production": {
+    "dailyCapUsd": 0.5,
+    "perVisitorLimit": 10,
+    "visitorWindowS": 3600,
+    "fallbackChain": [
+      "bedrock:haiku-4.5"
+    ],
+    "tracing": [
+      "cloudwatch",
+      "langfuse"
+    ]
+  },
+  "budget": {
+    "monthlyUsdDefault": 15
+  },
+  "dependabot": [
+    "github-actions",
+    "uv",
+    "docker",
+    "npm"
+  ],
+  "paths": {
+    ".github/dependabot.yml": "file",
+    ".github/workflows/ci.yml": "file",
+    ".github/workflows/mirror.yml": "file",
+    ".github/workflows/nightly.yml": "file",
+    ".github/workflows/train.yml": "file",
+    ".trivyignore.yaml": "file",
+    "Dockerfile": "file",
+    "docs/journal": "dir",
+    "docs/plans/2026-09-26-ask-my-cv-1e-2a-public-proofs.md": "file",
+    "evals/judge.js": "file",
+    "evals/nightly.yaml": "file",
+    "evals/pr.yaml": "file",
+    "infra/bootstrap/main.tf": "file",
+    "infra/prod": "dir",
+    "infra/prod/cdn.tf": "file",
+    "infra/prod/data.tf": "file",
+    "infra/prod/guardrail.tf": "file",
+    "infra/prod/lambda.tf": "file",
+    "infra/prod/observability.tf": "file",
+    "infra/scripts/smoke_prod.py": "file",
+    "ml/compare.py": "file",
+    "ml/drift.py": "file",
+    "ml/gates.yaml": "file",
+    "ml/job_ads.py": "file",
+    "ml/train.py": "file",
+    "models/prod.json": "file",
+    "prompts": "dir",
+    "src/ask_my_cv/app.py": "file",
+    "src/ask_my_cv/budget.py": "file",
+    "src/ask_my_cv/guardrail.py": "file",
+    "src/ask_my_cv/onnx_detector.py": "file",
+    "src/ask_my_cv/output_guard.py": "file",
+    "src/ask_my_cv/pipeline.py": "file",
+    "src/ask_my_cv/stages.py": "file",
+    "src/ask_my_cv/telemetry.py": "file",
+    "web/e2e/csp.spec.ts": "file",
+    "web/scripts/csp.mjs": "file"
+  },
+  "anchors": {
+    "job:ci.yml:deploy": {
+      "path": ".github/workflows/ci.yml",
+      "line": 290
+    },
+    "job:ci.yml:terraform": {
+      "path": ".github/workflows/ci.yml",
+      "line": 274
+    },
+    "job:nightly.yml:drift": {
+      "path": ".github/workflows/nightly.yml",
+      "line": 74
+    },
+    "job:nightly.yml:redteam": {
+      "path": ".github/workflows/nightly.yml",
+      "line": 18
+    },
+    "step:ci.yml:deploy:Déployer (par digest)": {
+      "path": ".github/workflows/ci.yml",
+      "line": 496
+    },
+    "step:ci.yml:deploy:Retour arrière": {
+      "path": ".github/workflows/ci.yml",
+      "line": 551
+    },
+    "step:ci.yml:deploy:Vérifier signature et attestation": {
+      "path": ".github/workflows/ci.yml",
+      "line": 481
+    },
+    "step:ci.yml:evals:Suite promptfoo": {
+      "path": ".github/workflows/ci.yml",
+      "line": 157
+    },
+    "step:ci.yml:security:gitleaks": {
+      "path": ".github/workflows/ci.yml",
+      "line": 22
+    },
+    "step:ci.yml:security:osv-scanner": {
+      "path": ".github/workflows/ci.yml",
+      "line": 29
+    },
+    "step:ci.yml:security:semgrep": {
+      "path": ".github/workflows/ci.yml",
+      "line": 24
+    },
+    "step:ci.yml:security:trivy config": {
+      "path": ".github/workflows/ci.yml",
+      "line": 34
+    },
+    "step:ci.yml:test:Scan de l'image": {
+      "path": ".github/workflows/ci.yml",
+      "line": 77
+    },
+    "step:ci.yml:test:Vérifier la signature du modèle": {
+      "path": ".github/workflows/ci.yml",
+      "line": 63
+    },
+    "step:train.yml:train:branche autre que main": {
+      "path": ".github/workflows/train.yml",
+      "line": 21
+    },
+    "text:infra/prod/data.tf#PAY_PER_REQUEST": {
+      "path": "infra/prod/data.tf",
+      "line": 5
+    },
+    "text:infra/prod/variables.tf#monthly_budget_usd": {
+      "path": "infra/prod/variables.tf",
+      "line": 16
+    },
+    "text:settings.aws.yaml#daily_cap_usd:": {
+      "path": "settings.aws.yaml",
+      "line": 29
+    },
+    "text:settings.aws.yaml#fallback_chain:": {
+      "path": "settings.aws.yaml",
+      "line": 19
+    },
+    "text:settings.aws.yaml#input_per_mtok:": {
+      "path": "settings.aws.yaml",
+      "line": 25
+    },
+    "text:settings.aws.yaml#prompt_path:": {
+      "path": "settings.aws.yaml",
+      "line": 7
+    },
+    "text:settings.aws.yaml#tracing:": {
+      "path": "settings.aws.yaml",
+      "line": 17
+    },
+    "text:src/ask_my_cv/aws/dynamo.py#class DynamoLedger": {
+      "path": "src/ask_my_cv/aws/dynamo.py",
+      "line": 68
+    },
+    "text:src/ask_my_cv/llm.py#input_per_mtok": {
+      "path": "src/ask_my_cv/llm.py",
+      "line": 17
+    },
+    "text:src/ask_my_cv/onnx_detector.py#class ModelIntegrityError": {
+      "path": "src/ask_my_cv/onnx_detector.py",
+      "line": 25
+    },
+    "text:src/ask_my_cv/pipeline.py#tous les fournisseurs ont échoué": {
+      "path": "src/ask_my_cv/pipeline.py",
+      "line": 158
+    },
+    "tf:aws_budgets_budget.monthly": {
+      "path": "infra/prod/observability.tf",
+      "line": 33
+    },
+    "tf:aws_cloudwatch_metric_alarm.guardrail_errors": {
+      "path": "infra/prod/observability.tf",
+      "line": 197
+    },
+    "tf:aws_ecr_lifecycle_policy.api": {
+      "path": "infra/bootstrap/main.tf",
+      "line": 125
+    },
+    "tf:aws_iam_openid_connect_provider.github": {
+      "path": "infra/bootstrap/main.tf",
+      "line": 147
+    },
+    "tf:aws_iam_role.deploy": {
+      "path": "infra/bootstrap/main.tf",
+      "line": 182
+    },
+    "tf:aws_iam_role.nightly": {
+      "path": "infra/bootstrap/main.tf",
+      "line": 234
+    }
+  }
+}

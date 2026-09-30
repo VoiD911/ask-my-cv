@@ -4,6 +4,7 @@ const ITEMS = [
   { href: "/", label: "Démo" },
   { href: "/livraison/", label: "Livraison" },
   { href: "/architecture/", label: "Architecture" },
+  { href: "/xops/", label: "XOps" },
 ] as const;
 
 export function SiteNav({ current }: { current: (typeof ITEMS)[number]["href"] }) {

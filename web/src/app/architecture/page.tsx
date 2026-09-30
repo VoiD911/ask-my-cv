@@ -10,6 +10,7 @@ import {
   WorkflowGraph,
   type Node,
 } from "@/components/ArchitectureDiagrams";
+import { Glossary, Rich } from "@/components/Glossary";
 import { SiteNav } from "@/components/SiteNav";
 import { architecture, workflow } from "@/lib/architecture";
 import {
@@ -58,8 +59,10 @@ function Section({
       <div className="arch-section__text">
         <p className="titleblock__eyebrow">{String(index).padStart(2, "0")}</p>
         <h2 id={`${section.id}-titre`}>{section.title}</h2>
-        {section.paragraphs.map((p) => (
-          <p key={p.slice(0, 32)}>{p}</p>
+        {section.paragraphs.map((p, i) => (
+          <p key={i}>
+            <Rich text={p} />
+          </p>
         ))}
         <Sources links={section.sources} />
       </div>
@@ -77,7 +80,9 @@ export default function Architecture() {
         <div>
           <p className="titleblock__eyebrow">{page.eyebrow}</p>
           <h1 className="titleblock__name">{page.heading}</h1>
-          <p className="titleblock__role">{page.lede}</p>
+          <p className="titleblock__role">
+            <Rich text={page.lede} />
+          </p>
         </div>
         <dl className="delivery-stats">
           <div><dt>Étapes</dt><dd>{pipeline.stages.length}</dd></div>
@@ -186,6 +191,8 @@ export default function Architecture() {
             </div>
           </Board>
         </Section>
+
+        <Glossary />
       </main>
     </div>
   );

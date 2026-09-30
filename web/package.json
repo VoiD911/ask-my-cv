@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "node scripts/sync-archive.mjs && node scripts/sync-architecture.mjs && next build && node scripts/csp.mjs",
+    "build": "node scripts/sync-archive.mjs && node scripts/sync-architecture.mjs && node scripts/sync-xops.mjs && next build && node scripts/csp.mjs",
     "history:sync": "node scripts/sync-archive.mjs && node scripts/sync-issues.mjs",
     "lint": "eslint --max-warnings=0 .",
     "typecheck": "next typegen && tsc --noEmit",
