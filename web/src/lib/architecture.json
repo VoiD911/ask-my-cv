@@ -499,8 +499,8 @@
   "model": {
     "manifest": "models/prod.json",
     "version": "v1.4.0",
-    "prompt": "prompts/answer@v7.md",
-    "promptVersion": "v7",
+    "prompt": "prompts/answer@v8.md",
+    "promptVersion": "v8",
     "promptVersions": [
       "v1",
       "v2",
@@ -508,7 +508,8 @@
       "v4",
       "v5",
       "v6",
-      "v7"
+      "v7",
+      "v8"
     ]
   }
 }

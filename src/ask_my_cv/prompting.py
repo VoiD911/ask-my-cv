@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ask_my_cv.language import LABELS, Language, detect_language
+from ask_my_cv.output_guard import REFUSAL
 from ask_my_cv.text import fold_format
 from ask_my_cv.vectorstore import Hit
 
@@ -52,8 +53,10 @@ def wrap_submitted(text: str) -> str:
 def language_line(language: Language) -> str:
     """Consigne de langue déterministe, hors du bloc de texte soumis."""
     return (
-        f"Langue de la réponse : {LABELS[language]} (réponds entièrement dans cette langue ; "
-        "seule la phrase de refus reste en français, telle quelle)."
+        f"Langue de la réponse : {LABELS[language]} (réponds entièrement dans cette langue, "
+        "en gardant après chaque affirmation sur Steve le numéro de sa source entre crochets, "
+        "par exemple [1] ; si les sources ne répondent pas, écris exactement, en français : "
+        f"{REFUSAL})"
     )
 
 
