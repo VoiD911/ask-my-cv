@@ -222,6 +222,8 @@ jobs:
       - run: npm --prefix web run build
         env:
           NEXT_TELEMETRY_DISABLED: "1"
+          # Enregistrements de rediffusion obligatoires : sans eux, le mode rediffusion disparaît du site.
+          REPLAYS_REQUIRED: "1"
       - name: Meta CSP présente dans chaque page
         run: |
           missing=$(grep -rL --include='*.html' 'http-equiv="Content-Security-Policy"' web/out || true)
