@@ -10,11 +10,12 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from ask_my_cv.events import Event
 from ask_my_cv.limits import MAX_BODY_BYTES, BodySizeLimit
 from ask_my_cv.pipeline import MAX_QUESTION_CHARS, Deps, run_pipeline
+from ask_my_cv.text import fold_format
 from ask_my_cv.visitor import client_ip, visitor_id
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,14 @@ class AskRequest(BaseModel):
 
     question: str = Field(max_length=MAX_QUESTION_CHARS)
     model: str | None = Field(default=None, max_length=64)
+
+    @field_validator("question")
+    @classmethod
+    def _folded_length(cls, value: str) -> str:
+        # même plafond après repli NFKC (qui peut multiplier la taille) ; message sans l'entrée
+        if len(fold_format(value.strip())) > MAX_QUESTION_CHARS:
+            raise ValueError("question trop longue après normalisation")
+        return value
 
 
 def _sse(event: Event) -> str:

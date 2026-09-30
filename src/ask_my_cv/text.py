@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
 _WHITESPACE_RUNS = re.compile(r"\s\s+")
 
@@ -16,6 +17,23 @@ WINDOW_OVERLAP = 120
 NORMALIZATION_LEGACY = 1
 NORMALIZATION = 2
 NORMALIZATIONS = (NORMALIZATION_LEGACY, NORMALIZATION)
+
+
+def fold_format(text: str) -> str:
+    """NFKC puis retrait des caractères de format (Cf : largeur nulle, marques de direction…).
+
+    Étapes 2 et 3 de la neutralisation du texte soumis (`prompting.neutralize_submitted`),
+    appliquées aussi avant les détecteurs : longueur, classifieur et garde-fou voient le même
+    texte, et une injection coupée par des U+200B n'échappe pas au score. Répété jusqu'à
+    stabilité (borné) : NFKC peut en principe produire un caractère Cf.
+    """
+    for _ in range(3):
+        folded = unicodedata.normalize("NFKC", text)
+        folded = "".join(c for c in folded if unicodedata.category(c) != "Cf")
+        if folded == text:
+            break
+        text = folded
+    return text
 
 
 def normalize_text(text: str, version: int = NORMALIZATION) -> str:

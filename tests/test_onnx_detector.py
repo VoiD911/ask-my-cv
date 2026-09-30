@@ -230,3 +230,17 @@ def test_unknown_normalization_metadata_is_refused(tmp_path: Path, model_bytes: 
     next(p for p in model.metadata_props if p.key == "normalization").value = "9"
     with pytest.raises(ModelIntegrityError):
         _detector(tmp_path, model.SerializeToString())
+
+
+def test_repository_promotes_v1_4_0_with_a_sha256() -> None:
+    data = json.loads(Path("models/prod.json").read_text(encoding="utf-8"))
+    assert data["version"] == "v1.4.0"
+    assert len(data["sha256"]) == 64 and all(c in "0123456789abcdef" for c in data["sha256"])
+
+
+def test_promoted_model_loads_with_its_windows_and_normalization(promoted_model: Path) -> None:
+    manifest = load_manifest(Path("models/prod.json"))
+    assert manifest is not None
+    detector = OnnxDetector(Path("models") / manifest.file, manifest.sha256, manifest.version)
+    assert detector.window == (600, 120)
+    assert detector.normalization == 2

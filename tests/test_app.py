@@ -332,3 +332,12 @@ async def test_eval_token_still_hits_the_daily_spend_cap(make_deps) -> None:
         )
     assert quota_end(response)["status"] == "blocked"
     assert parse_sse(response.text)[-1]["answer_override"] == BLOCK_MESSAGES["budget_exceeded"]
+
+
+async def test_question_inflated_by_nfkc_beyond_the_limit_gets_422(make_deps) -> None:
+    async with client_for(create_app(make_deps())) as client:
+        response = await client.post("/ask", json={"question": "ﷺ" * 10_000})
+        mild = await client.post("/ask", json={"question": "ﬁ" * 4_000})
+    assert response.status_code == 422
+    assert "ﷺ" not in response.text
+    assert mild.status_code == 200

@@ -2,8 +2,8 @@
 
 /**
  * Résumé Markdown d'un rapport promptfoo (evals/output/*.json) pour le résumé du run
- * GitHub Actions. Les cas portant `metadata.knownIssue` (ex. `known-fp-4b` : faux
- * positifs du classifieur, tâche 4b) sont listés à part, mais restent des échecs : ce
+ * GitHub Actions. Les cas portant `metadata.knownIssue` (ex. `known-fp-annonce-en` : faux
+ * positifs connus du classifieur promu) sont listés à part, mais restent des échecs : ce
  * script ne change pas le verdict de la suite (il sort toujours avec le code 0).
  *   node evals/report.js evals/output/nightly.json >> "$GITHUB_STEP_SUMMARY"
  */

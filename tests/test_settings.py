@@ -323,3 +323,72 @@ def test_production_aws_settings_declare_the_eval_limit(monkeypatch: pytest.Monk
     monkeypatch.delenv("EVAL_TOKEN", raising=False)
     settings = load_settings(Path("settings.aws.yaml"))
     assert settings.eval_limit_per_window == 300 and settings.eval_token is None
+
+
+# --- garde-fou Bedrock « annonces » (#118) ---
+
+
+def test_guardrail_is_disabled_by_default() -> None:
+    settings = Settings.model_validate(minimal())
+    assert settings.guardrail_id is None and settings.guardrail_version is None
+    assert settings.guardrail_timeout_s == 2.0
+    assert settings.guardrail_min_chars == 400
+
+
+def test_guardrail_needs_both_id_and_version() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_id="abc123"))
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_version="1"))
+
+
+@pytest.mark.parametrize("version", ["DRAFT", "", "1a", "-1"])
+def test_guardrail_version_must_be_a_published_number(version: str) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_id="abc123", guardrail_version=version))
+
+
+@pytest.mark.parametrize("timeout", [0, 11])
+def test_guardrail_timeout_is_bounded(timeout: float) -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_timeout_s=timeout))
+
+
+def test_guardrail_comes_from_the_environment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_GUARDRAIL_ID", "abc123")
+    monkeypatch.setenv("ASK_GUARDRAIL_VERSION", "2")
+    settings = load_settings(path)
+    assert (settings.guardrail_id, settings.guardrail_version) == ("abc123", "2")
+
+
+def test_production_settings_tolerate_missing_guardrail_variables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Code déployé avant `terraform apply` : pas de variables, garde-fou désactivé."""
+    monkeypatch.setenv("VISITOR_SALT", "s" * 48)
+    monkeypatch.delenv("ASK_GUARDRAIL_ID", raising=False)
+    monkeypatch.delenv("ASK_GUARDRAIL_VERSION", raising=False)
+    settings = load_settings(Path("settings.aws.yaml"))
+    assert settings.guardrail_id is None
+
+
+def test_guardrail_version_accepts_ascii_digits_only() -> None:
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(guardrail_id="abc123", guardrail_version="١"))
+
+
+def test_empty_guardrail_variable_is_unset_and_logged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_GUARDRAIL_ID", "")
+    monkeypatch.setenv("ASK_GUARDRAIL_VERSION", " ")
+    with caplog.at_level("WARNING"):
+        settings = load_settings(path)
+    assert settings.guardrail_id is None and settings.guardrail_version is None
+    assert "ASK_GUARDRAIL_ID vide" in caplog.text

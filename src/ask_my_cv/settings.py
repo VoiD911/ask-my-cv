@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import re
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
@@ -9,6 +11,8 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from ask_my_cv.visitor import TrustedProxy
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(ValueError):
@@ -70,6 +74,20 @@ class Settings(BaseModel):
     ledger_table: str = "ask-my-cv-ledger"
     tracing: list[Literal["console", "cloudwatch", "langfuse"]] = []
     langfuse_endpoint: str = "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+    # Garde-fou Bedrock « annonces » (#118) : second avis sur les annonces collées. Désactivé
+    # tant que l'identifiant et la version publiée ne sont pas fournis (local, CI, ou code
+    # déployé avant `terraform apply`) : le classifieur décide alors seul.
+    guardrail_id: str | None = None
+    guardrail_version: str | None = None
+    guardrail_timeout_s: float = Field(default=2.0, gt=0.0, le=10.0)
+    guardrail_min_chars: int = Field(default=400, ge=1)
+    # disjoncteur (par processus) : échec fermé des annonces après ces échecs sur la fenêtre
+    # glissante (tous visiteurs, dont au moins min_visitors distincts / un visiteur)
+    guardrail_breaker_failures: int = Field(default=5, ge=1)
+    guardrail_breaker_visitor_failures: int = Field(default=3, ge=1)
+    guardrail_breaker_cooldown_s: float = Field(default=60.0, gt=0.0)
+    guardrail_breaker_window_s: float = Field(default=60.0, gt=0.0)
+    guardrail_breaker_min_visitors: int = Field(default=3, ge=1)
 
     @field_validator("ollama_url")
     @classmethod
@@ -85,6 +103,18 @@ class Settings(BaseModel):
             raise ValueError(
                 f"Titan V2 n'accepte que les dimensions 256, 512 ou 1024 (reçu {self.embed_dim})"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _guardrail_is_complete(self) -> Settings:
+        if (self.guardrail_id is None) != (self.guardrail_version is None):
+            raise ValueError("guardrail_id et guardrail_version vont ensemble")
+        if self.guardrail_version is not None and not re.fullmatch(
+            r"[0-9]+", self.guardrail_version
+        ):
+            raise ValueError("guardrail_version doit être une version publiée (nombre, pas DRAFT)")
+        if self.guardrail_id is not None and not self.guardrail_id:
+            raise ValueError("guardrail_id ne doit pas être vide")
         return self
 
     @model_validator(mode="after")
@@ -155,6 +185,9 @@ _ENV_OVERRIDES = {
     "VISITOR_SALT": "visitor_salt",
     "ASK_ENVIRONMENT": "environment",
     "EVAL_TOKEN": "eval_token",
+    # sorties Terraform guardrail_annonces_id / _version (infra/prod/lambda.tf)
+    "ASK_GUARDRAIL_ID": "guardrail_id",
+    "ASK_GUARDRAIL_VERSION": "guardrail_version",
 }
 
 
@@ -162,8 +195,15 @@ def load_settings(path: Path | None = None) -> Settings:
     path = path or Path(os.environ.get("ASK_SETTINGS", "settings.yaml"))
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     for env_name, field in _ENV_OVERRIDES.items():
-        if value := os.environ.get(env_name):
-            data[field] = value
+        value = os.environ.get(env_name)
+        if value is None:
+            continue
+        if not value.strip():
+            # variable présente mais vide (ex. sortie Terraform vide) : traitée comme absente,
+            # et signalée plutôt que d'effacer silencieusement la valeur du fichier
+            logger.warning("variable %s vide : ignorée", env_name)
+            continue
+        data[field] = value
     try:
         return Settings.model_validate(data)
     except ValidationError as exc:

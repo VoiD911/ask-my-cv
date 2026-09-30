@@ -1,7 +1,7 @@
 # Garde-fou Bedrock « annonces » (tâche 4c, #118) : second avis sur les annonces collées que le
-# classifieur ONNX bloque à tort. Seul le filtre d'attaque de prompt est actif (niveau classique :
-# EN/FR/ES). Pas encore appelé par le service : la mesure (`python -m ml.guardrail_eval`) décide
-# de la règle combinée avant tout changement de comportement en production.
+# classifieur ONNX laisse passer. Seul le filtre d'attaque de prompt est actif (niveau classique :
+# EN/FR/ES). Appelé par le service (src/ask_my_cv/guardrail.py) sur les textes d'au moins 400
+# caractères que le classifieur n'a pas bloqués ; règle choisie sur la mesure `ml.guardrail_eval`.
 # ca-central-1 n'offre pas InvokeGuardrailChecks (sans ressource) : ressource + ApplyGuardrail.
 resource "aws_bedrock_guardrail" "annonces" {
   name                      = "ask-my-cv-annonces"
@@ -24,7 +24,7 @@ resource "aws_bedrock_guardrail" "annonces" {
 # Version publiée (immuable) : c'est elle que le service et la mesure appellent, jamais DRAFT.
 # Toute modification du garde-fou publie une nouvelle version, créée AVANT la destruction de
 # l'ancienne (create_before_destroy) : une version épinglée par le service ne disparaît jamais
-# en cours d'apply ; les références (sorties, futur environnement Lambda) basculent dans le
+# en cours d'apply ; les références (sorties, environnement Lambda) basculent dans le
 # même apply, puis l'ancienne version est supprimée.
 resource "aws_bedrock_guardrail_version" "annonces" {
   guardrail_arn = aws_bedrock_guardrail.annonces.guardrail_arn

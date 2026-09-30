@@ -4,7 +4,8 @@ import { STATUS_LABELS, formatNumberFr, stageLabel, type StageState } from "@/li
 const KEY_ATTRS: Record<string, readonly string[]> = {
   reception: ["model"],
   quota: ["spent_today_usd"],
-  injection: ["score", "model_version"],
+  // blocked_by : présent seulement si le garde-fou Bedrock (second avis) a bloqué l'annonce
+  injection: ["blocked_by", "score", "model_version"],
   embedding: ["dim"],
   retrieval: ["hits", "top_score"],
   prompt: ["template"],

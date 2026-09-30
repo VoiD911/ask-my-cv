@@ -51,6 +51,23 @@ describe("keyAttrs", () => {
     ]);
   });
 
+  it("désigne le garde-fou Bedrock quand c'est lui qui bloque l'annonce", () => {
+    const attrs = keyAttrs("injection", stage({
+      status: "blocked",
+      attrs: {
+        model_version: "onnx-v1.4.0",
+        score: "0,12",
+        guardrail: "block",
+        reason: "injection_detected",
+        blocked_by: "guardrail",
+      },
+    }));
+    expect(attrs).toEqual([
+      ["reason", "injection_detected"],
+      ["blocked_by", "guardrail"],
+    ]);
+  });
+
   it("montre les jetons reçus pendant la génération", () => {
     expect(keyAttrs("llm", stage({ status: "active" }), 1234)).toEqual([["tokens", "1 234"]]);
     expect(keyAttrs("llm", stage({ status: "active" }), 0)).toEqual([]);

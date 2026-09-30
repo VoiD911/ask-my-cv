@@ -45,7 +45,7 @@ data "aws_iam_policy_document" "api" {
     resources = ["arn:aws:bedrock:${var.region}::foundation-model/amazon.titan-embed-text-v2:0"]
   }
   statement {
-    sid       = "GuardrailAnnonces" # #118 : pas encore appelé par le service
+    sid       = "GuardrailAnnonces" # #118 : second avis sur les annonces collées
     actions   = ["bedrock:ApplyGuardrail"]
     resources = [aws_bedrock_guardrail.annonces.guardrail_arn]
   }
@@ -92,6 +92,10 @@ resource "aws_lambda_function" "api" {
     variables = {
       ASK_SETTINGS   = "settings.aws.yaml"
       ASK_SSM_PREFIX = "${local.ssm_prefix}/"
+      # Garde-fou « annonces » (#118) : version publiée, jamais DRAFT. Sans ces variables, le
+      # service démarre avec le classifieur seul (settings.py) : l'ordre apply/déploiement est libre.
+      ASK_GUARDRAIL_ID      = aws_bedrock_guardrail.annonces.guardrail_id
+      ASK_GUARDRAIL_VERSION = aws_bedrock_guardrail_version.annonces.version
     }
   }
 
