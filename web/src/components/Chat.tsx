@@ -31,7 +31,8 @@ export function attacksFor(locale: Locale): ReadonlyArray<{ label: string; text:
 export const SUGGESTIONS = suggestionsFor("fr");
 export const ATTACKS = attacksFor("fr");
 
-export type ExchangeStatus = "running" | "done" | "stopped" | "failed";
+/** `paused` : service en direct en pause, la question du visiteur est suivie d'une rediffusion. */
+export type ExchangeStatus = "running" | "done" | "stopped" | "failed" | "paused";
 
 export type Exchange = {
   id: number;
@@ -39,6 +40,8 @@ export type Exchange = {
   run: RunState;
   status: ExchangeStatus;
   error?: string;
+  /** Échange rejoué (mode rediffusion) : enregistré sur la production à cette date ISO. */
+  replayOf?: string;
 };
 
 /* ------------------------------------------------------------------ */
@@ -132,8 +135,18 @@ function Answer({ exchangeId, text, sources }: { exchangeId: number; text: strin
 
 function Reply({ exchange }: { exchange: Exchange }) {
   const t = useTranslations("chat");
+  const replay = useTranslations("replay");
   const locale = useLocale();
   const { run, status } = exchange;
+  if (status === "paused") {
+    // Jamais la réponse d'une autre question : le visiteur sait que la sienne attend.
+    return (
+      <p className="notice" data-tone="muted" data-testid="paused">
+        <span className="notice__tag">{replay("pausedTag")}</span>
+        {replay("paused")}
+      </p>
+    );
+  }
   if (status === "failed") {
     return (
       <p className="notice" data-tone="error">
@@ -197,6 +210,7 @@ type ChatProps = {
 
 export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model, onModelChange }: ChatProps) {
   const t = useTranslations("chat");
+  const replay = useTranslations("replay");
   const locale = useLocale();
   const suggestions = suggestionsFor(locale);
   const attacks = attacksFor(locale);
@@ -267,23 +281,32 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
       ) : (
         <ol className="thread" ref={threadRef} aria-label={t("threadLabel")}>
           {exchanges.map((x) => (
-            <li key={x.id} className="exchange" data-status={x.status} data-testid="exchange">
+            <li
+              key={x.id}
+              className="exchange"
+              data-status={x.status}
+              data-replay={x.replayOf ? true : undefined}
+              data-testid="exchange"
+            >
               <div className="exchange__q">
                 <span className="exchange__ref" aria-hidden="true">
                   J1
                 </span>
                 <span className="sr-only">{t("questionPrefix")}</span>
-                {x.question.length > 500 ? (
-                  <details className="exchange__long-question">
-                    <summary>
-                      {x.question.slice(0, 220).replace(/\s+/g, " ").trim()}…
-                      <span>{t("showFull")}</span>
-                    </summary>
-                    <p>{x.question}</p>
-                  </details>
-                ) : (
-                  x.question
-                )}
+                <div className="exchange__qtext">
+                  {x.replayOf && <span className="replay-tag">{replay("tag")}</span>}
+                  {x.question.length > 500 ? (
+                    <details className="exchange__long-question">
+                      <summary>
+                        {x.question.slice(0, 220).replace(/\s+/g, " ").trim()}…
+                        <span>{t("showFull")}</span>
+                      </summary>
+                      <p>{x.question}</p>
+                    </details>
+                  ) : (
+                    x.question
+                  )}
+                </div>
               </div>
               <div
                 className="exchange__a"

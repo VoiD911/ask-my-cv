@@ -89,6 +89,17 @@
     "signature": "Requête refusée par le réseau de diffusion (signature du corps invalide).",
     "unavailable": "Le service ne répond pas. Réessaie dans un instant."
   },
+  "replay": {
+    "title": "Rediffusion",
+    "tag": "rediffusion",
+    "explain": "Le service en direct est en pause : {reason} Tu regardes un vrai échange, enregistré sur ce site le {date} et rejoué au rythme d'origine : mêmes étapes du circuit, même réponse, mêmes sources.",
+    "reasonBudget": "le budget du jour est atteint.",
+    "reasonUnavailable": "l'API ne répond pas pour le moment.",
+    "reasonForced": "rediffusion demandée pour la démonstration.",
+    "pausedTag": "en pause",
+    "paused": "Le service en direct est en pause : ta question n'a pas reçu de réponse. Voici la rediffusion d'un échange similaire.",
+    "next": "Rejouer un autre échange"
+  },
   "circuit": {
     "title": "circuit du pipeline",
     "stages": {

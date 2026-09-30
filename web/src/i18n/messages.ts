@@ -9,7 +9,7 @@ export type Messages = typeof fr;
 export const MESSAGES: Record<Locale, Messages> = { fr, en };
 
 /** Espaces de noms utilisés par les composants client (seuls envoyés au navigateur). */
-export const CLIENT_NAMESPACES = ["chat", "overrides", "errors", "circuit", "readout"] as const;
+export const CLIENT_NAMESPACES = ["chat", "overrides", "errors", "replay", "circuit", "readout"] as const;
 
 export function clientMessages(locale: Locale): Pick<Messages, (typeof CLIENT_NAMESPACES)[number]> {
   const all = MESSAGES[locale];
@@ -17,6 +17,7 @@ export function clientMessages(locale: Locale): Pick<Messages, (typeof CLIENT_NA
     chat: all.chat,
     overrides: all.overrides,
     errors: all.errors,
+    replay: all.replay,
     circuit: all.circuit,
     readout: all.readout,
   };

@@ -89,6 +89,17 @@
     "signature": "Request rejected by the content delivery network (invalid body signature).",
     "unavailable": "The service is not responding. Please try again in a moment."
   },
+  "replay": {
+    "title": "Replay",
+    "tag": "replay",
+    "explain": "The live service is paused: {reason} You are watching a real exchange, recorded on this site on {date} and replayed at its original pace: same circuit stages, same answer, same sources.",
+    "reasonBudget": "today's budget has been reached.",
+    "reasonUnavailable": "the API is not responding right now.",
+    "reasonForced": "replay requested for the demo.",
+    "pausedTag": "paused",
+    "paused": "The live service is paused: your question was not answered. Here is a replay of a similar exchange.",
+    "next": "Replay another exchange"
+  },
   "circuit": {
     "title": "pipeline circuit",
     "stages": {
