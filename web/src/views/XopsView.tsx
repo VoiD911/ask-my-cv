@@ -1,22 +1,19 @@
-import type { Metadata } from "next";
+import { useLocale } from "next-intl";
 import Link from "next/link";
 
 import { Board } from "@/components/ArchitectureDiagrams";
 import { Glossary, Rich } from "@/components/Glossary";
 import { SiteNav } from "@/components/SiteNav";
+import { localePath } from "@/i18n/locales";
 import { imageCommands, isExternal, modelCommands, proofHref, proofLine, xops } from "@/lib/xops";
-import { disciplines, page, verify, type Practice, type Proof } from "@/lib/xops-content";
+import type { Practice, Proof, XopsPageText, XopsVerifyText } from "@/lib/xops-content";
+import { localizedDisciplines, xopsText } from "@/lib/xops-content.en";
 
-export const metadata: Metadata = {
-  title: page.title,
-  description: page.description,
-};
-
-const practiceCount = disciplines.reduce((n, d) => n + d.practices.length, 0);
-const proofCount = disciplines.reduce((n, d) => n + d.practices.reduce((m, p) => m + p.proofs.length, 0), 0);
-
-function ProofLink({ proof }: { proof: Proof }) {
-  const href = proofHref(proof);
+function ProofLink({ proof, page }: { proof: Proof; page: XopsPageText }) {
+  const locale = useLocale();
+  const raw = proofHref(proof);
+  // Onglets du site : même langue que la page courante.
+  const href = raw.startsWith("/") ? localePath(locale, raw) : raw;
   const line = proofLine(proof);
   const content = (
     <>
@@ -30,7 +27,7 @@ function ProofLink({ proof }: { proof: Proof }) {
   return <Link href={href}>{content}</Link>;
 }
 
-function PracticeCard({ practice, discipline }: { practice: Practice; discipline: string }) {
+function PracticeCard({ practice, discipline, page }: { practice: Practice; discipline: string; page: XopsPageText }) {
   const tone = practice.status === "couvert" ? "ok" : "fallback";
   const headingId = `${discipline}-${practice.id}`;
   return (
@@ -48,7 +45,7 @@ function PracticeCard({ practice, discipline }: { practice: Practice; discipline
       </p>
       {practice.gap ? (
         <p className="xops-cell__gap">
-          <strong>{page.gapLabel} :</strong> {practice.gap(xops)}
+          <strong>{page.gapLabel}</strong> {practice.gap(xops)}
         </p>
       ) : null}
       <div className="xops-proofs">
@@ -56,7 +53,7 @@ function PracticeCard({ practice, discipline }: { practice: Practice; discipline
         <ul>
           {practice.proofs.map((proof) => (
             <li key={proof.label}>
-              <ProofLink proof={proof} />
+              <ProofLink proof={proof} page={page} />
             </li>
           ))}
         </ul>
@@ -65,19 +62,37 @@ function PracticeCard({ practice, discipline }: { practice: Practice; discipline
   );
 }
 
-function Commands({ id, title, detail, commands }: { id: string; title: string; detail: string; commands: string[] }) {
+function Commands({
+  id,
+  title,
+  detail,
+  commands,
+  verify,
+}: {
+  id: string;
+  title: string;
+  detail: string;
+  commands: string[];
+  verify: XopsVerifyText;
+}) {
   return (
     <section className="xops-verify" aria-labelledby={`${id}-titre`} id={id}>
       <h3 id={`${id}-titre`}>{title}</h3>
       <p>{detail}</p>
-      <pre className="xops-cmd" role="region" aria-label={`${verify.commandLabel} : ${title}`} tabIndex={0}>
+      <pre className="xops-cmd" role="region" aria-label={verify.commandsAria(title)} tabIndex={0}>
         <code>{commands.join("\n\n")}</code>
       </pre>
     </section>
   );
 }
 
-export default function XOps() {
+/** Page /xops, commune aux racines française et anglaise. */
+export function XopsView() {
+  const locale = useLocale();
+  const { page, verify } = xopsText(locale);
+  const disciplines = localizedDisciplines(locale);
+  const practiceCount = disciplines.reduce((n, d) => n + d.practices.length, 0);
+  const proofCount = disciplines.reduce((n, d) => n + d.practices.reduce((m, p) => m + p.proofs.length, 0), 0);
   const covered = disciplines.reduce((n, d) => n + d.practices.filter((p) => p.status === "couvert").length, 0);
   return (
     <div className="page delivery-page arch-page xops-page">
@@ -122,10 +137,8 @@ export default function XOps() {
           </h2>
           <Board
             title={page.matrixTitle}
-            meta={`${covered}/${practiceCount} ${page.statusText.couvert.toLowerCase()}s`}
-            alt={disciplines
-              .map((d) => `${d.name} : ${d.practices.map((p) => `${p.title} (${page.statusText[p.status].toLowerCase()})`).join(", ")}`)
-              .join(". ")}
+            meta={page.matrixMeta(covered, practiceCount)}
+            alt={page.matrixAlt(disciplines)}
           >
             <div className="xops-matrix-wrap">
               <table className="xops-matrix">
@@ -175,9 +188,9 @@ export default function XOps() {
                 <Rich text={d.summary} />
               </p>
             </div>
-            <ul className="xops-grid" aria-label={`Pratiques ${d.name}`}>
+            <ul className="xops-grid" aria-label={page.practicesLabel(d.name)}>
               {d.practices.map((p) => (
-                <PracticeCard key={p.id} practice={p} discipline={d.id} />
+                <PracticeCard key={p.id} practice={p} discipline={d.id} page={page} />
               ))}
             </ul>
           </section>
@@ -195,8 +208,15 @@ export default function XOps() {
               title={verify.model.title(xops.model.tag)}
               detail={verify.model.detail}
               commands={modelCommands()}
+              verify={verify}
             />
-            <Commands id={verify.image.id} title={verify.image.title} detail={verify.image.detail} commands={imageCommands()} />
+            <Commands
+              id={verify.image.id}
+              title={verify.image.title}
+              detail={verify.image.detail}
+              commands={imageCommands()}
+              verify={verify}
+            />
           </div>
         </section>
 

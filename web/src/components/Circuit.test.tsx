@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, within } from "@/test/intl";
 import { afterEach, vi } from "vitest";
 import { createInitialState, reduce, type PipelineEvent, type RunState } from "@/lib/pipeline";
 import { Circuit, IN, OUT, circuitLabel, terminalStates, traces } from "./Circuit";

@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "@/test/intl";
 import { describe as suite, expect, it } from "vitest";
 
 import { DemoFooter, formatCost, usableTraceId } from "./DemoFooter";

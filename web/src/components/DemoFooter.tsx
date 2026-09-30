@@ -1,18 +1,17 @@
 "use client";
 
+import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
 
+import { DEFAULT_LOCALE, type Locale } from "@/i18n/locales";
 import type { DoneEvent } from "@/lib/events";
-import { formatNumberFr } from "@/lib/pipeline";
+import { formatNumber, formatUsd } from "@/lib/pipeline";
 
 import { formatDuration } from "./StageNode";
 
 /** Coût en dollars américains, entre 4 et 6 décimales (les montants sont minuscules). */
-export function formatCost(usd: number): string {
-  return `${new Intl.NumberFormat("fr-FR", {
-    minimumFractionDigits: 4,
-    maximumFractionDigits: 6,
-  }).format(usd)} $`;
+export function formatCost(usd: number, locale: Locale = DEFAULT_LOCALE): string {
+  return formatUsd(usd, locale, { min: 4, max: 6 });
 }
 
 /** Un identifiant de trace nul (32 zéros) signifie « pas de traçage » (API locale). */
@@ -22,8 +21,9 @@ export function usableTraceId(id: string | null | undefined): string | null {
 }
 
 function TraceId({ id }: { id: string | null }) {
+  const t = useTranslations("readout");
   const [copied, setCopied] = useState(false);
-  if (!id) return <dd className="readout__value readout__value--dim">non tracée</dd>;
+  if (!id) return <dd className="readout__value readout__value--dim">{t("untraced")}</dd>;
 
   async function copy(value: string) {
     try {
@@ -38,8 +38,8 @@ function TraceId({ id }: { id: string | null }) {
   return (
     <dd className="readout__value readout__trace">
       <code title={id}>{id}</code>
-      <button type="button" className="copy" onClick={() => void copy(id)} aria-label="Copier l'identifiant de trace">
-        {copied ? "copié" : "copier"}
+      <button type="button" className="copy" onClick={() => void copy(id)} aria-label={t("copyLabel")}>
+        {copied ? t("copied") : t("copy")}
       </button>
     </dd>
   );
@@ -49,28 +49,30 @@ type DemoFooterProps = { done: DoneEvent | null };
 
 /** Relevé de la dernière question : latence, jetons, coût, identifiant de trace. */
 export function DemoFooter({ done }: DemoFooterProps) {
+  const t = useTranslations("readout");
+  const locale = useLocale();
   const dash = <dd className="readout__value readout__value--dim">—</dd>;
   return (
-    <section className="readout" aria-label="Relevé de la dernière question" data-testid="demo-footer">
+    <section className="readout" aria-label={t("label")} data-testid="demo-footer">
       <dl className="readout__grid">
         <div className="readout__cell" data-testid="readout-latency">
-          <dt>latence</dt>
-          {done ? <dd className="readout__value">{formatDuration(done.latency_ms)}</dd> : dash}
+          <dt>{t("latency")}</dt>
+          {done ? <dd className="readout__value">{formatDuration(done.latency_ms, locale)}</dd> : dash}
         </div>
         <div className="readout__cell" data-testid="readout-tokens-in">
-          <dt>jetons entrée</dt>
-          {done ? <dd className="readout__value">{formatNumberFr(done.tokens_in)}</dd> : dash}
+          <dt>{t("tokensIn")}</dt>
+          {done ? <dd className="readout__value">{formatNumber(done.tokens_in, locale)}</dd> : dash}
         </div>
         <div className="readout__cell" data-testid="readout-tokens-out">
-          <dt>jetons sortie</dt>
-          {done ? <dd className="readout__value">{formatNumberFr(done.tokens_out)}</dd> : dash}
+          <dt>{t("tokensOut")}</dt>
+          {done ? <dd className="readout__value">{formatNumber(done.tokens_out, locale)}</dd> : dash}
         </div>
         <div className="readout__cell" data-testid="readout-cost">
-          <dt>coût</dt>
-          {done ? <dd className="readout__value">{formatCost(done.cost_usd)}</dd> : dash}
+          <dt>{t("cost")}</dt>
+          {done ? <dd className="readout__value">{formatCost(done.cost_usd, locale)}</dd> : dash}
         </div>
         <div className="readout__cell readout__cell--trace" data-testid="readout-trace">
-          <dt>trace</dt>
+          <dt>{t("trace")}</dt>
           {done ? <TraceId id={usableTraceId(done.trace_id)} /> : dash}
         </div>
       </dl>

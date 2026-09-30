@@ -1,6 +1,7 @@
+import type { Locale } from "@/i18n/locales";
+
 /**
- * Glossaire des sigles, partagé par /architecture et /xops (français d'abord, prêt pour
- * next-intl). Dans les textes de contenu, `[[CLÉ]]` insère le sigle avec sa définition.
+ * Glossaire des sigles, partagé par /architecture et /xops (français et anglais). Dans les textes de contenu, `[[CLÉ]]` insère le sigle avec sa définition.
  */
 export const glossary = {
   "CI/CD": {
@@ -53,10 +54,75 @@ export const glossary = {
 
 export type GlossaryKey = keyof typeof glossary;
 
+type Entry = { expansion: string; definition: string };
+
+/** Glossaire anglais : mêmes clés que le français (vérifié par le typage). */
+export const glossaryEn: Record<GlossaryKey, Entry> = {
+  "CI/CD": {
+    expansion: "Continuous integration and delivery",
+    definition: "Every change is tested automatically, then shipped to production by a pipeline.",
+  },
+  cosign: {
+    expansion: "Sigstore signing tool",
+    definition:
+      "Signs a file or an image with no private key to safeguard: the GitHub workflow identity is the proof, recorded in a public log.",
+  },
+  IaC: {
+    expansion: "Infrastructure as Code",
+    definition: "Infrastructure is described in versioned files (Terraform here) rather than configured by hand.",
+  },
+  LLM: {
+    expansion: "Large Language Model",
+    definition: "The large language model that writes the answer (Claude on Amazon Bedrock here).",
+  },
+  OIDC: {
+    expansion: "OpenID Connect",
+    definition:
+      "GitHub Actions proves its identity to AWS and receives temporary credentials: no long-lived access key is stored.",
+  },
+  ONNX: {
+    expansion: "Open Neural Network Exchange",
+    definition: "Open format for machine learning models, run here by the injection detector.",
+  },
+  PSI: {
+    expansion: "Population Stability Index",
+    definition: "Measures how far the distribution of production scores has moved from the reference (drift).",
+  },
+  RAG: {
+    expansion: "Retrieval-Augmented Generation",
+    definition: "The LLM answers from CV passages found by vector search, not from its own memory.",
+  },
+  SBOM: {
+    expansion: "Software Bill of Materials",
+    definition: "Inventory of every component in a software image (CycloneDX format here).",
+  },
+  SLSA: {
+    expansion: "Supply-chain Levels for Software Artifacts",
+    definition: "Provenance framework: a signed attestation states which workflow built the artifact, and from which commit.",
+  },
+  SSE: {
+    expansion: "Server-Sent Events",
+    definition: "HTTP stream through which the server sends the answer to the browser as it is produced.",
+  },
+};
+
 export const glossaryText = {
   title: "Glossaire",
   intro: "Sigles utilisés sur cette page. Survoler ou cibler un sigle souligné en pointillé affiche aussi sa définition.",
 };
+
+const glossaryTextEn: typeof glossaryText = {
+  title: "Glossary",
+  intro: "Acronyms used on this page. Hovering over or focusing a dotted-underlined acronym also shows its definition.",
+};
+
+export function glossaryFor(locale: Locale): Record<GlossaryKey, Entry> {
+  return locale === "en" ? glossaryEn : glossary;
+}
+
+export function glossaryTextFor(locale: Locale): typeof glossaryText {
+  return locale === "en" ? glossaryTextEn : glossaryText;
+}
 
 export function isGlossaryKey(key: string): key is GlossaryKey {
   return Object.hasOwn(glossary, key);

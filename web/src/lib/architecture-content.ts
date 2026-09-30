@@ -1,6 +1,8 @@
 /**
- * Textes de la page /architecture, regroupés ici (français d'abord) pour faciliter le
- * passage à next-intl. Les schémas, eux, viennent de `architecture.json` (sources réelles).
+ * Textes français de la page /architecture (version anglaise : `architecture-content.en.ts`,
+ * même forme imposée par le type `ArchitectureContent`). Les schémas, eux, viennent de
+ * `architecture.json` (sources réelles). Les chemins `path` ne sont écrits qu'ici :
+ * `scripts/sync-xops.mjs` vérifie qu'ils existent dans le dépôt.
  */
 import type { InfraRole } from "./architecture";
 
@@ -18,6 +20,16 @@ export const page = {
   tocLabel: "Sommaire de la page",
   sourcesLabel: "Fichiers source",
   readingLabel: "Lecture du schéma",
+  statsLabels: { stages: "Étapes", resources: "Ressources", jobs: "Jobs CI/CD" },
+  requestMeta: (stages: number, version: string) => `${stages} étapes · ONNX ${version}`,
+  flowIn: "Aller : du navigateur à la Lambda",
+  flowStages: "Étapes du pipeline, dans l'ordre",
+  flowOut: "Retour : flux vers l'interface",
+  infraBoardTitle: "Terraform · infra/",
+  resourcesMeta: (count: number) => `${count} ressources`,
+  workflowTitle: (name: string) => `workflow ${name}`,
+  modelsBoardTitle: "Modèles",
+  stepsCount: (count: number) => `${count} étapes`,
 };
 
 /** Rôle de chaque étape du pipeline (clés = PIPELINE_STAGES de stages.py). */
@@ -172,3 +184,7 @@ export const lifecycle = {
     { label: "evals/judge.js", path: "evals/judge.js" },
   ] satisfies SourceLink[],
 };
+
+export const fr = { page, stageText, request, roleText, infra, jobText, triggerText, delivery, lifecycle };
+
+export type ArchitectureContent = typeof fr;

@@ -1,6 +1,6 @@
 /**
- * Textes de la page /xops, regroupés ici (français d'abord) pour faciliter le passage à
- * next-intl. Chaque preuve est vérifiée au build par `scripts/sync-xops.mjs` : un `path` doit
+ * Textes français de la page /xops ; la version anglaise (`xops-content.en.ts`) traduit les
+ * mêmes disciplines, pratiques et libellés de preuves sans redéfinir les preuves. Chaque preuve est vérifiée au build par `scripts/sync-xops.mjs` : un `path` doit
  * exister dans le dépôt, une `anchor` doit se résoudre en fichier + ligne ; les URL externes
  * sont construites depuis `xops.json` (voir `xops.ts`), jamais écrites en dur.
  *
@@ -60,10 +60,19 @@ export const page = {
   matrixCaption: "Pratiques par discipline, avec leur statut",
   matrixCols: { discipline: "Discipline", practices: "Pratiques", covered: "Couvertes", partial: "Partielles" },
   proofsLabel: "Preuves",
-  gapLabel: "Ce qui manque",
+  gapLabel: "Ce qui manque :",
   statusText: { couvert: "Couvert", partiel: "Partiel" } satisfies Record<Status, string>,
   statsLabels: { disciplines: "Disciplines", practices: "Pratiques", proofs: "Preuves" },
   lineLabel: (line: number) => `ligne ${line}`,
+  practicesLabel: (discipline: string) => `Pratiques ${discipline}`,
+  matrixMeta: (covered: number, total: number) => `${covered}/${total} couverts`,
+  matrixAlt: (items: { name: string; practices: { title: string; status: Status }[] }[]) =>
+    items
+      .map(
+        (d) =>
+          `${d.name} : ${d.practices.map((p) => `${p.title} (${p.status === "couvert" ? "couvert" : "partiel"})`).join(", ")}`,
+      )
+      .join(". "),
 };
 
 export const verify = {
@@ -83,7 +92,11 @@ export const verify = {
       "L'image publique est étiquetée par le commit de main qui l'a déployée. La première ligne prend le dernier commit de main ; si son déploiement n'est pas terminé, choisir une étiquette sur la page du paquet.",
   },
   commandLabel: "Commandes à copier",
+  commandsAria: (title: string) => `Commandes à copier : ${title}`,
 };
+
+export type XopsPageText = typeof page;
+export type XopsVerifyText = typeof verify;
 
 export const disciplines: Discipline[] = [
   {

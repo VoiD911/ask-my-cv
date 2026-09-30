@@ -17,11 +17,13 @@ import {
 } from "@xyflow/react";
 import { useEffect, useMemo } from "react";
 
+import { translator } from "@/i18n/translator";
 import {
-  STATUS_LABELS,
   describe,
-  formatNumberFr,
+  formatNumber,
+  formatUsd,
   stageLabel,
+  statusLabel,
   type RunState,
   type StageState,
 } from "@/lib/pipeline";
@@ -88,11 +90,12 @@ export function terminalStates(state: RunState): { in: TerminalState; out: Termi
 
 /** Libellé de l'image : l'état de chaque étape, lisible par un lecteur d'écran. */
 export function circuitLabel(state: RunState): string {
+  const { locale } = state;
   const parts = state.order.map((name) => {
     const status = state.stages[name]?.status ?? "idle";
-    return `${stageLabel(name)} ${STATUS_LABELS[status]}`;
+    return `${stageLabel(name, locale)} ${statusLabel(status, locale)}`;
   });
-  return `Circuit du pipeline en ${state.order.length} étapes : ${parts.join(", ")}.`;
+  return translator(locale)("circuit.label", { count: state.order.length, parts: parts.join(", ") });
 }
 
 /* ------------------------------------------------------------------ */
@@ -121,7 +124,8 @@ function slot(i: number): Slot {
 
 type StageData = { kind: "stage"; name: string; index: number; stage: StageState; tokens: number };
 type TermData = { kind: "in" | "out"; state: TerminalState };
-type NodeData = (StageData | TermData) & { inSide: Position; outSide: Position };
+type Localized = { locale: RunState["locale"] };
+type NodeData = (StageData | TermData) & Localized & { inSide: Position; outSide: Position };
 type TraceData = { state: TraceState; reducedMotion: boolean };
 
 type CircuitNode = Node<NodeData, "chip"> | Node<Record<string, never>, "bound">;
@@ -138,7 +142,7 @@ function layout(state: RunState, reducedMotion: boolean) {
     position: { x: 0, y: termY },
     width: TERM_W,
     height: TERM_H,
-    data: { kind: "in", state: terms.in, inSide: Position.Left, outSide: Position.Right },
+    data: { kind: "in", state: terms.in, locale: state.locale, inSide: Position.Left, outSide: Position.Right },
   });
 
   state.order.forEach((name, index) => {
@@ -158,6 +162,7 @@ function layout(state: RunState, reducedMotion: boolean) {
         index,
         stage: state.stages[name] ?? { status: "idle", attrs: {} },
         tokens: state.tokens,
+        locale: state.locale,
         // La première puce d'une rangée reçoit la piste du côté du virage.
         inSide: firstOfRow ? side : opposite,
         outSide: side,
@@ -177,6 +182,7 @@ function layout(state: RunState, reducedMotion: boolean) {
     data: {
       kind: "out",
       state: terms.out,
+      locale: state.locale,
       inSide: last.forward ? Position.Left : Position.Right,
       outSide: last.forward ? Position.Right : Position.Left,
     },
@@ -209,9 +215,15 @@ function ChipNode({ data }: NodeProps<ChipFlowNode>) {
     <>
       <Handle type="target" position={data.inSide} isConnectable={false} className="handle" />
       {data.kind === "stage" ? (
-        <StageNode name={data.name} index={data.index} stage={data.stage} liveTokens={data.tokens} />
+        <StageNode
+          name={data.name}
+          index={data.index}
+          stage={data.stage}
+          liveTokens={data.tokens}
+          locale={data.locale}
+        />
       ) : (
-        <Terminal kind={data.kind} state={data.state} />
+        <Terminal kind={data.kind} state={data.state} locale={data.locale} />
       )}
       <Handle type="source" position={data.outSide} isConnectable={false} className="handle" />
     </>
@@ -330,7 +342,7 @@ function Column({ state, reducedMotion }: { state: RunState; reducedMotion: bool
   return (
     <ol className="column" data-testid="circuit-column">
       <li>
-        <Terminal kind="in" state={terms.in} />
+        <Terminal kind="in" state={terms.in} locale={state.locale} />
       </li>
       {state.order.map((name, index) => (
         <li key={name}>
@@ -340,12 +352,13 @@ function Column({ state, reducedMotion }: { state: RunState; reducedMotion: bool
             index={index}
             stage={state.stages[name] ?? { status: "idle", attrs: {} }}
             liveTokens={state.tokens}
+            locale={state.locale}
           />
         </li>
       ))}
       <li>
         {links.at(-1) && <Link trace={links.at(-1) as Trace} reducedMotion={reducedMotion} />}
-        <Terminal kind="out" state={terms.out} />
+        <Terminal kind="out" state={terms.out} locale={state.locale} />
       </li>
     </ol>
   );
@@ -356,16 +369,23 @@ function Column({ state, reducedMotion }: { state: RunState; reducedMotion: bool
 /* ------------------------------------------------------------------ */
 
 function metrics(state: RunState): string {
+  const { locale } = state;
+  const t = translator(locale);
   if (state.done) {
     const d = state.done;
-    const cost = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 4 }).format(d.cost_usd);
-    return `${formatDuration(d.latency_ms)} · ${formatNumberFr(d.tokens_out)} jetons · ${cost} $`;
+    return t("circuit.metricsDone", {
+      duration: formatDuration(d.latency_ms, locale),
+      tokens: formatNumber(d.tokens_out, locale),
+      cost: formatUsd(d.cost_usd, locale, { max: 4 }),
+    });
   }
-  if (state.blockedAt) return "arrêt";
+  if (state.blockedAt) return t("circuit.halted");
   if (isRunning(state)) {
-    return state.tokens > 0 ? `en cours · ${formatNumberFr(state.tokens)} jetons` : "en cours";
+    return state.tokens > 0
+      ? t("circuit.runningTokens", { tokens: formatNumber(state.tokens, locale) })
+      : t("circuit.running");
   }
-  return "au repos";
+  return t("circuit.idle");
 }
 
 type CircuitProps = { state: RunState };
@@ -381,7 +401,7 @@ export function Circuit({ state }: CircuitProps) {
     <section className="circuit" aria-labelledby="circuit-title">
       <header className="circuit__bar">
         <h2 id="circuit-title" className="circuit__title">
-          circuit du pipeline
+          {translator(state.locale)("circuit.title")}
         </h2>
         <span className="circuit__metrics">{metrics(state)}</span>
       </header>

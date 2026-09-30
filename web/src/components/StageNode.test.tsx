@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen } from "@/test/intl";
 import type { StageState } from "@/lib/pipeline";
 import { StageNode, Terminal, formatDuration, keyAttrs } from "./StageNode";
 
