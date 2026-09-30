@@ -229,7 +229,7 @@ resource "aws_iam_role_policy" "deploy" {
   policy = data.aws_iam_policy_document.deploy.json
 }
 
-# --- Nuit (red team + dérive) depuis GitHub Actions : lecture seule, CloudWatch Logs Insights ---
+# --- Nuit (red team + dérive) depuis GitHub Actions : CloudWatch Logs Insights (lecture), juge Bedrock ---
 # Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
@@ -251,6 +251,35 @@ data "aws_iam_policy_document" "nightly" {
     actions   = ["logs:GetQueryResults", "logs:StopQuery"]
     resources = ["*"]
   }
+  # #122 : juge LLM de la suite de nuit (evals/judge.js), InvokeModel sans flux. Un profil
+  # d'inférence inter-régions exige l'autorisation sur le profil ET sur le modèle de fondation
+  # dans chaque région de destination ; le second énoncé n'accepte le modèle qu'à travers ce
+  # profil (clé de condition bedrock:InferenceProfileArn), jamais en appel direct.
+  statement {
+    sid       = "JudgeViaUsProfile"
+    actions   = ["bedrock:InvokeModel"]
+    resources = [local.judge_profile_arn]
+  }
+  statement {
+    sid       = "JudgeModelThroughProfile"
+    actions   = ["bedrock:InvokeModel"]
+    resources = [for r in local.judge_destination_regions : "arn:aws:bedrock:${r}::foundation-model/${local.judge_model}"]
+    condition {
+      test     = "StringEquals"
+      variable = "bedrock:InferenceProfileArn"
+      values   = [local.judge_profile_arn]
+    }
+  }
+}
+
+# Juge : Claude Haiku 4.5, profil géographique US appelé depuis ca-central-1 (pas de profil
+# `ca.` pour ce modèle ; `global.` pourrait router hors d'Amérique du Nord). Destinations du
+# profil depuis ca-central-1 (fiche du modèle, documentation Bedrock) : ca-central-1,
+# us-east-1, us-east-2, us-west-2.
+locals {
+  judge_model               = "anthropic.claude-haiku-4-5-20251001-v1:0"
+  judge_profile_arn         = "arn:aws:bedrock:${var.region}:${local.account}:inference-profile/us.${local.judge_model}"
+  judge_destination_regions = ["ca-central-1", "us-east-1", "us-east-2", "us-west-2"]
 }
 
 resource "aws_iam_role_policy" "nightly" {

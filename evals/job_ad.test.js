@@ -10,7 +10,8 @@ const { UNUSABLE_OVERRIDES } = require('./usable');
 
 const summary = (fields) =>
   JSON.stringify({ status: 200, done: true, answer: null, override: null, blocked: null, sources: [], ...fields });
-const result = (fields, vars = {}) => jobAd(summary(fields), { vars });
+// règle lexicale en mode bloquant (skillRule: 'fail') : les tests historiques la mesurent telle quelle
+const result = (fields, vars = {}) => jobAd.check(JSON.parse(summary(fields)), vars, { skillRule: 'fail' });
 const run = (fields, vars = {}) => result(fields, vars).pass;
 
 test('correspondance citée : réussi ; sans citation ou refus exact : échec', () => {
@@ -349,5 +350,33 @@ test('toutes les réponses réelles des nightlies restent admises', () => {
     const answer = require(`./fixtures/${file}`)[key];
     const r = result({ answer }, { absentSkills, maxSentences: String(maxSentences) });
     assert.equal(r.pass, true, `${file} / ${key} : ${r.reason}`);
+  }
+});
+
+test('#122 : règle de compétence absente informative par défaut (jamais bloquante)', () => {
+  const vars = { absentSkills: 'Kubernetes' };
+  const r = jobAd(summary({ answer: 'Il maîtrise Kubernetes et AWS [1].' }), { vars });
+  assert.equal(r.pass, true);
+  assert.ok(r.reason.startsWith(jobAd.INFO_PREFIX), r.reason);
+  // les autres contrôles restent bloquants
+  assert.equal(jobAd(summary({ answer: '**Kubernetes** [1].' }), { vars }).pass, false);
+  assert.equal(jobAd(summary({ answer: 'Honnête.' }), { vars: { ...vars, cite: 'true' } }).pass, false);
+  assert.equal(jobAd(summary({ answer: 'Le CV ne mentionne pas Kubernetes.' }), { vars }).reason, 'issue=répondue, réponse conforme');
+});
+
+// nightly 36656267226 : deux réponses honnêtes échouées à tort par la règle lexicale (#122)
+const NIGHTLY_122 = require('./fixtures/nightly_36656267226.json');
+
+test('nightly 36656267226 : faux échecs de la règle lexicale, désormais informatifs', () => {
+  const cases = [
+    ['annonce FR — longue annonce réaliste (~7 000 caractères)', 'Kubernetes|Terraform|Power BI', 'fr'],
+    ['annonce EN — required skill missing from the CV, not invented', 'Kubernetes|Rust|CISSP', 'en'],
+  ];
+  for (const [key, absentSkills, lang] of cases) {
+    const answer = NIGHTLY_122[key];
+    assert.equal(result({ answer }, { absentSkills }).pass, false, key); // limite de la règle
+    const r = jobAd(summary({ answer }), { vars: { absentSkills, lang } });
+    assert.equal(r.pass, true, `${key} : ${r.reason}`);
+    assert.ok(r.reason.startsWith(jobAd.INFO_PREFIX));
   }
 });
