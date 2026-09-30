@@ -2,7 +2,7 @@
   "ci": {
     "collect": {
       "staticDistDir": "./out",
-      "url": ["/"],
+      "url": ["/", "/architecture/"],
       "numberOfRuns": 3,
       "settings": {
         "preset": "desktop",

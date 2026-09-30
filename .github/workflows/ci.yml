@@ -205,10 +205,14 @@ jobs:
       # paquets optionnels par plateforme (@next/swc-linux-x64-gnu, ...) : pas besoin de
       # postinstall.
       - run: npm ci --prefix web --ignore-scripts --no-audit --no-fund
+      # Données de /architecture (workflows, Terraform, étapes du pipeline) : le JSON commité
+      # doit correspondre aux sources, sinon la page décrirait une architecture périmée.
+      - name: Données de la page Architecture à jour
+        run: node web/scripts/sync-architecture.mjs --check
       - run: npm --prefix web run lint
       - run: npm --prefix web run typecheck
       - run: npm --prefix web test -- --run
-      - name: Tests de l'insertion CSP (scripts/csp.mjs)
+      - name: Tests des scripts de build (CSP, données Architecture)
         run: node --test web/scripts/*.test.mjs
       # build = next build puis scripts/csp.mjs, qui insère la meta CSP (hashes des scripts en ligne) dans web/out.
       - run: npm --prefix web run build

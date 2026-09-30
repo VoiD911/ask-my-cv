@@ -1,10 +1,13 @@
+import ast
 import asyncio
+from pathlib import Path
 
 import pytest
 from opentelemetry.trace import StatusCode
 
+from ask_my_cv import pipeline
 from ask_my_cv.events import Event, StageEnd
-from ask_my_cv.stages import StageBlocked, stage
+from ask_my_cv.stages import PIPELINE_STAGES, StageBlocked, stage
 
 
 async def test_stage_emits_start_and_end_and_span(spans) -> None:
@@ -78,3 +81,18 @@ async def test_failed_stage_span_is_an_error(spans) -> None:
         async with stage("retrieval", lambda e: None):
             raise ValueError("boom")
     assert spans.get_finished_spans()[-1].status.status_code is StatusCode.ERROR
+
+
+def test_pipeline_opens_declared_stages_in_order() -> None:
+    """PIPELINE_STAGES (lu par la page /architecture du site) suit le code réel."""
+    tree = ast.parse(Path(pipeline.__file__).read_text(encoding="utf-8"))
+    calls = sorted(
+        (node.lineno, node.args[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "stage"
+        and node.args
+        and isinstance(node.args[0], ast.Constant)
+    )
+    assert tuple(name for _, name in calls) == PIPELINE_STAGES

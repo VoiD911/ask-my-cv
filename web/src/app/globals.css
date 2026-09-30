@@ -1616,11 +1616,432 @@ body {
 }
 
 /* ------------------------------------------------------------------ */
+/* Architecture : schémas générés, mêmes puces que le circuit          */
+/* ------------------------------------------------------------------ */
+
+.arch-toc {
+  padding: 16px 20px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 10px;
+  background: var(--color-board-raised);
+}
+
+.arch-toc ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+}
+
+.arch-toc a {
+  display: inline-flex;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-silk);
+  text-decoration: none;
+}
+
+.arch-toc a:hover {
+  border-color: var(--color-pulse);
+}
+
+.arch-toc a span {
+  color: var(--color-silk-dim);
+}
+
+.arch-toc p {
+  max-width: 85ch;
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--color-silk-dim);
+}
+
+.arch-section {
+  display: grid;
+  gap: 18px;
+  scroll-margin-top: 16px;
+}
+
+.arch-section__text h2 {
+  font-size: clamp(1.35rem, 2.3vw, 2rem);
+  font-weight: 550;
+  letter-spacing: -0.025em;
+}
+
+.arch-section__text > p:not(.titleblock__eyebrow) {
+  max-width: 85ch;
+  margin-top: 12px;
+  line-height: 1.65;
+  color: var(--color-silk-dim);
+}
+
+.arch-sources {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 18px;
+  margin-top: 16px;
+}
+
+.arch-sources__title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-silk-dim);
+}
+
+.arch-sources ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  list-style: none;
+}
+
+.arch-sources a {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-pulse);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.arch-board {
+  min-width: 0;
+}
+
+.arch-board__alt {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--color-board-line);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-silk-dim);
+}
+
+.arch-board__alt span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.arch-chip .chip__ref,
+.arch-job .chip__ref {
+  color: var(--color-silk-dim);
+}
+
+.arch-chip .chip__id,
+.arch-job .chip__id {
+  font-family: var(--font-sans);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+
+.arch-request,
+.arch-lifecycle {
+  display: grid;
+  gap: 26px;
+  margin-top: 18px;
+}
+
+/* Suite de puces : colonne sur mobile (piste verticale), grille ensuite (piste horizontale). */
+.arch-flow {
+  --arch-gap: 22px;
+  display: grid;
+  gap: var(--arch-gap);
+  list-style: none;
+}
+
+@media (min-width: 640px) {
+  .arch-flow {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  }
+}
+
+.arch-flow__item {
+  position: relative;
+  min-width: 0;
+}
+
+.arch-flow__item + .arch-flow__item::before,
+.arch-flow__item + .arch-flow__item::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+
+.arch-flow__item + .arch-flow__item::before {
+  left: 50%;
+  top: calc(-1 * var(--arch-gap));
+  width: 2px;
+  height: var(--arch-gap);
+  background: color-mix(in oklab, var(--color-pulse) 45%, var(--color-copper));
+}
+
+.arch-flow__item + .arch-flow__item::after {
+  left: calc(50% - 2px);
+  top: calc(-1 * var(--arch-gap));
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-pulse);
+  box-shadow: 0 0 8px var(--color-pulse);
+  animation: arch-pulse-v 2.4s linear infinite;
+}
+
+@media (min-width: 640px) {
+  .arch-flow__item + .arch-flow__item::before {
+    left: calc(-1 * var(--arch-gap));
+    top: 50%;
+    width: var(--arch-gap);
+    height: 2px;
+  }
+
+  .arch-flow__item + .arch-flow__item::after {
+    left: calc(-1 * var(--arch-gap));
+    top: calc(50% - 2px);
+    animation-name: arch-pulse-h;
+  }
+}
+
+.arch-flow__item:nth-child(3n)::after {
+  animation-delay: -0.8s;
+}
+
+.arch-flow__item:nth-child(3n + 1)::after {
+  animation-delay: -1.6s;
+}
+
+@keyframes arch-pulse-v {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
+@keyframes arch-pulse-h {
+  from {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  20%,
+  80% {
+    opacity: 1;
+  }
+  to {
+    transform: translateX(16px);
+    opacity: 0;
+  }
+}
+
+.arch-notes {
+  display: grid;
+  gap: 6px;
+  margin-top: 18px;
+  padding-left: 18px;
+  list-style: disc;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--color-silk-dim);
+}
+
+.arch-banks {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr));
+  gap: 14px;
+  margin-top: 16px;
+  list-style: none;
+}
+
+.arch-bank {
+  padding: 12px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 6px;
+  background: var(--color-board);
+}
+
+.arch-bank__title {
+  display: flex;
+  justify-content: space-between;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.arch-bank__title span {
+  font-family: var(--font-mono);
+  color: var(--color-pulse);
+}
+
+.arch-bank__detail {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--color-silk-dim);
+}
+
+.arch-bank__list {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  list-style: none;
+}
+
+.arch-res {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 2px 8px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-stretch: 85%;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.arch-res:hover {
+  background: var(--color-copper-faint);
+}
+
+.arch-res__type {
+  color: var(--color-silk-dim);
+}
+
+.arch-res__name {
+  color: var(--color-silk);
+}
+
+.arch-layers {
+  display: grid;
+  gap: 22px;
+  margin-top: 16px;
+  list-style: none;
+}
+
+.arch-layer + .arch-layer {
+  padding-top: 22px;
+  border-top: 2px solid color-mix(in oklab, var(--color-pulse) 45%, var(--color-copper));
+}
+
+.arch-layer__label {
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-silk-dim);
+}
+
+.arch-jobs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
+  gap: 18px;
+  list-style: none;
+}
+
+.arch-job {
+  height: auto;
+}
+
+.arch-steps {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid var(--color-board-line);
+  font-size: 11px;
+}
+
+.arch-steps summary {
+  width: fit-content;
+  color: var(--color-pulse);
+  cursor: pointer;
+}
+
+.arch-steps ol {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  padding-left: 18px;
+  list-style: decimal;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-silk-dim);
+  overflow-wrap: anywhere;
+}
+
+.arch-side {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 14px;
+  list-style: none;
+}
+
+.arch-side__item {
+  padding: 14px;
+  border: 1px solid var(--color-board-line);
+  border-radius: 8px;
+  background: var(--color-board-raised);
+}
+
+.arch-side__name {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.arch-side__name span {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-silk-dim);
+}
+
+.arch-side__item ul {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  list-style: none;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--color-silk-dim);
+}
+
+.arch-side__item strong {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  color: var(--color-silk);
+}
+
+.arch-lane__title {
+  margin-bottom: 12px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-silk-dim);
+}
+
+/* ------------------------------------------------------------------ */
 /* Réduction des animations : l'état reste lisible, rien ne bouge      */
 /* ------------------------------------------------------------------ */
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse {
+  .pulse,
+  .arch-flow__item::after {
     display: none;
   }
   .led,
