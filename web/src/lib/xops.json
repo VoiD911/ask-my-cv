@@ -60,6 +60,7 @@
     ".github/workflows/mirror.yml": "file",
     ".github/workflows/nightly.yml": "file",
     ".github/workflows/train.yml": "file",
+    ".github/workflows/weekly.yml": "file",
     ".trivyignore.yaml": "file",
     "Dockerfile": "file",
     "docs/journal": "dir",
@@ -75,6 +76,7 @@
     "infra/prod/lambda.tf": "file",
     "infra/prod/observability.tf": "file",
     "infra/scripts/smoke_prod.py": "file",
+    "infra/scripts/weekly_summary.py": "file",
     "ml/compare.py": "file",
     "ml/drift.py": "file",
     "ml/gates.yaml": "file",
@@ -110,13 +112,17 @@
       "path": ".github/workflows/nightly.yml",
       "line": 18
     },
+    "job:weekly.yml:summary": {
+      "path": ".github/workflows/weekly.yml",
+      "line": 22
+    },
     "step:ci.yml:deploy:Déployer (par digest)": {
       "path": ".github/workflows/ci.yml",
       "line": 515
     },
     "step:ci.yml:deploy:Retour arrière": {
       "path": ".github/workflows/ci.yml",
-      "line": 574
+      "line": 576
     },
     "step:ci.yml:deploy:Vérifier signature et attestation": {
       "path": ".github/workflows/ci.yml",
@@ -196,11 +202,15 @@
     },
     "text:src/ask_my_cv/pipeline.py#tous les fournisseurs ont échoué": {
       "path": "src/ask_my_cv/pipeline.py",
-      "line": 158
+      "line": 162
     },
     "tf:aws_budgets_budget.monthly": {
       "path": "infra/prod/observability.tf",
       "line": 33
+    },
+    "tf:aws_cloudwatch_dashboard.usage": {
+      "path": "infra/prod/dashboard.tf",
+      "line": 96
     },
     "tf:aws_cloudwatch_metric_alarm.guardrail_errors": {
       "path": "infra/prod/observability.tf",

@@ -235,6 +235,11 @@
       "role": "observability",
       "resources": [
         {
+          "type": "aws_cloudwatch_dashboard",
+          "name": "usage",
+          "file": "infra/prod/dashboard.tf"
+        },
+        {
           "type": "aws_cloudwatch_log_group",
           "name": "api",
           "file": "infra/prod/lambda.tf"
@@ -495,6 +500,26 @@
           "needs": [],
           "steps": [
             "Copier (crane copy, digest préservé)"
+          ],
+          "layer": 0
+        }
+      ]
+    },
+    {
+      "file": ".github/workflows/weekly.yml",
+      "name": "weekly",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        {
+          "id": "summary",
+          "needs": [],
+          "steps": [
+            "Vérifier le masquage du compte AWS",
+            "uv sync --frozen --python 3.12",
+            "Résumé hebdomadaire"
           ],
           "layer": 0
         }

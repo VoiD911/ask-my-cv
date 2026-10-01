@@ -156,11 +156,13 @@ export const disciplines: Discipline[] = [
         id: "observabilite",
         title: "Observabilité",
         claim: (x) =>
-          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel.`,
+          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte de question) et résumé hebdomadaire par courriel.`,
         status: "couvert",
         proofs: [
           { label: "telemetry.py", path: "src/ask_my_cv/telemetry.py" },
           { label: "observability.tf · alarme", anchor: "tf:aws_cloudwatch_metric_alarm.guardrail_errors" },
+          { label: "dashboard.tf · tableau de bord", anchor: "tf:aws_cloudwatch_dashboard.usage" },
+          { label: "weekly.yml · résumé", anchor: "job:weekly.yml:summary" },
         ],
       },
       {
@@ -446,11 +448,12 @@ export const disciplines: Discipline[] = [
         id: "aws-budgets",
         title: "Budget AWS et alertes",
         claim: (x) =>
-          `Filet de sécurité : AWS Budgets mensuel (${x.budget.monthlyUsdDefault} $ US par défaut), alertes par courriel à 50 % réel et 100 % prévu.`,
+          `Filet de sécurité : AWS Budgets mensuel (${x.budget.monthlyUsdDefault} $ US par défaut), alertes par courriel à 50 % réel et 100 % prévu. Coût mesuré par jour et facture du mois contre le budget sur le tableau de bord, coût de la semaine dans le résumé du lundi.`,
         status: "couvert",
         proofs: [
           { label: "observability.tf · budget", anchor: "tf:aws_budgets_budget.monthly" },
           { label: "variables.tf", anchor: "text:infra/prod/variables.tf#monthly_budget_usd" },
+          { label: "weekly_summary.py", path: "infra/scripts/weekly_summary.py" },
         ],
       },
       {
