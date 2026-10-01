@@ -287,7 +287,12 @@ async def run_pipeline(
                     st.set(eval=True)
                 # même texte replié (NFKC, sans Cf) pour la longueur et les deux détecteurs
                 verdict = check_input(deps.detector, screened, settings.injection_threshold)
-                st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
+                # longueur seulement (jamais le texte) : `ml.drift` sépare questions et annonces
+                st.set(
+                    model_version=verdict.model_version,
+                    score=round(verdict.score, 3),
+                    chars=len(screened),
+                )
                 if verdict.blocked:
                     # le classifieur suffit : pas d'appel payant au garde-fou
                     st.set(guardrail="skipped")
