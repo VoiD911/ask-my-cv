@@ -43,6 +43,21 @@ async function sha256Hex(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
   return toHex(digest);
 }
 
+/**
+ * Clé `localStorage` du jeton de trafic interne (#143) : le propriétaire la renseigne une fois
+ * dans son navigateur pour que ses propres essais soient exclus du tableau de bord. Le serveur
+ * vérifie le jeton ; il ne change que le classement analytique, jamais le quota.
+ */
+export const INTERNAL_TOKEN_KEY = "ask-my-cv:internal-token";
+
+function internalToken(): string | null {
+  try {
+    return globalThis.localStorage?.getItem(INTERNAL_TOKEN_KEY) || null;
+  } catch {
+    return null; // stockage bloqué (navigation privée, cookies refusés) : trafic public
+  }
+}
+
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === "AbortError";
 }
@@ -66,14 +81,20 @@ export async function ask(params: AskParams): Promise<void> {
   const bodyBytes: Uint8Array<ArrayBuffer> = new TextEncoder().encode(bodyText);
   const signature = await sha256Hex(bodyBytes);
 
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "x-amz-content-sha256": signature,
+  };
+  const internal = internalToken();
+  if (internal) {
+    headers["x-internal-token"] = internal;
+  }
+
   let response: Response;
   try {
     response = await fetch(`${baseUrl}/ask`, {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-amz-content-sha256": signature,
-      },
+      headers,
       body: bodyBytes,
       signal,
     });

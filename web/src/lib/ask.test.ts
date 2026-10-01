@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ask, AskError } from "./ask";
+import { ask, AskError, INTERNAL_TOKEN_KEY } from "./ask";
 import type { AskEvent } from "./events";
 
 function toHex(bytes: ArrayBuffer): string {
@@ -65,6 +65,29 @@ describe("ask", () => {
 
     const sentText = new TextDecoder().decode(sentBytes);
     expect(JSON.parse(sentText)).toEqual({ question: "Quelle est ton expérience ?" });
+  });
+
+  it("adds x-internal-token only when the owner stored one locally", async () => {
+    const seen: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen.push(new Headers(init?.headers).get("x-internal-token"));
+        return new Response(sseBody([{ event: "done", data: { tokens_in: 1 } }]), { status: 200 });
+      }),
+    );
+    const store = new Map<string, string>();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null });
+    await ask({ question: "Q ?", onEvent: () => {} });
+    store.set(INTERNAL_TOKEN_KEY, "jeton-du-proprietaire");
+    await ask({ question: "Q ?", onEvent: () => {} });
+    vi.stubGlobal("localStorage", {
+      getItem: () => {
+        throw new DOMException("bloqué", "SecurityError");
+      },
+    });
+    await ask({ question: "Q ?", onEvent: () => {} });
+    expect(seen).toEqual([null, "jeton-du-proprietaire", null]);
   });
 
   it("includes model in the body only when provided", async () => {

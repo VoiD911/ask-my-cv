@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import httpx
+import pytest
 
 from ask_my_cv.app import create_app
 
@@ -341,3 +342,41 @@ async def test_question_inflated_by_nfkc_beyond_the_limit_gets_422(make_deps) ->
     assert response.status_code == 422
     assert "ﷺ" not in response.text
     assert mild.status_code == 200
+
+
+INTERNAL = "jeton-interne-" + "i" * 40
+
+
+def root_traffic(spans) -> list[str]:
+    return [s.attributes["xops.traffic"] for s in spans.get_finished_spans() if s.name == "ask"]
+
+
+async def test_internal_token_marks_traffic_without_changing_the_quota(make_deps, spans) -> None:
+    app = create_app(one_per_visitor(make_deps, internal_token=INTERNAL))
+    body = {"question": "Quelle expérience ?"}
+    async with client_for(app) as client:
+        first = await client.post("/ask", json=body, headers={"X-Internal-Token": INTERNAL})
+        second = await client.post("/ask", json=body, headers={"X-Internal-Token": INTERNAL})
+    # même compartiment que l'adresse du client : aucun passe-droit sur le quota
+    assert [quota_end(r)["status"] for r in (first, second)] == ["ok", "blocked"]
+    assert root_traffic(spans) == ["internal", "internal"]
+    for span in spans.get_finished_spans():
+        assert not any(INTERNAL in str(v) for v in (span.attributes or {}).values())
+
+
+@pytest.mark.parametrize("header", [None, "mauvais-jeton", ""])
+async def test_unauthenticated_internal_header_stays_public(make_deps, spans, header) -> None:
+    app = create_app(make_deps(internal_token=INTERNAL))
+    headers = {"X-Internal-Token": header} if header is not None else {}
+    async with client_for(app) as client:
+        await client.post("/ask", json={"question": "Quelle expérience ?"}, headers=headers)
+    assert root_traffic(spans) == ["public"]
+
+
+async def test_eval_token_is_internal_traffic(make_deps, spans) -> None:
+    app = create_app(make_deps(eval_token=TOKEN))
+    async with client_for(app) as client:
+        await client.post(
+            "/ask", json={"question": "Quelle expérience ?"}, headers={"X-Eval-Token": TOKEN}
+        )
+    assert root_traffic(spans) == ["internal"]

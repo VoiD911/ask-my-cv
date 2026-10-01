@@ -30,6 +30,11 @@ def _is_refusal(text: str) -> bool:
     return _DECORATION.sub(" ", text).strip() == REFUSAL
 
 
+def is_refusal(text: str) -> bool:
+    """La réponse est le refus canonique (« pas dans le CV ») : compté à part (tableau de bord)."""
+    return _is_refusal(text)
+
+
 @dataclass(frozen=True)
 class OutputVerdict:
     ok: bool

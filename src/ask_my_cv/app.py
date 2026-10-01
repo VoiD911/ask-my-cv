@@ -125,6 +125,11 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
             peer = request.client.host if request.client else None
             ip = client_ip(request.headers, peer, current.settings.trusted_proxy)
             visitor = visitor_id(ip, current.settings.visitor_salt)
+        # trafic interne (tests de fumée, propriétaire) : jeton vérifié comme celui des
+        # évaluations ; il ne change que le classement analytique, jamais le quota
+        internal = evaluation or _is_eval(
+            request.headers.get("x-internal-token"), current.settings.internal_token
+        )
         queue: asyncio.Queue[Event | None] = asyncio.Queue()
 
         async def produce() -> None:
@@ -136,6 +141,7 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
                     current,
                     queue.put_nowait,
                     evaluation=evaluation,
+                    internal=internal,
                 )
             finally:
                 try:
