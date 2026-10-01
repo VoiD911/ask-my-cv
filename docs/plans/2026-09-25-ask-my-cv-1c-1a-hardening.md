@@ -26,7 +26,7 @@
 | `src/ask_my_cv/llm.py` | Protocol `stream` → `AsyncGenerator` ; `OllamaLLM.aclose` |
 | `src/ask_my_cv/pipeline.py` | progression sans texte, `Answer` après garde-fou, `_stream_llm` avec délais, bascule en cours de génération, comptabilité par tentative, délai sur la recherche |
 | `src/ask_my_cv/output_guard.py` | phrase de refus `REFUSAL` acceptée |
-| `prompts/<adresse>` | prompt v2 (phrase de refus fixe) ; v1 conservé |
+| `prompts/answer@v2.md` | prompt v2 (phrase de refus fixe) ; v1 conservé |
 | `src/ask_my_cv/visitor.py` | nouveau : IP client (CloudFront de confiance ou non), HMAC |
 | `src/ask_my_cv/settings.py` | délais, environnement, proxy de confiance, CORS, validations |
 | `src/ask_my_cv/budget.py` | `spent_by_provider` dans le Protocol |
@@ -468,7 +468,7 @@ git commit -m "feat: délais par tentative et global, bascule en cours de géné
 
 **Files:**
 - Modify: `src/ask_my_cv/output_guard.py`
-- Create: `prompts/<adresse>`
+- Create: `prompts/answer@v2.md`
 - Modify: `src/ask_my_cv/settings.py`, `settings.yaml`
 - Modify: `tests/test_output_guard.py`, `tests/test_pipeline.py`, `tests/test_prompting.py`
 
@@ -502,7 +502,7 @@ async def test_fixed_refusal_reaches_the_visitor(make_deps) -> None:
 def test_prompt_v2_asks_for_the_exact_refusal() -> None:
     from ask_my_cv.output_guard import REFUSAL
 
-    template = load_template(Path("prompts/<adresse>"))
+    template = load_template(Path("prompts/answer@v2.md"))
     assert template.version == "v2"
     assert REFUSAL in template.system and "{canary}" in template.system
 ```
@@ -532,7 +532,7 @@ et remplacer la condition d'ancrage par :
         return OutputVerdict(False, "ungrounded")
 ```
 
-Créer `prompts/<adresse>` :
+Créer `prompts/answer@v2.md` :
 
 ```markdown
 Tu es l'assistant du portfolio d'un candidat. Tu réponds aux questions des recruteurs sur son parcours.
@@ -546,7 +546,7 @@ Règles :
 Marqueur interne : {canary}
 ```
 
-Passer `prompt_path` à `prompts/<adresse>` dans `Settings` (valeur par défaut) et dans `settings.yaml`. Conserver `prompts/<adresse>` (historique des versions).
+Passer `prompt_path` à `prompts/answer@v2.md` dans `Settings` (valeur par défaut) et dans `settings.yaml`. Conserver `prompts/answer@v1.md` (historique des versions).
 
 - [ ] **Step 4 : vérifier le succès**
 
@@ -556,7 +556,7 @@ Expected: tout vert.
 - [ ] **Step 5 : commit**
 
 ```bash
-git add src/ask_my_cv/output_guard.py "prompts/<adresse>" src/ask_my_cv/settings.py settings.yaml tests/test_output_guard.py tests/test_pipeline.py tests/test_prompting.py
+git add src/ask_my_cv/output_guard.py "prompts/answer@v2.md" src/ask_my_cv/settings.py settings.yaml tests/test_output_guard.py tests/test_pipeline.py tests/test_prompting.py
 git commit -m "feat: prompt v2 et phrase de refus fixe acceptée par le garde-fou"
 ```
 

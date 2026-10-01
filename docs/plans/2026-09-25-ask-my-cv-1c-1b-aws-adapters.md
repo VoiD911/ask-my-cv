@@ -138,7 +138,7 @@ def test_production_aws_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:
 environment: prod
 trusted_proxy: cloudfront
 aws_region: ca-central-1
-prompt_path: prompts/<adresse>
+prompt_path: prompts/answer@v2.md
 detector: onnx
 model_manifest: models/prod.json
 embedder: bedrock

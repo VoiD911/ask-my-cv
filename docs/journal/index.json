@@ -2041,6 +2041,541 @@
           ]
         }
       ]
+    },
+    {
+      "id": "1e-2d",
+      "title": "« Interroge mon CV » — plan 1e-2d : corrections issues des revues a posteriori",
+      "goal": "traiter les constats des revues a posteriori des PR #21/#96, #97, #98, #99, #101/#102 (fusionnées sans revue d'agent pendant la pause), rétablir la suite de nuit (#100) et fermer la fuite de l'identifiant de compte dans les journaux publics.",
+      "plan_doc": "docs/plans/2026-09-29-ask-my-cv-1e-2d-corrections.md",
+      "journal": "docs/journal/1e-2d.md",
+      "tasks": [
+        {
+          "label": "Tâche 1",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-29T20:54:06Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2d task 1 (issue #104)",
+              "summary": "The fix is committed and pushed, and PR #111 is open. None of the linters ran, though, because Docker Desktop isn't running on this machine. - **PR:** https://github.com/VoiD911/ask-my-cv/pull/111 (branch `t/104-masquage-nuit`, commit `34b03d76ca4bf0a84fbe8c76bb383873c6e52a4c`). The PR description is in French and ends with \"Closes #104\". It is not merged and I did not trigger any workflow. **Changes (16 lines added, nothing else touched):** - **`nightly.yml`, `drift` job:** it now references `secrets.AWS_ACCOUNT_ID` in its job-level env, the same way #97 did in `ci.yml`, so GitHub masks the i",
+              "verdict": null,
+              "commits": [
+                "34b03d76ca4bf0a84fbe8c76bb383873c6e52a4c"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/issues/104",
+                "https://github.com/VoiD911/ask-my-cv/pull/111"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Tâche 2",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-29T20:51:01Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2d task 2 (issue #105)",
+              "summary": "Your v7 3/3 run didn't reproduce production. You ran `diagnose_citations.py` from my branch, which had already changed the \"Langue de la réponse : …\" line for every template. The production line (from #116) doesn't mention citations, so the prompt template isn't what fixes it. That comes from code reading only; please confirm it with the script run below. PR #135 is updated (not merged): https://github.com/VoiD911/ask-my-cv/pull/135, HEAD `2dfc6ba451015ceb071689cf4657ccff49ca7875`. **What I checked in the live path** (`pipeline._stream_llm` then the output guard): nothing there explains the di",
+              "verdict": null,
+              "commits": [
+                "2dfc6ba451015ceb071689cf4657ccff49ca7875"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/issues/105",
+                "https://github.com/VoiD911/ask-my-cv/pull/135"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Tâche 4b",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-29T21:25:25Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2d task 4b (issue #108)",
+              "summary": "The review changes on #125 are pushed; the new head is `dd366e59e2746e1e27cfd92b3b0d726bb379b5e6`. The local gate passes (947 tests, 2 skipped), semgrep and gitleaks found nothing, and the PR description is updated. It is still not merged, and I didn't check CI after pushing. 1. **Statistics:** - Counts get +0.5 smoothing on both sides. - Scores are binned in 0.1 steps below the 0.5 threshold, with pairs of bins merged under 100 scores. - The alert level is the 99th percentile of the drift measure (PSI) under the null hypothesis: 5,000 draws of n scores from the baseline, fixed seed. A warning",
+              "verdict": null,
+              "commits": [
+                "dd366e59e2746e1e27cfd92b3b0d726bb379b5e6"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/issues/108"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T22:49:15Z",
+              "agent_type": "ecc:mle-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #115 classifier v1.4 candidate",
+              "summary": "J'ai posté la revue du 3e passage sur la PR #115 (delta 8c9384d..27f8aba) avec le verdict « Approuvé ». Rien n'a été poussé, fusionné ni déclenché. URL : https://github.com/VoiD911/ask-my-cv/pull/115#issuecomment-5900798090 Le corps du commentaire est dans `~\\<session-claude>\\rev115_3.md`. **Vérification.** 118 tests passent (`tests/training`, `test_text.py`, `test_onnx_detector.py`). **Point demandé au 2e passage : résolu** - **Porte de catastrophe bloquante :** les deux contrôles sont `job_ad_fpr_catastrophe` (FPR ≤ 0,30) et `job_ad_recall_catastrophe` (rappel ≥ 0,40). Le candidat est à 0,10",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/115"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Tâche 4c",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-29T23:21:26Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2d task 4c part 1 (#118)",
+              "summary": "I've fixed both Important items and all three minors from the review on #119. The new commit is pushed to PR #119 (not merged). Nothing was applied to AWS and no AWS calls were made. **SHA:** `289029d746fc5c205b53c4744270ac4314ec7835` **Gate:** everything passes. - **Python:** ruff format and check, pyright (0 errors), pytest (845 passed, 11 of them in the new test file). - **Terraform:** `fmt` and `validate` pass. - **Security scans** (on a fresh plain copy): gitleaks finds no leaks, semgrep p/python + p/secrets finds nothing, trivy config finds nothing. **Important fixes** 1. **Guardrail ver",
+              "verdict": null,
+              "commits": [
+                "289029d746fc5c205b53c4744270ac4314ec7835"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/119"
+              ]
+            },
+            {
+              "type": "implementation",
+              "date": "2026-09-30T00:23:20Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 4c part 2 integration (#118)",
+              "summary": "I've fixed the three points from the second security review, pushed to `t/118-integration`, and updated the PR description through the API. The new HEAD is `5126fb5371f02fb0979671d61c929c43bb6f3717`. Nothing is merged or applied. **Gate:** - **Python**: ruff and pyright are clean, and `pytest -q` with `REQUIRE_PROMOTED_MODEL=1` passes 918 tests. - **Evals**: the promptfoo PR suite passes 54/54. - **Terraform**: fmt and validate pass. - **trivy config**: the CI command (HIGH/CRITICAL) now passes with the AWS-0136 exception removed. - **Scans**: semgrep found nothing and gitleaks found no leaks.",
+              "verdict": null,
+              "commits": [
+                "5126fb5371f02fb0979671d61c929c43bb6f3717"
+              ],
+              "links": []
+            }
+          ]
+        },
+        {
+          "label": "Hors tâche",
+          "events": [
+            {
+              "type": "review",
+              "date": "2026-09-29T20:24:22Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Retro review #21 + #96 archive",
+              "summary": "I posted the review as a single comment on PR #21 (https://github.com/VoiD911/ask-my-cv/pull/21#issuecomment-5898152011). The verdict is \"Approuvé\". The scans found no private data in `docs/` or in the 74 issues, and there are no blocking corrections. I did not modify, push or merge anything. **What the scans covered** - Patterns searched: 12-digit AWS ids (bare, dashed, in ARNs), e-mails, local paths and usernames, tokens and keys, UUIDs, phone numbers, CV markers, agent-prompt markers. - Files searched: the PR diffs, the published tree (`origin/main`) and the issue bodies. - The only 12-char",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/21"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T20:24:28Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Retro review #97 log masking",
+              "summary": "J'ai posté le commentaire sur la PR #97 : https://github.com/VoiD911/ask-my-cv/pull/97#issuecomment-5898164836. Le verdict est « Corrections demandées ». **Contenu publié** - **Titre et cadre :** « # Revue a posteriori (agent de revue sécurité) », avec la mention que la revue est faite après fusion (mergée le 2026-09-28). - **Méthode :** j'ai relu le diff et les 4 workflows, puis analysé les journaux publics via l'API des jobs. Recherche d'une suite de 12 chiffres à côté de `.dkr.ecr.` ou `arn:aws:`, sans afficher les chiffres. `gh run view --log` renvoyait un résultat vide, d'où l'API. - **Cr",
+              "verdict": "corrections demandées",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/97"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T20:24:32Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Retro review #98 Livraison tab",
+              "summary": "Le commentaire est posté sur la PR #98 : https://github.com/VoiD911/ask-my-cv/pull/98#issuecomment-5898127947. Le verdict est « Corrections demandées ». Je n'ai relancé ni typecheck, ni lint, ni tests. La revue se limite à la lecture du code et à des recherches (grep) dans `<poste>\\ask-my-cv`. Le commentaire le précise en tête. Les fichiers de la PR ne correspondent pas tout à fait au brief. Le journal est une copie `web/src/lib/delivery-archive.json` de `docs/journal/index.json`, plus un fichier `issue-links.json`. Contenu du commentaire : # Revue a posteriori (agent de revue) PR déjà fusionn",
+              "verdict": "corrections demandées",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/98"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T20:24:38Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Retro review #99 job ads 10k",
+              "summary": "J'ai posté le commentaire sur la PR #99 : https://github.com/VoiD911/ask-my-cv/pull/99#issuecomment-5898160831. Le verdict est « Corrections demandées ». Rien n'a été exécuté localement ; c'est une lecture du code et des artefacts CI. Contenu du commentaire, en résumé (le texte intégral est dans le commentaire) : **Critique** - **Nightly du 2026-09-29 14:05 UTC (run 36580057047).** L'échec est vraisemblablement causé par le prompt v4. - Un seul test échoue sur 28 : « absent — téléphone » (`evals/nightly.yaml:73`). La réponse donne le refus exact puis ajoute une phrase sur les coordonnées de co",
+              "verdict": "corrections demandées",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/99"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T20:24:44Z",
+              "agent_type": "ecc:mle-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Retro review #102 + #101 classifier",
+              "summary": "Those two notifications are just my earlier background greps finishing. They were read-only, and I already got the same information from targeted searches, so nothing changes. The comment is final: https://github.com/VoiD911/ask-my-cv/pull/101#issuecomment-5898229139. It carries the verdict `Verdict : Corrections demandées` as its last line.",
+              "verdict": "corrections demandées",
+              "commits": [],
+              "links": []
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T20:54:59Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #111 nightly masking",
+              "summary": "Le commentaire est posté sur la PR #111 : https://github.com/VoiD911/ask-my-cv/pull/111#issuecomment-5898713446 Il reprend la revue à l'identique, avec une seule modification : la phrase « non exécuté » est remplacée par le constat que le contrôleur a passé actionlint (0 remarque) et semgrep `p/github-actions`. Le verdict est « Approuvé ». Les fichiers cités dans la revue : - `<poste>\\worktrees\\ask-my-cv-nightly-mask\\.github\\workflows\\nightly.yml` - `<poste>\\worktrees\\ask-my-cv-nightly-mask\\.github\\workflows\\ci.yml`",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/111"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T21:10:48Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #112 prompt v5",
+              "summary": "I posted the 3rd-pass review on PR #121 with verdict \"Approuvé\": https://github.com/VoiD911/ask-my-cv/pull/121#issuecomment-5902366468 I reviewed HEAD `cc08b3a`. `node --test evals/*.test.js` passes (43). I replayed all my earlier probes against this branch and `origin/main`; the comment says about 320 answers, which is approximate. I also ran 33 new probes on the \"next sentence / anaphoric reference\" scope. The working tree stayed clean. **Critique and Important:** none. - **My 9 cases:** all now fail. - **Variants:** the ones with an intervening sentence followed by a back-reference also fai",
+              "verdict": "approuvé",
+              "commits": [
+                "cc08b3a6c3240a1665db9def5aed9b95b50f8764"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/112",
+                "https://github.com/VoiD911/ask-my-cv/pull/121"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-29T23:30:22Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #119 guardrail infra",
+              "summary": "J'ai posté le 2e passage sur #119, avec « Verdict : Approuvé » en dernière ligne. Il ne contient aucune attribution. URL : https://github.com/VoiD911/ask-my-cv/pull/119#issuecomment-5901123108 **Points résolus par `289029d`** - **Version du garde-fou :** `create_before_destroy` est ajouté. Le numéro de version est nouveau à chaque création, donc pas de conflit de nom. - **Perte de résultats :** les scores ONNX sont calculés avant les appels payants. Chaque résultat est ajouté au journal dès réception, et `--resume` évite de repayer les cas déjà mesurés. - **Plafond de coût :** il est recalculé",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/119"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T00:47:50Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #120 guardrail integration",
+              "summary": "J'ai publié le 3e passage sur la PR #120, avec le verdict « Approuvé ». Le commentaire commence par « # Revue (agent de revue sécurité) — 3e passage », se termine par la ligne exacte « Verdict : Approuvé » et ne contient aucune attribution. URL : https://github.com/VoiD911/ask-my-cv/pull/120#issuecomment-5902085585 J'ai relu le delta `fdd4a92..5126fb5` en lecture seule. Je n'ai trouvé aucun problème exploitable plausible, et les trois points Important du 2e passage sont corrigés. - **Plafond après repli NFKC :** la longueur est maintenant contrôlée après le repli, avant le classifieur, le gard",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/120"
+              ]
+            },
+            {
+              "type": "implementation",
+              "date": "2026-09-30T01:46:39Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement LLM judge (issue #122)",
+              "summary": "I've pushed `56f6b7e` to `t/juge-llm`: the test split no longer shares cases with dev, and a `fresh` split is ready for your blind set. PR #123 is updated (https://github.com/VoiD911/ask-my-cv/pull/123), still not merged, and the judge rubric is unchanged. **npm version:** `evals/package.json` now declares `\"engines\": {\"npm\": \">=11.19.0\"}`, the version the CI runner uses. The lockfile was regenerated with npm 11.19.0 in a Linux container. The only change is those 3 `engines` lines. `npm ci` passes with npm 11.19.0 in a container. This Windows machine has npm 11.6.2, which reports the lockfile ",
+              "verdict": null,
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/issues/122",
+                "https://github.com/VoiD911/ask-my-cv/pull/123"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T02:07:01Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #123 LLM judge",
+              "summary": "J'ai posté le 3e passage sur la PR #123 : https://github.com/VoiD911/ask-my-cv/pull/123#issuecomment-5903184388 Il est en français, sans attribution, et se termine par « Verdict : Approuvé ». Le texte complet est dans `~\\<session-claude>\\rev123d.md`. Je n'ai fait aucun appel AWS et je n'ai pas relancé la calibration contre Bedrock. J'ai seulement relu le delta et rejoué les tests unitaires de `judge.test.js` (13/13). **Ce que j'ai retenu** - **Lockfile.** Je reconnais mon erreur : l'échec venait de mon npm 11.6.2 local. Le diff du lockfile se limite maintenant au champ `engines` (`npm >=11.19.",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/123"
+              ]
+            },
+            {
+              "type": "other",
+              "date": "2026-09-30T02:48:09Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Author fresh blind calibration cases",
+              "summary": "I wrote the calibration set: 40 cases, split evenly between `honest` and `invented`. I didn't open `evals/judge.js`, `evals/fixtures/judge_calibration.jsonl` or any `evals/job_ad*.js` file, so the set was written without seeing the rubric or the existing cases. A Python check confirms every line parses as JSON. | | honest | invented | total | |---|---|---|---| | EN | 11 | 10 | 21 | | FR | 9 | 10 | 19 | | total | 20 | 20 | 40 | Each case lists 1 to 3 absent skills, and some answers carry citations like [1][2]. The cases are labelled by hand and have not been run through a judge. **Subtle `inven",
+              "verdict": null,
+              "commits": [],
+              "links": []
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T03:10:38Z",
+              "agent_type": "ecc:mle-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #125 drift per version",
+              "summary": "Je patiente environ 10 minutes avant de récupérer la mise à jour de la PR.",
+              "verdict": "non déterminé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/125"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1e-2c",
+      "title": "« Interroge mon CV » — plan 1e-2c : onglets Architecture et XOps, anglais, rediffusion",
+      "goal": "ce qu'un recruteur voit : comprendre en quelques minutes comment le site est construit, revu, déployé et surveillé, avec des preuves vérifiables, en français et en anglais.",
+      "plan_doc": "docs/plans/2026-09-30-ask-my-cv-1e-2c-onglets.md",
+      "journal": "docs/journal/1e-2c.md",
+      "tasks": [
+        {
+          "label": "Tâche 1",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-30T03:26:13Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2c task 1 Architecture (#126)",
+              "summary": "I built the `/architecture` page and opened the PR (French, \"Closes #126\", not merged). All gate steps passed except Lighthouse mobile, which scored 0.79 locally against a 0.8 budget; the home page gets the same 0.79 on this machine. - **PR:** https://github.com/VoiD911/ask-my-cv/pull/130 - **Branch:** `t/architecture`, commit `fb5e939` **What the page does** - **Four sections:** request path, infrastructure, code to production, model lifecycle. Each has a short text, one diagram in the home page's circuit style, a \"Lecture du schéma\" text version of the diagram, and links to the real files on",
+              "verdict": null,
+              "commits": [
+                "fb5e9395a76d6548a406954058e2a2c519de22ab"
+              ],
+              "links": []
+            }
+          ]
+        },
+        {
+          "label": "Tâche 2",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-30T04:03:14Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2c task 2 XOps (#127)",
+              "summary": "I fixed the three Important points and the minors you asked for, and pushed to PR #131 at SHA `2e356ae66580b03c3e1d803bc488535c78d23983`. The PR is not merged, and CI on the new commit has not been checked yet. **Important points** 1. **Deployed image:** the XOps cell now says that on main the image is rebuilt, signed, given its SBOM and provenance, verified, then deployed by that exact digest. The \"ce qui manque\" line adds that the deployed image is rebuilt, not promoted from the one tested. The `/architecture` page made the same \"image testée\" claim, so I fixed it there too. 2. **Guardrails:",
+              "verdict": null,
+              "commits": [
+                "2e356ae66580b03c3e1d803bc488535c78d23983"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/131",
+                "https://github.com/VoiD911/ask-my-cv/pull/125"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Tâche 3",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-30T05:01:19Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2c task 3 English (#128)",
+              "summary": "The English version of the site is finished and PR #132 is open: https://github.com/VoiD911/ask-my-cv/pull/132 (not merged). French pages stay at their current URLs and English lives under `/en/...`. The full local gate and CI both pass. - **Branch / SHA:** `t/anglais`, head `92028b2b008b13f279d802f023a511e682918cfa`. Two commits on top of origin/main: `build(web): ajoute next-intl 4.14.7 (version épinglée)` and `feat(web): version anglaise du site sous /en (next-intl, export statique)`. - **Local gate:** `npx -y npm@11.19.0 ci --ignore-scripts && npm run lint && npm run typecheck && npm test ",
+              "verdict": null,
+              "commits": [
+                "92028b2b008b13f279d802f023a511e682918cfa"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/132"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Tâche 4",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-30T06:35:12Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-2c task 4 replay mode (#129)",
+              "summary": "All review pass 1 items on PR #133 are fixed: the three Important ones and the five minors. The fix is pushed as commit `eae9fc0` on `t/rediffusion`, not merged. The full local gate passed. I didn't wait for CI on this push. **Important fixes** 1. **Replay mode now ends on a live answer.** When a later question gets a real answer, the banner goes away and replay mode ends. There's a Vitest test for this. 2. **A stream that closes cleanly without `done` now counts as an outage.** If nothing had arrived yet, the page retries once and then plays a replay. If some events had already arrived, it go",
+              "verdict": null,
+              "commits": [
+                "eae9fc0a24e4ec08e97608fa787d863c287679d5"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/133"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Revue finale",
+          "events": [
+            {
+              "type": "review",
+              "date": "2026-09-30T07:44:22Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Second pass review PR #133",
+              "summary": "J'ai posté la revue du 2e passage sur la PR 133 : https://github.com/VoiD911/ask-my-cv/pull/133#issuecomment-5906594193 Verdict : Approuvé. Je n'ai pas relancé les tests localement. Je me suis fié à l'état de la CI, où `security` et `terraform` sont verts et où `test`, `evals` et `web` n'avaient pas de conclusion à la lecture. Sur GitHub, la PR était en état `BLOCKED`. Contenu posté : ``` # Revue (agent de revue) — 2e passage Périmètre : delta eae9fc0 (15 fichiers) par rapport à la passe 1. Bloc Critique uniquement, conformément à la règle du plan. ## Critique Aucun. Les trois points Important",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/133"
+              ]
+            }
+          ]
+        },
+        {
+          "label": "Hors tâche",
+          "events": [
+            {
+              "type": "review",
+              "date": "2026-09-30T03:53:39Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #130 Architecture page",
+              "summary": "J'ai posté la revue sur la PR #130 : aucun point Critique ni Important, neuf points Mineur, verdict « Approuvé ». URL : https://github.com/VoiD911/ask-my-cv/pull/130#issuecomment-5903722778 Je n'ai pas relancé le typecheck ni le lint : la CI est verte, la PR est mergeable (CLEAN), et j'ai relu le code sans l'exécuter. **Exactitude du texte :** j'ai recoupé la page avec le code et je n'ai trouvé aucune erreur. - **Étapes :** l'ordre des huit étapes correspond à `pipeline.py` et `stages.py`. - **Guardrails :** le seuil de 400 caractères et la condition « seulement si le classifieur ne bloque pas",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/130"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T04:35:27Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #131 XOps page",
+              "summary": "Cette notification concerne une commande de la première passe, celle qui avait dépassé le délai. Je l'avais déjà relancée avec une portée plus étroite, donc je n'ai rien à changer. Les deux revues de la PR #131 sont publiées, et le verdict final est « Approuvé ». - **1re passe :** https://github.com/VoiD911/ask-my-cv/pull/131#issuecomment-5904161025 - **2e passage :** https://github.com/VoiD911/ask-my-cv/pull/131#issuecomment-5904251488 Quand j'ai relu le delta, les 5 contrôles de la CI de `2e356ae` étaient encore en cours. Je n'ai donc pas vu leur résultat.",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/131"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T06:21:34Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #132 English version",
+              "summary": "J'ai publié la revue sur la PR #132 (passe 1 sur 2). Elle est approuvée, sans point Critique ni Important. URL du commentaire : https://github.com/VoiD911/ask-my-cv/pull/132#issuecomment-5905408548 Le commentaire est en français, avec l'en-tête « # Revue (agent de revue) », les blocs Critique, Important et Mineur, et la dernière ligne « Verdict : Approuvé ». **Critique.** Aucun point bloquant : - **URL françaises :** elles sont inchangées. `(fr)` est un groupe de routes sans segment d'URL, et `out/` contient toujours `/`, `/architecture/`, `/xops/` et `/livraison/<plan>/`. `/en` est le seul no",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/132"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T07:20:32Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #133 replay mode",
+              "summary": "The CSP is fine. The policy is defined in `infra/prod/variables.tf`, not in the web scripts, and it has `connect-src 'self'`. The lazy same-origin fetch of `/replays/*.json` is therefore allowed, and this confirms the \"CSP: nothing to change\" line in the review. The verdict stands at **Corrections demandées**, with three Important findings and no Critique. The comment is here: https://github.com/VoiD911/ask-my-cv/pull/133#issuecomment-5906321843",
+              "verdict": "corrections demandées",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/133"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T07:51:45Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #135 EN citations fix",
+              "summary": "J'ai posté la revue sur #135 (passe 1 sur 2), avec le verdict « Approuvé ». Je n'ai trouvé aucun point Critique ni Important. Je n'ai pas pu vérifier les mesures 4/10 → 0/10 (pas d'appel AWS). URL : https://github.com/VoiD911/ask-my-cv/pull/135#issuecomment-5906709825 Le contenu posté est le texte suivant. # Revue (agent de revue sécurité) Périmètre : `output_guard.py` (`normalize_refusal`), `pipeline.py`, `prompting.py` (ligne de langue), `scripts/diagnose_citations.py`, cas nightly. Lecture seule, aucun appel AWS. Passe 1 sur 2. ## Critique Aucun. ## Important Aucun. ## Mineur 1. **`normaliz",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/135"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T08:01:58Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #136 openssl fix",
+              "summary": "J'ai publié la revue en français sur la PR #136 : https://github.com/VoiD911/ask-my-cv/pull/136#issuecomment-5906866643 Verdict : Approuvé. La revue ne relève aucun point critique, trois points importants et quelques points mineurs. Il n'y avait rien à modifier dans le code, et je n'ai pas lancé trivy moi-même. Contenu de la revue : - **Critique :** aucun. - **Reproductibilité :** l'image de base reste figée par digest, mais l'upgrade OpenSSL installe la dernière version disponible au moment du build. Deux builds du même commit peuvent donc différer. C'est acceptable parce que c'est temporaire",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/136"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T08:42:37Z",
+              "agent_type": "ecc:security-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #138 replay recordings",
+              "summary": "That background command finished, and I'd already used its output in the review. It changes nothing in the findings or the verdict. The review is posted on PR #138 with the verdict \"Approuvé\": https://github.com/VoiD911/ask-my-cv/pull/138#issuecomment-5907576243",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/138"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "1e-3a",
+      "title": "« Interroge mon CV » — plan 1e-3a : page CV (téléchargement et contact)",
+      "goal": "un recruteur trouve en un clic le CV (FR/EN) à télécharger et un moyen de contact.",
+      "plan_doc": "docs/plans/2026-09-30-ask-my-cv-1e-3a-cv.md",
+      "journal": "docs/journal/1e-3a.md",
+      "tasks": [
+        {
+          "label": "Hors tâche",
+          "events": [
+            {
+              "type": "implementation",
+              "date": "2026-09-30T14:12:13Z",
+              "agent_type": "general-purpose",
+              "model": "claude-opus-5-5",
+              "description": "Implement 1e-3a CV page (#139)",
+              "summary": "I've implemented issue #139 and opened PR https://github.com/VoiD911/ask-my-cv/pull/140 (not merged), on branch `t/page-cv`, commit `59f2920`, worktree `<poste>\\worktrees\\ask-my-cv-cv`. Every gate passed locally; I haven't watched the PR's CI run. **PDFs for the user:** - `~\\<session-claude>\\Steve-Lang-CV-fr.pdf` (about 105 KB) - `~\\<session-claude>\\Steve-Lang-CV-en.pdf` (about 100 KB) The originals are in the worktree under `web/out/cv/` and `web/out/en/cv/`. Each is 2 pages of A4 with selectable text, black on white, and carries a title and author \"Steve Lang\" in its metadata. I read the Fre",
+              "verdict": null,
+              "commits": [
+                "59f292050b1a83d2b11465167074d16f4cadb54e"
+              ],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/issues/139"
+              ]
+            },
+            {
+              "type": "review",
+              "date": "2026-09-30T14:34:54Z",
+              "agent_type": "ecc:typescript-reviewer",
+              "model": "claude-sonnet-5-5",
+              "description": "Review PR #140 CV page",
+              "summary": "I posted the review on PR 140, with the verdict \"Approuvé\". It has no Critique or Important findings, and I did not run the tests locally. The CI checks (`test`, `web`, `security`, `evals`) were still running when I reviewed, so their results are still to confirm before merge. Comment URL: https://github.com/VoiD911/ask-my-cv/pull/140#issuecomment-5913459755 The comment starts with \"# Revue (agent de revue)\", is in French, has no attribution, and its last line is exactly \"Verdict : Approuvé\". This is pass 1 of 2. - **EN translation:** it matches the FR on all dates, employers, titles, technolo",
+              "verdict": "approuvé",
+              "commits": [],
+              "links": [
+                "https://github.com/VoiD911/ask-my-cv/pull/140"
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

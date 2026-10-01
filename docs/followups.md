@@ -117,7 +117,7 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
 - ~~Lighthouse en CI.~~ Traité : bureau 1,00 partout, mobile 0,95–1,00 ; seuils avec marge (runners partagés), médiane de 3 passages.
 - ~~Adaptateur Lambda hors d'ECR public anonyme.~~ Traité : copie GHCR au même digest (`mirror.yml`, `crane copy`).
 - **Reportés** :
-  - ~~L'ID de compte AWS apparaît dans les journaux publics des Actions (URL ECR).~~ Traité : secret d'environnement `AWS_ACCOUNT_ID` référencé au niveau du job (PR #97) ; le déploiement suivant a réussi sans occurrence brute dans ses journaux. Les journaux des deux exécutions historiques concernées ont été supprimés par l'API GitHub, leurs résultats conservés ;
+  - l'ID de compte AWS apparaît dans les journaux publics des Actions (URL ECR) : le masquer (`::add-mask::` refusé par semgrep → reformater les sorties ou filtrer) ;
   - exception osv-scanner `extract-zip` (Lighthouse CI) jusqu'au 2026-11-27 : réévaluer ;
   - CSP : recalcul des empreintes en CI (`--check`), `report-to` pour les violations en production ;
   - `train.yml` utilise encore `attest-build-provenance` (pas `actions/attest`) ;
@@ -127,9 +127,9 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
 - ~~Publier la spec, les plans et `followups.md` dans `ask-my-cv/docs`.~~ Traité : 12 plans, spec et suivi publiés.
 - ~~Extraire et masquer les rapports des sous-agents.~~ Traité : 117 agents rattachés à 12 journaux, relecture de l'échantillon autorisée par l'utilisateur. Le dernier rapport explicite de chaque agent est conservé ; les échanges privés et les consignes restent exclus.
 - ~~Créer des issues historiques fermées pour les tâches numérotées.~~ Traité : 74 issues étiquetées `historique`, issues reconstituées avec date réelle, extraits de rapports et liens vers le plan, le journal et les commits publiés.
-- **Reporté à 1e-2c :** exposer l'archive dans l'onglet « Livraison » du site.
+- **Reporté à 1e-2c :** exposer l'archive dans l'onglet « Livraison » du site. Le masquage de l'ID de compte AWS dans les journaux publics des Actions reste suivi au 1e-2a ci-dessus.
 
-### 1e-2c — onglets et contenu
+### ~~1e-2c — onglets et contenu~~ (terminé le 2026-09-30 : #130 Architecture, #131 XOps, #132 anglais, #133 + #138 rediffusion)
 - **Architecture** (le *comment*, quatre parties, diagrammes générés depuis les sources — voir ci-dessous).
 - **XOps** (les *preuves*) : matrice, chaque case liée à un artefact réel (SBOM, `cosign verify`, provenance SLSA, rapport promptfoo, red team, dérive, model card).
 - **Livraison** (décision du 2026-09-26, option A « assumer la méthode ») : la chaîne spec → plan → issue → PR → revue → CI → déploiement, avec toute la documentation ; présenter la méthode comme une compétence : l'architecte fixe les objectifs et arbitre, des agents IA implémentent et révisent, la CI, les signatures et les évaluations vérifient ; généré au build depuis `docs/`, l'historique git, l'API GitHub (issues, PR, runs, releases).
@@ -143,3 +143,13 @@ Dépôt `VoiD911/ask-my-cv` **public** depuis le 2026-09-26 (recréé, historiqu
 
 - **Écarts non reportés.**
   - Quotas portables : la spec (§2.1) dit « en mémoire », conforme depuis la mise à jour du 1c.
+
+
+## Reporté après 1e-2c et 1e-2d (2026-09-30)
+
+- **Dérive du classifieur (PR #125, non fusionnée)** : comparaison par version et par population, seuil par bootstrap ; revue MLOps en cours, mise en pause volontairement. Tant qu'elle n'est pas fusionnée, le job `drift` de nuit peut signaler une fausse dérive.
+- **Annonce EN longue (architecte IA/sécurité)** encore bloquée par le classifieur v1.4.0 (0,72) ; seul cas rouge de la suite de nuit (#100 ouverte).
+- **Plan 1e-2d restant** : tâche 3 (coût des longues annonces), 4a (tests du classifieur restants), 5 (tests Livraison), 6 (finitions de l'archive).
+- **OpenSSL** : retirer la mise à niveau du Dockerfile quand l'image officielle sera reconstruite (#137).
+- **Test instable** : `tests/devlog/test_redact.py::test_find_suspects_repeated_keyword_equals_is_linear_p2` (limite de 1 s dépassée sur un runner chargé).
+- **Finitions site** : message d'attaque bloquée en français dans la rediffusion anglaise ; `spent_today_usd` visible dans les enregistrements ; infobulle du glossaire non fermable avec Échap ; 404 en français sous `/en/` ; formulations anglaises à polir (revue #132) ; ancres `text:` fragiles du générateur XOps.

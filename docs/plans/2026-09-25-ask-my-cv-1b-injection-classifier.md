@@ -177,19 +177,19 @@ Expected: FAIL avec `ModuleNotFoundError: No module named 'ml.fetch'`
 # Sources publiques épinglées sur une révision exacte. Un fichier dont le sha256 change est refusé.
 sources:
   - name: deepset-train
-    url: https://huggingface.co/datasets/deepset/prompt-injections/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd (hors historique publié)/data/train-00000-of-00001-9564e8b05b4757ab.parquet
+    url: https://huggingface.co/datasets/deepset/prompt-injections/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd/data/train-00000-of-00001-9564e8b05b4757ab.parquet
     sha256: 2e10bc7ab30f542c97e4e83e2a5683000b5057d25ec10908784c631d44124c04
     license: Apache-2.0
     role: train
     label_column: label
   - name: deepset-test
-    url: https://huggingface.co/datasets/deepset/prompt-injections/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd (hors historique publié)/data/test-00000-of-00001-701d16158af87368.parquet
+    url: https://huggingface.co/datasets/deepset/prompt-injections/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd/data/test-00000-of-00001-701d16158af87368.parquet
     sha256: 39ac797cabc157eeed58435a08593b2952bb6cb16fc394a2d383f447cc7b246e
     license: Apache-2.0
     role: eval_deepset
     label_column: label
   - name: gandalf
-    url: https://huggingface.co/datasets/Lakera/gandalf_ignore_instructions/resolve/04737b65e90a6794ec227012e4a255a7def6344b (hors historique publié)/data/train-00000-of-00001-ded53be747ff55cd.parquet
+    url: https://huggingface.co/datasets/Lakera/gandalf_ignore_instructions/resolve/04737b65e90a6794ec227012e4a255a7def6344b/data/train-00000-of-00001-ded53be747ff55cd.parquet
     sha256: 5b6acf3e5a5998d21f8e1222bb45bbdec25a14408747b1cd63bebef4a75fa439
     license: MIT
     role: eval_gandalf

@@ -47,13 +47,13 @@ export function commitUrl(sha: string): string {
 }
 
 export function issueLinksFor(plan: string, task: string): { label: string; href: string }[] {
-  const match = /^Tâches? (\d+)(?:-(\d+))?$/.exec(task);
+  const match = /^Tâches? (\d+)(?:([a-z])|-(\d+))?$/.exec(task);
   if (!match) return [];
   const first = Number(match[1]);
-  const last = Number(match[2] ?? match[1]);
+  const last = Number(match[3] ?? match[1]);
   const links: { label: string; href: string }[] = [];
   for (let number = first; number <= last; number++) {
-    const key = `${plan} · Tâche ${number}`;
+    const key = `${plan} · Tâche ${number}${match[2] ?? ""}`;
     const id = (issueNumbers as Record<string, number>)[key];
     if (typeof id === "number" && Number.isInteger(id) && id > 0) {
       links.push({ label: `Issue #${id}`, href: `${BASE}/issues/${id}` });
@@ -68,10 +68,10 @@ export function eventLinks(links: string[]): string[] {
   );
 }
 
-/** Libellé d'étape du journal (« Tâche 3 », « Tâches 1-2 ») dans la langue de l'interface. */
+/** Libellé d'étape du journal (« Tâche 3 », « Tâche 4b », « Tâches 1-2 ») dans la langue de l'interface. */
 export function taskLabel(label: string, locale: Locale): string {
   if (locale === "fr") return label;
-  return label.replace(/^Tâches (\d+)-(\d+)$/, "Tasks $1-$2").replace(/^Tâche (\d+)$/, "Task $1");
+  return label.replace(/^Tâches (\d+)-(\d+)$/, "Tasks $1-$2").replace(/^Tâche (\d+[a-z]?)$/, "Task $1");
 }
 
 export function formatDate(iso: string, locale: Locale = "fr"): string {

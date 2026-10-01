@@ -34,7 +34,7 @@ Dépôt : `<poste>\ask-my-cv`
 |---|---|
 | `pyproject.toml` | Dépendances, config ruff / pyright / pytest |
 | `settings.yaml` | Config locale : modèles, chaîne de bascule, seuils, quotas |
-| `prompts/<adresse>` | Prompt système versionné (le nom de fichier porte la version) |
+| `prompts/answer@v1.md` | Prompt système versionné (le nom de fichier porte la version) |
 | `data/cv.md` | CV d'exemple (fictif, à remplacer par le vrai) |
 | `src/ask_my_cv/events.py` | Modèles des événements SSE |
 | `src/ask_my_cv/stages.py` | `stage()` : span OTel + événements start/end, `StageBlocked` |
@@ -852,7 +852,7 @@ git commit -m "feat: embedder par hachage et index vectoriel en mémoire"
 
 **Files:**
 - Create: `src/ask_my_cv/prompting.py`
-- Create: `prompts/<adresse>`
+- Create: `prompts/answer@v1.md`
 - Test: `tests/test_prompting.py`
 
 - [ ] **Step 1 : écrire les tests**
@@ -886,7 +886,7 @@ def test_render_without_sources() -> None:
 
 
 def test_load_template_reads_version_from_filename(tmp_path: Path) -> None:
-    path = tmp_path / "<adresse>"
+    path = tmp_path / "answer@v7.md"
     path.write_text("Système {canary}\n", encoding="utf-8")
     template = load_template(path)
     assert (template.name, template.version, template.system) == ("answer", "v7", "Système {canary}")
@@ -931,14 +931,14 @@ class PromptTemplate:
 
 
 def load_template(path: Path) -> PromptTemplate:
-    """Le nom de fichier porte la version : `<adresse>` -> name=answer, version=v1."""
+    """Le nom de fichier porte la version : `answer@v1.md` -> name=answer, version=v1."""
     name, _, version = path.stem.partition("@")
     if not version:
         raise ValueError(f"nom de template sans version : {path.name}")
     return PromptTemplate(name=name, version=version, system=path.read_text(encoding="utf-8").strip())
 ```
 
-- [ ] **Step 4 : écrire `prompts/<adresse>`**
+- [ ] **Step 4 : écrire `prompts/answer@v1.md`**
 
 ```markdown
 Tu es l'assistant du portfolio d'un candidat. Tu réponds aux questions des recruteurs sur son parcours.
@@ -1402,7 +1402,7 @@ class ModelConfig(BaseModel):
 class Settings(BaseModel):
     cv_path: Path = Path("data/cv.md")
     index_path: Path = Path("data/index.json")
-    prompt_path: Path = Path("prompts/<adresse>")
+    prompt_path: Path = Path("prompts/answer@v1.md")
     embed_dim: int = 256
     models: list[ModelConfig]
     default_model: str
@@ -1448,7 +1448,7 @@ Si Ollama ne tourne pas, la requête bascule sur le faux LLM : la démo de bascu
 ```yaml
 cv_path: data/cv.md
 index_path: data/index.json
-prompt_path: prompts/<adresse>
+prompt_path: prompts/answer@v1.md
 embed_dim: 256
 
 default_model: ollama:gemma3

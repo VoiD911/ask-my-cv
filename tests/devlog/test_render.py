@@ -156,6 +156,9 @@ def test_load_plan_docs_parses_ids_windows_titles_and_goals(tmp_path: Path) -> N
         ("Tâche 0 : squelette", "Tâche 0"),
         ("Revue tâches 3-4", "Tâches 3-4"),
         ("Plan 1c-1b demo", OFF_TASK),
+        ("Implement 1e-2d task 4b (issue #108)", "Tâche 4b"),
+        ("Implement 1e-2d task 4C part 1 (#118)", "Tâche 4c"),
+        ("Review task 4bis", OFF_TASK),
     ],
 )
 def test_task_key_from_description(description: str, expected: str) -> None:
@@ -352,6 +355,8 @@ def test_journal_structure_and_ordering() -> None:
         ),
         _record(id="f", description="Restore domain FPR 0"),
         _record(id="g", description="Implement Task 0: scaffold"),
+        _record(id="h", description="Implement task 10b"),
+        _record(id="i", description="Implement task 10a"),
     ]
     journal = _render(agents).files["9a.md"]
     headings = [line for line in journal.splitlines() if line.startswith("## ")]
@@ -359,6 +364,8 @@ def test_journal_structure_and_ordering() -> None:
         "## Tâche 0",
         "## Tâches 2-3",
         "## Tâche 10",
+        "## Tâche 10a",
+        "## Tâche 10b",
         f"## {FINAL_REVIEW}",
         f"## {OFF_TASK}",
     ]

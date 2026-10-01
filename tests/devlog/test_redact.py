@@ -1278,3 +1278,125 @@ def test_property_redact_then_assert_no_secret_never_raises() -> None:
         checked += 1
 
     assert checked > 300
+
+
+# --------------------------------------------------------------------------
+# Dossiers de session Claude Code
+# --------------------------------------------------------------------------
+
+FAKE_SESSION = "0a1b2c3d-1111-2222-3333-444455556666"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        rf"C:\Users\bob\AppData\Local\Temp\claude\X--PROJ-demo\{FAKE_SESSION}\scratchpad\a.md",
+        f"/c/Users/bob/AppData/Local/Temp/claude/X--PROJ-demo/{FAKE_SESSION}/scratchpad/",
+        rf"~\.claude\projects\X--PROJ-demo\{FAKE_SESSION}\subagents",
+        rf"C:\Users\bob\AppData\Local\Temp\claude\X--PROJ-demo\{FAKE_SESSION}\x",
+        f"`X--PROJ-demo/{FAKE_SESSION}`",
+    ],
+)
+def test_redact_masks_claude_session_directory(text: str) -> None:
+    out = redact(text, CONFIGURED)
+    assert FAKE_SESSION not in out
+    assert "PROJ-demo" not in out
+    assert "<session-claude>" in out
+
+
+def test_redact_keeps_unrelated_uuid() -> None:
+    text = f"request id {FAKE_SESSION} and a--b"
+    assert redact(text, CONFIGURED) == text
+
+
+def test_redact_claude_session_pattern_is_linear() -> None:
+    text = "A--" + "a" * 200_000 + "/" * 200_000
+    start = time.perf_counter()
+    redact(text, CONFIGURED)
+    assert time.perf_counter() - start < 1.0
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        (r"dans D:\SOME-PROJECT-ROOT.", "dans <poste>."),
+        ("et /d/some-project-root.", "et <poste>."),
+        (r"D:\SOME-PROJECT-ROOT.old\x", r"D:\SOME-PROJECT-ROOT.old\x"),
+    ],
+)
+def test_redact_root_followed_by_sentence_period(text: str, expected: str) -> None:
+    assert redact(text, CONFIGURED) == expected
+
+
+def test_redact_masks_claude_project_directory_without_session() -> None:
+    out = redact("see ~/.claude/projects/X--PROJ-demo and Temp/claude/X--PROJ-demo/", CONFIGURED)
+    assert "PROJ-demo" not in out
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"session {FAKE_SESSION}.",
+        "sous-agents : `…/0a1b2c3d-…/subagents`",
+        f"id {FAKE_SESSION.upper()}",
+    ],
+)
+def test_redact_masks_configured_session_id(text: str) -> None:
+    config = _config(session_ids=frozenset({FAKE_SESSION}))
+    out = redact(text, config)
+    assert "0a1b2c3d" not in out.lower()
+    assert "<session-claude>" in out
+
+
+def test_session_id_config_must_be_uuid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / "redact.json"
+    path.write_text(json.dumps({"session_ids": ["not-a-uuid"]}), encoding="utf-8")
+    monkeypatch.setenv("DEVLOG_REDACT_CONFIG_PATH", str(path))
+    with pytest.raises(ConfigError):
+        load_config()
+
+
+@pytest.mark.parametrize(
+    "text", ["prompts/answer@v2.md", "`answer@v7.md`", "prompts/answer@v10.md", "a@v1.2.yaml"]
+)
+def test_redact_keeps_file_names_with_at_sign(text: str) -> None:
+    assert redact(text, CONFIGURED) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "alice@private.org",
+        "a.b@mail.co.uk",
+        "dev@corp.io.",
+        "me@perso.md",
+        "me@perso.py",
+        "me@perso.sh",
+        "me@x.ts",
+        "a@b.json",
+    ],
+)
+def test_redact_still_masks_real_emails(text: str) -> None:
+    assert "<adresse>" in redact(text, CONFIGURED)
+
+
+def test_redact_collapses_repeated_identical_masks() -> None:
+    text = "aucune occurrence de `bob`, `bob`, `alice@private.org` ni bob, bob"
+    out = redact(text, CONFIGURED)
+    assert out == "aucune occurrence de `<utilisateur>`, `<adresse>` ni <utilisateur>"
+
+
+def test_redact_keeps_distinct_masks_apart() -> None:
+    out = redact("bob et bob", CONFIGURED)
+    assert out == "<utilisateur> et <utilisateur>"
+
+
+def test_redact_masks_whole_claude_temp_structure() -> None:
+    text = (
+        r"C:\Users\bob\AppData\Local\Temp\claude\X--PROJ-demo"
+        rf"\{FAKE_SESSION}\scratchpad\out\a.py"
+    )
+    out = redact(text, CONFIGURED)
+    assert "AppData" not in out
+    assert "scratchpad" not in out
+    assert out.endswith(r"\out\a.py")

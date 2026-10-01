@@ -407,10 +407,34 @@ def _in_commit_context(text: str, start: int) -> bool:
     return bool(_COMMIT_CONTEXT.search(text[max(0, start - 40) : start]))
 
 
+# Références externes : épinglage d'action (`uses: owner/repo@<sha>`), empreinte
+# d'image (`digest`, `sha256:`), révision dans une URL qui n'est pas un commit de
+# ce dépôt (`huggingface.co/…/resolve/<sha>`).
+_EXTERNAL_LINE = re.compile(r"\buses\s*:|\bdigest\b|@sha256\b", re.IGNORECASE)
+_OWN_COMMIT_URL = re.compile(r"github\.com/VoiD911/ask-my-cv/commits?/$", re.IGNORECASE)
+
+
+def _is_external_ref(text: str, start: int) -> bool:
+    line_start = text.rfind("\n", 0, start) + 1
+    before = text[line_start:start]
+    if _EXTERNAL_LINE.search(before):
+        return True
+    if before.endswith("/"):
+        url_start = max(before.rfind(" "), before.rfind("("), before.rfind("`"), before.rfind("<"))
+        return not _OWN_COMMIT_URL.search(before[url_start + 1 :])
+    return False
+
+
 def _looks_like_commit_ref(text: str, start: int, token: str) -> bool:
+    """Un jeton n'est marqué « hors historique publié » qu'en contexte de commit
+    (mot-clé git juste avant, ou bloc `git log --oneline`) et hors référence
+    externe : un SHA de 40 caractères isolé (épinglage d'action, révision d'un
+    autre dépôt) n'est jamais présumé être un commit de ce dépôt."""
     if not _HAS_HEX_LETTER.search(token):
         return False  # purement numérique : horodatage, compteur, port…
-    return len(token) == 40 or _in_oneline_log(text, start) or _in_commit_context(text, start)
+    if _is_external_ref(text, start):
+        return False
+    return _in_oneline_log(text, start) or _in_commit_context(text, start)
 
 
 def load_published_shas(repo: Path) -> set[str]:

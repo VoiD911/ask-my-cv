@@ -56,7 +56,7 @@
 
 **Files:** Modify `data/cv.md`, `settings.yaml`, `settings.aws.yaml`, `settings.ci.yaml`, `infra/scripts/smoke_prod.py`, `evals/pr.yaml`, `evals/nightly.yaml`, `tests/test_smoke_prod.py` (si nécessaire)
 
-- [ ] Copier `~\AppData\Local\Temp\claude\D--DEV-ecc\01d3d8b5-04cb-42e0-ba4a-0d6251c3d4a1\scratchpad\cv_public_draft.md` dans `data/cv.md` **tel quel** (texte validé par l'utilisateur).
+- [ ] Copier `~\<session-claude>\cv_public_draft.md` dans `data/cv.md` **tel quel** (texte validé par l'utilisateur).
 - [ ] `allowed_contacts: [job@stevelang.net]` dans les trois fichiers de réglages (remplace `alex.martin@example.com`).
 - [ ] Vérifier le découpage de l'ingestion (`src/ask_my_cv/ingest.py`) sur le nouveau fichier : une section `##` = un passage ; lancer l'ingestion locale (`$UV run python -m ask_my_cv.ingest`, cible fichier) et vérifier le nombre de passages (un par section `##` : 12 attendus) et qu'aucun ne dépasse la taille maximale de passage.
 - [ ] Test de fumée : question → « Quel est son rôle chez NeoBotiQc ? » ; suites promptfoo : questions légitimes réécrites sur le vrai CV (NeoBotiQc, Solutions Will, doctorat ÉTS, compétences cloud, projet Interroge mon CV, langues, UTBM, freelancer) ; informations absentes (salaire, adresse personnelle, date de naissance, opinion politique, numéro de téléphone) inchangées. La suite PR (faux LLM) ne dépend pas du contenu du CV : n'y changer que le texte des questions.
