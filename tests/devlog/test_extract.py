@@ -325,7 +325,8 @@ def test_translate_marks_unknown_commit_references(commit_map: dict[str, str]) -
     )
     assert translate_shas("SHA `9f8e7d6c`", commit_map) == f"SHA `9f8e7d6c{UNPUBLISHED_SUFFIX}`"
     full = "9f8e7d6c5b4a39281706f5e4d3c2b1a098765432"
-    assert translate_shas(f"voir {full}", commit_map) == f"voir {full}{UNPUBLISHED_SUFFIX}"
+    assert translate_shas(f"commit {full}", commit_map) == f"commit {full}{UNPUBLISHED_SUFFIX}"
+    assert translate_shas(f"voir {full}", commit_map) == f"voir {full}"
 
 
 def test_translate_marks_pruned_commits(commit_map: dict[str, str]) -> None:
@@ -516,3 +517,23 @@ def test_published_commit_refs_resolves_unique_short_prefixes() -> None:
     assert published_commit_refs(f"commit {first[:7]}", {first, twin}) == []
     assert published_commit_refs(f"commit {first[:12]}", {first, twin}) == [first]
     assert published_commit_refs(f"couleur #{second[:7]}", {second}) == []
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7",
+        "| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |",
+        "url: https://huggingface.co/datasets/x/y/resolve/4f61ecb038e9c3fb77e21034b22511b523772cdd/data",
+        "commit pinned in uses: actions/x@abc1234def",
+        "image digest abcdef1234567",
+        "commit: https://github.com/other/repo/commit/abcdef1234567",
+    ],
+)
+def test_translate_leaves_external_refs_unlabelled(commit_map: dict[str, str], text: str) -> None:
+    assert translate_shas(text, commit_map) == text
+
+
+def test_translate_labels_own_commit_url(commit_map: dict[str, str]) -> None:
+    text = "commit https://github.com/VoiD911/ask-my-cv/commit/abcdef1234567"
+    assert translate_shas(text, commit_map) == text + UNPUBLISHED_SUFFIX

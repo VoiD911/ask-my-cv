@@ -21,7 +21,7 @@
 
 **Masquage (obligatoire, testé) :**
 - identifiant de compte AWS `<compte-aws>` → `<compte-aws>` (y compris dans les ARN et l'hôte ECR) ;
-- adresses personnelles (`<adresse>`, `<adresse>`, toute adresse autre que `job@stevelang.net`, les adresses fictives des tests `*@example.com`/`*@evil.com`/`*@corp.com` et les adresses noreply GitHub) → `<adresse>` ;
+- adresses personnelles (`<adresse>`, toute adresse autre que `job@stevelang.net`, les adresses fictives des tests `*@example.com`/`*@evil.com`/`*@corp.com` et les adresses noreply GitHub) → `<adresse>` ;
 - chemins locaux (`~\…`, `~/…`, `<poste>\…`) → `~/…` / `<poste>/…` ;
 - contenu brut du CV `.docx` (extraction du 2026-09-26) : **exclu** ; seul le CV public (`data/cv.md`) peut apparaître ;
 - jetons et secrets : garde-fou — toute chaîne ressemblant à un secret (clés `pk-lf-`, `sk-lf-`, `AKIA…`, jetons de 40+ caractères hexadécimaux ou base64 hors SHA de commit/digest connus) **fait échouer** le rendu au lieu d'être publiée ;
@@ -73,7 +73,7 @@
 ### Task 4 : génération locale et relecture par l'utilisateur (contrôleur)
 
 - [ ] Copier la spec, les plans et `followups.md` de `xops-kit` vers `ask-my-cv/docs/{spec,plans}/` et `docs/followups.md`, en les faisant passer par `redact` (chemins du scratchpad, adresses).
-- [ ] Lancer le rendu **en local** sur les vraies données ; contrôles automatiques : aucune occurrence de `<compte-aws>`, `<utilisateur>`, `<utilisateur>`, `<adresse>` dans `docs/` (grep) ; nombre d'agents rattachés par plan ; agents `inconnu` listés.
+- [ ] Lancer le rendu **en local** sur les vraies données ; contrôles automatiques : aucune occurrence de `<compte-aws>`, `<utilisateur>`, `<adresse>` dans `docs/` (grep) ; nombre d'agents rattachés par plan ; agents `inconnu` listés.
 - [ ] **Échantillon pour l'utilisateur** (envoyé comme fichiers) : `docs/journal/1c-2.md` et `docs/journal/1d-3.md` + 3 issues simulées (`issues.py` sans `--apply`). Attendre sa validation ou ses corrections avant la tâche 5.
 
 ### Task 5 : publication (issue, PR ; issues réelles par le contrôleur avec accord)

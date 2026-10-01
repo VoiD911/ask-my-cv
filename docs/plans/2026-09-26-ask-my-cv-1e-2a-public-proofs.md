@@ -13,7 +13,7 @@
 - **Lighthouse** : `@lhci/cli` sur `web/out` (site statique) dans le job `web`, budgets mesurés puis fixés.
 - **ECR public** : authentification `aws ecr-public get-login-password` dans `deploy` pour tirer l'adaptateur Lambda (quotas authentifiés, fin des échecs anonymes).
 
-**Tech Stack:** GitHub rulesets / environments, `actions/attest-build-provenance` v4.2.2 (`4d101475d8b20a2381f78447822ac1eab6504dd8 (hors historique publié)`), `actions/attest-sbom` v4.1.0 (`c604332985a26aa8cf1bdc465b92731239ec6b9e (hors historique publié)`), cosign 3.1.3, `@lhci/cli` 0.15.1, Terraform.
+**Tech Stack:** GitHub rulesets / environments, `actions/attest-build-provenance` v4.2.2 (`4d101475d8b20a2381f78447822ac1eab6504dd8`), `actions/attest-sbom` v4.1.0 (`c604332985a26aa8cf1bdc465b92731239ec6b9e`), cosign 3.1.3, `@lhci/cli` 0.15.1, Terraform.
 
 **Spec :** §4 (Release), §6. **Suivi :** « Plan 1e-2 → 1e-2a » de `followups.md`.
 

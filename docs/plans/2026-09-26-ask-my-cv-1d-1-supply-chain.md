@@ -25,13 +25,13 @@
 
 | Action | Version | SHA de commit |
 |---|---|---|
-| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1 (hors historique publié)` |
-| `astral-sh/setup-uv` | v10.2.0 | `c18668ad3cf93ea998bef934396af7bb5c839dc7 (hors historique publié)` |
-| `sigstore/cosign-installer` | v4.1.2 | `6f9f17788090df1f26f669e9d70d6ae9567deba6 (hors historique publié)` |
-| `hashicorp/setup-terraform` | v4.0.1 | `dfe3c3f87815947d99a8997f908cb6525fc44e9e (hors historique publié)` |
-| `aws-actions/configure-aws-credentials` | v6.3.0 | `e1253824e5c10ff9df46874f81ed3ec929e19cfd (hors historique publié)` |
-| `aws-actions/amazon-ecr-login` | v2.1.7 | `03f1aad4c6c7ffd436567f42f9384779290529bd (hors historique publié)` |
-| `actions/upload-artifact` | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a (hors historique publié)` |
+| `actions/checkout` | v7.0.1 | `3d3c42e5aac5ba805825da76410c181273ba90b1` |
+| `astral-sh/setup-uv` | v10.2.0 | `c18668ad3cf93ea998bef934396af7bb5c839dc7` |
+| `sigstore/cosign-installer` | v4.1.2 | `6f9f17788090df1f26f669e9d70d6ae9567deba6` |
+| `hashicorp/setup-terraform` | v4.0.1 | `dfe3c3f87815947d99a8997f908cb6525fc44e9e` |
+| `aws-actions/configure-aws-credentials` | v6.3.0 | `e1253824e5c10ff9df46874f81ed3ec929e19cfd` |
+| `aws-actions/amazon-ecr-login` | v2.1.7 | `03f1aad4c6c7ffd436567f42f9384779290529bd` |
+| `actions/upload-artifact` | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
 
 - `actions/checkout` passe de v4 à v7 et `astral-sh/setup-uv` de v6 à v10 : **lire les notes de version** des versions majeures intermédiaires (entrées renommées, valeurs par défaut) avant d'épingler.
 - `actions/attest-build-provenance@v4` (dans `train.yml`) : relever son SHA de la même façon (`gh api repos/actions/attest-build-provenance/releases/latest --jq .tag_name`, puis `gh api repos/actions/attest-build-provenance/commits/<tag> --jq .sha`).

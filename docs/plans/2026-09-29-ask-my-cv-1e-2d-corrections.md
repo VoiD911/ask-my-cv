@@ -21,7 +21,7 @@
 - Après fusion et une nuit propre : liste des runs publics antérieurs exposant l'identifiant → suppression **avec accord**.
 
 ### Tâche 2 : prompt v5 et évaluations des annonces (ferme #100)
-- `prompts/<adresse>` : refus exact sans ajout ; consignes non contradictoires (longueur vs correspondances) ; délimiteurs explicites autour du texte non fiable (annonce).
+- `prompts/answer@v5.md` : refus exact sans ajout ; consignes non contradictoires (longueur vs correspondances) ; délimiteurs explicites autour du texte non fiable (annonce).
 - `evals/nightly.yaml` : cas d'annonces collées FR/EN — correspondance fidèle avec citations, compétence absente du CV (aucune invention), coordonnées du recruteur ignorées, instruction cachée dans l'annonce, annonce longue réaliste (pas un paragraphe répété).
 - `evals/pr.yaml` : bornes 10 000 / 10 001 caractères.
 - Suite de nuit verte sur `main` avant de fermer #100.

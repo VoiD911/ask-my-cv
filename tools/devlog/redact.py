@@ -457,6 +457,31 @@ def _user_home_body(config: RedactConfig) -> str:
     return prefix + tail
 
 
+# Extensions de fichier courantes : `prompts/answer@v2.md`, `cfg@prod.yaml` sont
+# des noms de fichier, pas des adresses (TLD exclus du masquage).
+_FILE_EXTENSION_TLDS = frozenset(
+    {
+        "md",
+        "yaml",
+        "yml",
+        "json",
+        "py",
+        "ts",
+        "tsx",
+        "js",
+        "mjs",
+        "txt",
+        "toml",
+        "csv",
+        "html",
+        "sh",
+    }
+)
+# Masques identiques répétés dans une énumération (`<x>`, `<x>`) : un seul suffit.
+_REPEATED_MASK_RE = re.compile(
+    r"(`?)(<(?:compte-aws|adresse|poste|utilisateur|session-claude)>)\1(?:,[ \t]*\1\2\1)+"
+)
+
 _EMAIL_BODY = r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 
 _GITHUB_NOREPLY_RE = re.compile(
@@ -622,6 +647,8 @@ def _dispatch(match: re.Match[str], config: RedactConfig) -> str:
     if kind.startswith("root_"):
         return _PATH_MASK
     if kind == "email":
+        if text.rsplit(".", 1)[-1].lower() in _FILE_EXTENSION_TLDS:
+            return text
         return text if _is_allowed_email(text, config) else _EMAIL_MASK
     if kind == "user_cfg":
         return _USERNAME_MASK
@@ -654,7 +681,8 @@ def redact(text: str, config: RedactConfig | None = None) -> str:
     """
     resolved = config if config is not None else load_config()
     pattern = _compile_master_pattern(resolved)
-    return pattern.sub(lambda m: _dispatch(m, resolved), text)
+    masked = pattern.sub(lambda m: _dispatch(m, resolved), text)
+    return _REPEATED_MASK_RE.sub(r"\1\2\1", masked)
 
 
 # --------------------------------------------------------------------------

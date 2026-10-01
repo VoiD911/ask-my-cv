@@ -1354,3 +1354,26 @@ def test_session_id_config_must_be_uuid(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setenv("DEVLOG_REDACT_CONFIG_PATH", str(path))
     with pytest.raises(ConfigError):
         load_config()
+
+
+@pytest.mark.parametrize(
+    "text", ["prompts/answer@v2.md", "`answer@v7.md`", "foo@bar.yaml", "cfg@prod.json", "x@y.py"]
+)
+def test_redact_keeps_file_names_with_at_sign(text: str) -> None:
+    assert redact(text, CONFIGURED) == text
+
+
+@pytest.mark.parametrize("text", ["alice@private.org", "a.b@mail.co.uk", "dev@corp.io."])
+def test_redact_still_masks_real_emails(text: str) -> None:
+    assert "<adresse>" in redact(text, CONFIGURED)
+
+
+def test_redact_collapses_repeated_identical_masks() -> None:
+    text = "aucune occurrence de `bob`, `bob`, `alice@private.org` ni bob, bob"
+    out = redact(text, CONFIGURED)
+    assert out == "aucune occurrence de `<utilisateur>`, `<adresse>` ni <utilisateur>"
+
+
+def test_redact_keeps_distinct_masks_apart() -> None:
+    out = redact("bob et bob", CONFIGURED)
+    assert out == "<utilisateur> et <utilisateur>"
