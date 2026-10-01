@@ -34,6 +34,7 @@ def fake_results(**totals: str) -> dict[str, list[dict[str, str]]]:
         "visitors": [{"visitors": "17"}],
         "languages": [{"language": "fr", "n": "30"}, {"language": "en", "n": "10"}],
         "all_cost": [{"cost": "0.4"}],
+        "internal": [{"requests": "20", "spent": "0.2"}],
     }
 
 
@@ -60,7 +61,9 @@ def test_to_stats_reads_logs_insights_rows() -> None:
 
 
 def test_to_stats_of_an_empty_week_is_all_zero() -> None:
-    stats = weekly.to_stats({"totals": [], "visitors": [], "languages": [], "all_cost": []})
+    stats = weekly.to_stats(
+        {"totals": [], "visitors": [], "languages": [], "all_cost": [], "internal": []}
+    )
     assert stats == weekly.Stats()
 
 
@@ -126,7 +129,7 @@ def test_run_query_fails_loudly(statuses: list[str]) -> None:
 def test_every_query_filters_on_the_root_span_and_never_reads_text() -> None:
     for name, query in weekly.QUERIES.items():
         assert query.startswith('filter name = "ask"'), name
-        if name != "all_cost":
+        if name not in {"all_cost", "internal"}:
             assert '`attributes.xops.traffic` = "public"' in query, name
         assert "observation.input" not in query, name
         assert "@message" not in query, name
@@ -227,3 +230,20 @@ def test_stats_only_aggregate_fields_defined_by_the_query() -> None:
         stats = query[query.index("| stats") :]
         used = set(re.findall(r"(?:sum|pct)\((\w+)", stats))
         assert used <= defined, (name, used - defined)
+
+
+@pytest.mark.parametrize(
+    ("internal", "flagged"),
+    [
+        ({"requests": "20", "spent": "0.2"}, False),
+        ({"requests": "60", "spent": "0.1"}, True),  # > public (42) et > 50
+        ({"requests": "45", "spent": "0.1"}, False),  # > public mais sous le plancher de 50
+        ({"requests": "5", "spent": "0.3"}, True),  # coût > 2 × public (0,1234)
+    ],
+)
+def test_abnormal_internal_traffic_is_flagged(internal: dict, flagged: bool) -> None:
+    week, _ = weekly.last_full_weeks(NOW)
+    stats = weekly.to_stats({**fake_results(), "internal": [internal]})
+    _, message = weekly.format_summary(week, stats, stats)
+    assert ("À VÉRIFIER : trafic interne anormal" in message) is flagged
+    assert f"- Trafic interne : {internal['requests']} requêtes" in message

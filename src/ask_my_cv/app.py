@@ -84,6 +84,8 @@ def create_app(deps: Deps | None = None, flush: Callable[[], None] | None = None
             CORSMiddleware,
             allow_origins=current.settings.cors_origins,
             allow_methods=["GET", "POST"],
+            # liste fermée : ni X-Eval-Token ni X-Internal-Token ne sont acceptés d'une autre
+            # origine (le site les envoie depuis la même origine, sans prévol CORS)
             allow_headers=["content-type"],
         )
 

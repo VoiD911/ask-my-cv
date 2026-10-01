@@ -391,8 +391,9 @@ async def run_pipeline(
             override = ERROR_MESSAGE
         finally:
             root.set_attribute("xops.result", outcome)
-            root.set_attribute("xops.refusal", outcome == "answered" and is_refusal(answer))
-            root.set_attribute("xops.withdrawn", outcome in WITHDRAWN_REASONS)
+            # 0/1 numériques : sommés tels quels par Logs Insights (tableau de bord, résumé)
+            root.set_attribute("xops.refusal", int(outcome == "answered" and is_refusal(answer)))
+            root.set_attribute("xops.withdrawn", int(outcome in WITHDRAWN_REASONS))
             root.set_attribute("xops.cost_usd", round(usage.cost_usd, 6))
             root.set_attribute("xops.latency_ms", round((time.perf_counter() - started) * 1000, 1))
             root.set_attribute(

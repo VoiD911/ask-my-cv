@@ -47,7 +47,16 @@ QUERIES: dict[str, str] = {
     "| sort n desc",
     # coût de tout le trafic (évaluations comprises) : c'est lui qui consomme le plafond
     "all_cost": 'filter name = "ask"\n| stats sum(`attributes.xops.cost_usd`) as cost',
+    # trafic interne : un volume anormal peut signaler un jeton interne fuité (#143)
+    "internal": 'filter name = "ask" and `attributes.xops.traffic` = "internal"\n'
+    "| fields `attributes.xops.cost_usd` as usd\n"
+    "| stats count(*) as requests, sum(usd) as spent",
 }
+
+# Seuils « à vérifier » : plus de requêtes internes que publiques (au-delà d'un plancher), ou
+# un coût interne plus du double du coût public.
+INTERNAL_MIN_REQUESTS = 50
+INTERNAL_COST_RATIO = 2.0
 
 LANGUAGES = {"fr": "français", "en": "anglais"}
 
@@ -80,6 +89,21 @@ class Stats:
     all_cost_usd: float = 0.0
     top_language: str | None = None
     top_language_share: float = 0.0
+    internal_requests: int = 0
+    internal_cost_usd: float = 0.0
+
+    def internal_anomaly(self) -> str | None:
+        """Raison de vérifier le trafic interne (jeton fuité, boucle d'évaluation), ou None."""
+        if self.internal_requests > max(self.requests, INTERNAL_MIN_REQUESTS):
+            return f"{self.internal_requests} requêtes internes pour {self.requests} publiques"
+        if self.internal_cost_usd > INTERNAL_COST_RATIO * self.cost_usd and (
+            self.internal_cost_usd > 0
+        ):
+            return (
+                f"coût interne {_usd(self.internal_cost_usd)}, plus du double du public "
+                f"({_usd(self.cost_usd)})"
+            )
+        return None
 
 
 def last_full_weeks(now: float) -> tuple[Week, Week]:
@@ -145,6 +169,7 @@ def to_stats(results: Mapping[str, Rows]) -> Stats:
     totals = (results.get("totals") or [{}])[0]
     visitors = (results.get("visitors") or [{}])[0]
     all_cost = (results.get("all_cost") or [{}])[0]
+    internal = (results.get("internal") or [{}])[0]
     languages = [r for r in results.get("languages", []) if r.get("language")]
     counted = sum(_int(r, "n") for r in languages)
     top = max(languages, key=lambda r: _int(r, "n"), default=None)
@@ -160,6 +185,8 @@ def to_stats(results: Mapping[str, Rows]) -> Stats:
         all_cost_usd=_float(all_cost, "cost"),
         top_language=top["language"] if top else None,
         top_language_share=_int(top, "n") / counted if top and counted else 0.0,
+        internal_requests=_int(internal, "requests"),
+        internal_cost_usd=_float(internal, "spent"),
     )
 
 
@@ -225,12 +252,16 @@ def format_summary(week: Week, current: Stats, previous: Stats | None) -> tuple[
         ),
         f"- Coût total mesuré, interne compris : {_usd(current.all_cost_usd)}",
         f"- Langue principale : {language}",
+        f"- Trafic interne : {current.internal_requests} requêtes, "
+        f"{_usd(current.internal_cost_usd)}",
         "",
         "Aucun texte de question n'est conservé : ces chiffres viennent des attributs xops.*",
         "des spans (aws/spans). Détail : tableau de bord CloudWatch « ask-my-cv-usage ».",
     ]
     if current.requests == 0:
         lines.insert(3, "Aucune requête publique cette semaine.\n")
+    if anomaly := current.internal_anomaly():
+        lines.insert(3, f"À VÉRIFIER : trafic interne anormal ({anomaly}).\n")
     return subject, "\n".join(lines) + "\n"
 
 

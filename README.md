@@ -411,6 +411,19 @@ analytique, jamais le quota ni le plafond. Pour exclure ses propres essais, le p
 renseigne une fois, dans la console de son navigateur sur le site :
 `localStorage.setItem("ask-my-cv:internal-token", "<INTERNAL_TOKEN>")`.
 
+Risques assumés :
+
+- **Jeton dans le navigateur** : `localStorage` est lisible par tout script de la page (une
+  faille XSS, une extension). Le jeton n'est envoyé qu'à la même origine (`/api`) et ne donne
+  aucun passe-droit (ni quota, ni plafond) ; fuité, il permettrait seulement de masquer du
+  trafic dans les statistiques. Le résumé du lundi signale donc « À VÉRIFIER » un trafic
+  interne anormal (plus de requêtes internes que publiques au-delà de 50, ou coût interne plus
+  du double du public). En cas de doute : changer `INTERNAL_TOKEN` (SSM et GitHub), puis
+  redéployer.
+- **Pseudonymes** : `xops.visitor` dérive du HMAC de l'IP par `VISITOR_SALT`. Qui détient ce
+  sel et une liste d'IP candidates peut recalculer les pseudonymes et relier ces IP aux
+  requêtes de la même semaine ; le sel reste donc un secret (SSM), jamais journalisé.
+
 - **Tableau de bord** `ask-my-cv-usage` (`infra/prod/dashboard.tf`), privé : console
   CloudWatch, `https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashboards/dashboard/ask-my-cv-usage`
   (connecté au compte). Requêtes et visiteurs distincts par jour, questions et annonces,

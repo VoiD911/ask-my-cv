@@ -85,7 +85,9 @@ export async function ask(params: AskParams): Promise<void> {
     "content-type": "application/json",
     "x-amz-content-sha256": signature,
   };
-  const internal = internalToken();
+  // jamais vers une autre origine : seulement un chemin relatif (« /api », pas « //hôte »)
+  const sameOrigin = baseUrl.startsWith("/") && !baseUrl.startsWith("//");
+  const internal = sameOrigin ? internalToken() : null;
   if (internal) {
     headers["x-internal-token"] = internal;
   }

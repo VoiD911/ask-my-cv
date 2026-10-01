@@ -90,6 +90,23 @@ describe("ask", () => {
     expect(seen).toEqual([null, "jeton-du-proprietaire", null]);
   });
 
+  it("never sends x-internal-token to another origin", async () => {
+    const seen: Array<string | null> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        seen.push(new Headers(init?.headers).get("x-internal-token"));
+        return new Response(sseBody([{ event: "done", data: { tokens_in: 1 } }]), { status: 200 });
+      }),
+    );
+    vi.stubGlobal("localStorage", { getItem: () => "jeton-du-proprietaire" });
+    for (const baseUrl of ["https://autre.example/api", "//autre.example/api", "http://localhost:8000"]) {
+      await ask({ question: "Q ?", onEvent: () => {}, baseUrl });
+    }
+    await ask({ question: "Q ?", onEvent: () => {}, baseUrl: "/api" });
+    expect(seen).toEqual([null, null, null, "jeton-du-proprietaire"]);
+  });
+
   it("includes model in the body only when provided", async () => {
     let capturedInit: RequestInit | undefined;
     vi.stubGlobal(
