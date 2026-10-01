@@ -168,10 +168,10 @@ def load_plan_windows(plans_dir: Path) -> list[PlanWindow]:
 # Tâche
 # --------------------------------------------------------------------------
 
-# « Task 4 », « Tasks 8-9 », « tâche 2 », « Tâches 3–4 ». Le mot « task/tâche »
-# est obligatoire : « plan 1c-1b » n'est jamais lu comme un numéro de tâche.
+# « Task 4 », « Tasks 8-9 », « tâche 2 », « Tâches 3–4 », sous-tâche « task 4b ».
+# Le mot « task/tâche » est obligatoire : « plan 1c-1b » n'est jamais lu comme un numéro de tâche.
 _TASK_RE = re.compile(
-    r"(?<!\w)(?:tasks?|t[âa]ches?)\s*#?\s*(?P<first>\d+)(?:\s*[-–]\s*(?P<last>\d+))?(?![\w-])",
+    r"(?<!\w)(?:tasks?|t[âa]ches?)\s*#?\s*(?P<first>\d+)(?:(?P<sub>[a-z])|\s*[-–]\s*(?P<last>\d+))?(?![\w-])",
     re.IGNORECASE,
 )
 _FINAL_REVIEW_RE = re.compile(r"\b(?:final\s+review|revue\s+finale)\b", re.IGNORECASE)
@@ -183,7 +183,7 @@ def _task_label(text: str) -> str | None:
         first, last = match.group("first"), match.group("last")
         if last is not None and int(last) != int(first):
             return f"Tâches {int(first)}-{int(last)}"
-        return f"Tâche {int(first)}"
+        return f"Tâche {int(first)}{(match.group('sub') or '').lower()}"
     if _FINAL_REVIEW_RE.search(text):
         return FINAL_REVIEW
     return None
@@ -201,16 +201,16 @@ def task_key(record: AgentRecord) -> str:
     return OFF_TASK
 
 
-_TASK_LABEL_RE = re.compile(r"^Tâches? (?P<first>\d+)(?:-(?P<last>\d+))?$")
+_TASK_LABEL_RE = re.compile(r"^Tâches? (?P<first>\d+)(?:(?P<sub>[a-z])|-(?P<last>\d+))?$")
 
 
-def _task_order(label: str) -> tuple[int, int, int]:
+def _task_order(label: str) -> tuple[int, int, int, str]:
     match = _TASK_LABEL_RE.match(label)
     if match is not None:
         first = int(match.group("first"))
         last = int(match.group("last") or first)
-        return (0, first, last)
-    return (1, 0, 0) if label == FINAL_REVIEW else (2, 0, 0)
+        return (0, first, last, match.group("sub") or "")
+    return (1, 0, 0, "") if label == FINAL_REVIEW else (2, 0, 0, "")
 
 
 # --------------------------------------------------------------------------

@@ -22,12 +22,17 @@ _SHA = re.compile(r"^[0-9a-f]{40}$")
 
 
 def build_issues(
-    index: dict[str, Any], config: RedactConfig, *, reconstructed: date
+    index: dict[str, Any],
+    config: RedactConfig,
+    *,
+    reconstructed: date,
+    skip_plans: frozenset[str] = frozenset(),
 ) -> list[dict[str, Any]]:
     """One issue per numbered task, merging overlapping task groups.
 
     Final reviews and unclassified work remain in the journal. Grouped reports
     are identified as shared evidence rather than attributed to one task alone.
+    Plans in `skip_plans` (run with real GitHub issues and PRs) get none.
     """
     if index.get("version") != 1 or index.get("repository") != REPOSITORY:
         raise ValueError("unsupported journal version or repository")
@@ -37,6 +42,8 @@ def build_issues(
         plan_id = plan["id"]
         if not _PLAN.fullmatch(plan_id):
             raise ValueError("invalid plan identifier")
+        if plan_id in skip_plans:
+            continue
         grouped: dict[int, list[tuple[str, dict[str, Any]]]] = {}
         for task in plan["tasks"]:
             match = _TASK.fullmatch(task["label"])
@@ -167,12 +174,18 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--index", type=Path, default=Path("docs/journal/index.json"))
     parser.add_argument("--date", type=date.fromisoformat, default=date.today())
+    parser.add_argument(
+        "--github-flow-plans",
+        default="",
+        help="plans run with real GitHub issues and PRs: no historical issue",
+    )
     parser.add_argument("--apply", action="store_true")
     args = parser.parse_args()
     issues = build_issues(
         json.loads(args.index.read_text(encoding="utf-8")),
         load_config(require_account_ids=True),
         reconstructed=args.date,
+        skip_plans=frozenset(p.strip() for p in args.github_flow_plans.split(",") if p.strip()),
     )
     if args.apply:
         apply_issues(issues)

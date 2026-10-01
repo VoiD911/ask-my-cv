@@ -8,8 +8,8 @@
 
 **Architecture:**
 - **Sources (locales, privées, jamais publiées telles quelles)** :
-  - journal de session principal `~/.claude/projects/D--DEV-ecc/01d3d8b5-04cb-42e0-ba4a-0d6251c3d4a1.jsonl` (≈ 23 Mo) ;
-  - 111 sous-agents : `…/01d3d8b5-…/subagents/agent-*.jsonl` + `agent-*.meta.json` (`agentType`, `description`, `model`) ;
+  - journal de session principal `~/.claude/<session-claude>/<session-claude>.jsonl` (≈ 23 Mo) ;
+  - 111 sous-agents : `…/<session-claude>…/subagents/agent-*.jsonl` + `agent-*.meta.json` (`agentType`, `description`, `model`) ;
   - table de correspondance des commits de la réécriture d'historique : `~/.claude/devlog-private/ask-my-cv-commit-map` (copie de `work.git/filter-repo/commit-map`, 130 commits) (ancien SHA → nouveau SHA) ;
   - documents : `<poste>\xops-kit\docs\superpowers\{specs,plans}\*.md`.
 - **Outil public, testé** : `ask-my-cv/tools/devlog/` (Python, dans le dépôt, sans dépendance nouvelle) :
@@ -73,7 +73,7 @@
 ### Task 4 : génération locale et relecture par l'utilisateur (contrôleur)
 
 - [ ] Copier la spec, les plans et `followups.md` de `xops-kit` vers `ask-my-cv/docs/{spec,plans}/` et `docs/followups.md`, en les faisant passer par `redact` (chemins du scratchpad, adresses).
-- [ ] Lancer le rendu **en local** sur les vraies données ; contrôles automatiques : aucune occurrence de `<compte-aws>`, `<utilisateur>`, `<identifiant-adresse>`, `<adresse>` dans `docs/` (grep) ; nombre d'agents rattachés par plan ; agents `inconnu` listés.
+- [ ] Lancer le rendu **en local** sur les vraies données ; contrôles automatiques : aucune occurrence de `<compte-aws>`, `<utilisateur>`, `<utilisateur>`, `<adresse>` dans `docs/` (grep) ; nombre d'agents rattachés par plan ; agents `inconnu` listés.
 - [ ] **Échantillon pour l'utilisateur** (envoyé comme fichiers) : `docs/journal/1c-2.md` et `docs/journal/1d-3.md` + 3 issues simulées (`issues.py` sans `--apply`). Attendre sa validation ou ses corrections avant la tâche 5.
 
 ### Task 5 : publication (issue, PR ; issues réelles par le contrôleur avec accord)
@@ -82,7 +82,7 @@
 
 - [ ] `issues.py` : une issue par tâche réelle ; titre `<plan> · <tâche>` ; corps : « Issue reconstituée le 2026-09-27 depuis le journal de développement (date réelle : …) », liens plan/journal, commits, résumé du rapport et des revues (masqués) ; étiquettes `historique`, `plan:<id>` ; état **fermé** ; mode simulation par défaut ; idempotence (ne recrée pas une issue dont le titre existe déjà).
 - [ ] PR avec `docs/` générés et l'outil ; revue d'agent ; fusion.
-- [ ] Création réelle des issues (`--apply`, accord de l'utilisateur) ; vérification : nombre d'issues = nombre de tâches, toutes fermées, aucune donnée masquée visible (recherche GitHub sur `<compte-aws>` et `<identifiant-adresse>` → 0 résultat).
+- [ ] Création réelle des issues (`--apply`, accord de l'utilisateur) ; vérification : nombre d'issues = nombre de tâches, toutes fermées, aucune donnée masquée visible (recherche GitHub sur `<compte-aws>` et `<utilisateur>` → 0 résultat).
 - [ ] README : section « Comment ce projet a été construit » (méthode assumée : l'architecte fixe les objectifs et arbitre ; des agents implémentent et révisent ; la CI, les signatures et les évaluations vérifient) avec liens vers `docs/` et les issues `historique`.
 
 ### Task 6 : suivi (contrôleur)

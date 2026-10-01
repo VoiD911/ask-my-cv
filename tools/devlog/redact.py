@@ -63,6 +63,9 @@ l'une à la place de l'autre) :
      remplacer par `<poste>`, séparées par des virgules, quels que soient la
      casse et le séparateur (`/`, `\\` ou `\\\\` échappé) utilisés dans le
      texte ;
+   - `DEVLOG_REDACT_SESSION_IDS` : identifiants de session Claude Code
+     (UUID) à masquer par `<session-claude>`, y compris tronqués à leurs
+     8 premiers caractères (`01234567-…`), séparés par des virgules ;
    - `DEVLOG_REDACT_SECRET_ALLOWLIST` : expressions régulières supplémentaires
      considérées comme sûres par `find_suspects` (jamais par
      `assert_no_secret`). Une regex peut contenir des virgules : cette
@@ -79,7 +82,8 @@ l'une à la place de l'autre) :
      "email_allowlist": ["job@example.org"],
      "local_usernames": ["jdupont"],
      "path_roots": ["D:\\\\DEV"],
-     "secret_allowlist": []
+     "secret_allowlist": [],
+     "session_ids": ["00000000-0000-0000-0000-000000000000"]
    }
    ```
 
@@ -88,7 +92,8 @@ l'une à la place de l'autre) :
    caractère par caractère). Une clé inconnue, une valeur du mauvais type, une
    chaîne vide ou uniquement des espaces, un identifiant de compte AWS qui ne
    fait pas exactement 12 chiffres, un nom d'utilisateur de moins de 3
-   caractères, une racine de chemin de moins de 2 caractères, ou une entrée de
+   caractères, une racine de chemin de moins de 2 caractères, un identifiant
+   de session qui n'est pas un UUID, ou une entrée de
    `secret_allowlist` qui n'est pas une regex valide, qui accepte la chaîne
    vide, ou qui accepte un texte arbitraire ou un jeton de forme réaliste
    (base64/hex/base64url de longueur usuelle) trop large (ex. `.*`, `\\S+`,
@@ -139,6 +144,7 @@ _ENV_ACCOUNT_IDS = "DEVLOG_REDACT_AWS_ACCOUNT_IDS"
 _ENV_EMAIL_ALLOWLIST = "DEVLOG_REDACT_EMAIL_ALLOWLIST"
 _ENV_LOCAL_USERNAMES = "DEVLOG_REDACT_LOCAL_USERNAMES"
 _ENV_PATH_ROOTS = "DEVLOG_REDACT_PATH_ROOTS"
+_ENV_SESSION_IDS = "DEVLOG_REDACT_SESSION_IDS"
 _ENV_SECRET_ALLOWLIST = "DEVLOG_REDACT_SECRET_ALLOWLIST"  # noqa: S105 -- nom de variable d'env, pas un secret
 _ENV_CONFIG_PATH = "DEVLOG_REDACT_CONFIG_PATH"
 _DEFAULT_CONFIG_PATH = Path.home() / ".claude" / "devlog-private" / "redact.json"
@@ -148,6 +154,7 @@ _EMAIL_MASK = "<adresse>"
 _HOME_MASK = "~"
 _PATH_MASK = "<poste>"
 _USERNAME_MASK = "<utilisateur>"
+_SESSION_MASK = "<session-claude>"
 
 # Domaines toujours considérés comme fictifs (fixtures de test), et tout
 # sous-domaine de ceux-ci : jamais masqués.
@@ -160,9 +167,11 @@ _ALLOWED_CONFIG_KEYS = frozenset(
         "local_usernames",
         "path_roots",
         "secret_allowlist",
+        "session_ids",
     }
 )
 _ACCOUNT_ID_RE = re.compile(r"^\d{12}$")
+_SESSION_ID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 _MIN_USERNAME_LENGTH = 3
 _MIN_PATH_ROOT_LENGTH = 2
 
@@ -239,6 +248,7 @@ class RedactConfig:
     local_usernames: frozenset[str] = field(default_factory=frozenset)
     path_roots: tuple[str, ...] = field(default_factory=tuple)
     secret_allowlist: tuple[str, ...] = field(default_factory=tuple)
+    session_ids: frozenset[str] = field(default_factory=frozenset)
 
     @staticmethod
     def empty() -> RedactConfig:
@@ -253,6 +263,7 @@ class RedactConfig:
             secret_allowlist=tuple(
                 dict.fromkeys((*self.secret_allowlist, *other.secret_allowlist))
             ),
+            session_ids=self.session_ids | other.session_ids,
         )
 
 
@@ -263,6 +274,7 @@ def _config_from_env() -> RedactConfig:
         local_usernames=frozenset(_split_csv(os.environ.get(_ENV_LOCAL_USERNAMES))),
         path_roots=_split_csv(os.environ.get(_ENV_PATH_ROOTS)),
         secret_allowlist=_split_secret_allowlist_env(os.environ.get(_ENV_SECRET_ALLOWLIST)),
+        session_ids=frozenset(_split_csv(os.environ.get(_ENV_SESSION_IDS))),
     )
 
 
@@ -297,6 +309,9 @@ def _validate_semantic(config: RedactConfig) -> None:
             raise ConfigError(
                 f"identifiant de compte AWS invalide : {account_id!r} (attendu : 12 chiffres)"
             )
+    for session_id in config.session_ids:
+        if not _SESSION_ID_RE.match(session_id):
+            raise ConfigError("identifiant de session invalide (attendu : UUID en minuscules)")
     for username in config.local_usernames:
         if len(username.strip()) < _MIN_USERNAME_LENGTH:
             raise ConfigError(
@@ -354,6 +369,7 @@ def _config_from_file(path: Path) -> RedactConfig:
         local_usernames=frozenset(data.get("local_usernames", [])),
         path_roots=tuple(data.get("path_roots", [])),
         secret_allowlist=tuple(data.get("secret_allowlist", [])),
+        session_ids=frozenset(data.get("session_ids", [])),
     )
 
 
@@ -503,7 +519,34 @@ def _root_pattern_body(root: str) -> str:
     # rendu Markdown : `|`, `,`, `)`, `>`...). Seule une lettre/chiffre/`._-`
     # signalerait que la racine n'est en fait qu'un préfixe d'un nom plus
     # long (`D:\DEVELOP` face à la racine `D:\DEV`).
-    return body + r"(?![A-Za-z0-9_.\-])"
+    # Un point final de phrase (`dans D:\DEV.`) reste une frontière ; un point
+    # suivi d'un caractère de segment (`D:\DEV.old`) prolonge le nom.
+    return body + r"(?![A-Za-z0-9_\-]|\.[A-Za-z0-9_\-])"
+
+
+# Dossier de session Claude Code : `<projet>/<uuid de session>`, où le projet
+# est le chemin de travail aplati (`D--DEV-ecc`), sous `.claude/projects/` ou
+# dans le dossier temporaire (`AppData/Local/Temp/claude/…/scratchpad`). Le
+# nom du projet révèle le poste et l'identifiant relie les publications à une
+# session locale : les deux sont masqués ensemble. Répétitions bornées : linéaire.
+_CLAUDE_PROJECT = r"[A-Za-z]--[A-Za-z0-9._-]{1,100}"
+_UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+_CLAUDE_SESSION_BODY = (
+    rf"(?<![A-Za-z0-9])(?:projects|claude){_PATH_SEP}{_CLAUDE_PROJECT}"
+    rf"(?:{_PATH_SEP}{_UUID})?(?![A-Za-z0-9._-])"
+    rf"|(?<![A-Za-z0-9]){_CLAUDE_PROJECT}{_PATH_SEP}{_UUID}(?![0-9A-Za-z])"
+)
+
+
+def _session_id_pattern_body(session_ids: frozenset[str]) -> str | None:
+    """UUID de session configuré, complet ou tronqué après ses 8 premiers
+    caractères (`01234567-…`) ; casse indifférente via l'appelant."""
+    if not session_ids:
+        return None
+    alternatives = "|".join(
+        re.escape(sid[:8]) + "(?:" + re.escape(sid[8:]) + r"|-?)" for sid in sorted(session_ids)
+    )
+    return rf"(?<![0-9A-Za-z])(?:{alternatives})(?![0-9A-Za-z])"
 
 
 def _account_id_pattern_body(account_ids: frozenset[str]) -> str | None:
@@ -536,6 +579,10 @@ def _compile_master_pattern(config: RedactConfig) -> re.Pattern[str]:
         parts.append(rf"(?P<acct_cfg>{acct_cfg_body})")
 
     parts.append(rf"(?P<home>{_user_home_body(config)})")
+    parts.append(rf"(?P<session>{_CLAUDE_SESSION_BODY})")
+    session_cfg_body = _session_id_pattern_body(config.session_ids)
+    if session_cfg_body:
+        parts.append(rf"(?P<session_cfg>{session_cfg_body})")
 
     for index, root in enumerate(config.path_roots):
         parts.append(rf"(?P<root_{index}>{_root_pattern_body(root)})")
@@ -570,6 +617,8 @@ def _dispatch(match: re.Match[str], config: RedactConfig) -> str:
         return _ACCOUNT_MASK
     if kind == "home":
         return _HOME_MASK
+    if kind in ("session", "session_cfg"):
+        return _SESSION_MASK
     if kind.startswith("root_"):
         return _PATH_MASK
     if kind == "email":

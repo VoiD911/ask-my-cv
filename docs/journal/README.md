@@ -22,7 +22,7 @@ python -m tools.devlog render \
   --plans-dir docs/plans \
   --out docs/journal \
   [--repo .] [--assignments rattachements.json] \
-  [--github-flow-plans 1e-2a,1e-2b] [--report <rapport local>]
+  [--github-flow-plans 1e-2a,1e-2b,1e-2c,1e-2d,1e-3a] [--report <rapport local>]
 ```
 
 - La configuration de masquage est lue par `load_config(require_account_ids=True)`
@@ -63,8 +63,13 @@ python -m tools.devlog render \
 Simulation locale (aucune requête GitHub) :
 
 ```sh
-python -m tools.devlog.issues --index docs/journal/index.json --date 2026-09-28
+python -m tools.devlog.issues --index docs/journal/index.json --date 2026-09-28   --github-flow-plans 1e-2c,1e-2d,1e-3a
 ```
+
+`--github-flow-plans` liste les plans menés avec de vraies issues et PR
+GitHub : aucune issue historique n'est produite pour eux. Les plans 1e-2a et
+1e-2b, publiés avant cette option, gardent leurs issues historiques. Les
+sous-tâches (`Tâche 4b`) n'ont jamais d'issue historique.
 
 La sortie JSON contient le titre, le corps masqué, les étiquettes et l'état
 final attendu. Une issue est produite par tâche numérotée ; un rapport commun
@@ -83,7 +88,7 @@ Un fichier par plan ayant au moins un agent rattaché :
 
 - titre et objectif du plan, lien vers `../plans/<fichier>` ;
 - une section par tâche, dans l'ordre numérique (`Tâche 0`, `Tâche 1`,
-  `Tâches 8-9` classée à 8…), puis `Revue finale`, puis `Hors tâche` ;
+  `Tâche 4b` après `Tâche 4`, `Tâches 8-9` classée à 8…), puis `Revue finale`, puis `Hors tâche` ;
 - dans chaque tâche, les sous-sections `Implémentation`, `Revues`,
   `Corrections`, `Autres` ;
 - pour chaque agent : date de début (UTC, `AAAA-MM-JJ HH:MM`), type d'agent,
@@ -149,7 +154,7 @@ Contrat d'affichage : les chaînes d'`index.json` sont du texte brut, non
 | `plans[].title`, `plans[].goal` | Titre (première ligne `# `) et objectif (`**Goal:**`) du plan, masqués. |
 | `plans[].plan_doc`, `plans[].journal` | Chemins, depuis la racine du dépôt, du plan et de son journal. |
 | `tasks[]` | Même ordre que dans le Markdown. |
-| `tasks[].label` | `Tâche N`, `Tâches N-M`, `Revue finale` ou `Hors tâche`. |
+| `tasks[].label` | `Tâche N`, `Tâche Nx` (sous-tâche), `Tâches N-M`, `Revue finale` ou `Hors tâche`. |
 | `events[]` | Un par agent, trié par date de début puis par identifiant (non publié). |
 | `events[].type` | Rôle : `implementation`, `review`, `fix` ou `other`. |
 | `events[].date` | Début de l'agent, ISO 8601 UTC (`AAAA-MM-JJTHH:MM:SSZ`). |

@@ -51,6 +51,23 @@ def test_real_tasks_merge_overlapping_groups():
     assert build(journal()) == result
 
 
+def test_github_flow_plans_get_no_historical_issue():
+    data = journal()
+    other = copy.deepcopy(data["plans"][0])
+    other["id"] = "1e-2d"
+    data["plans"].append(other)
+    result = issues.build_issues(
+        data, RedactConfig.empty(), reconstructed=date(2026, 9, 28), skip_plans=frozenset({"1e-2d"})
+    )
+    assert [i["title"] for i in result] == ["1a · Tâche 1", "1a · Tâche 2"]
+
+
+def test_subtask_labels_get_no_historical_issue():
+    data = journal()
+    data["plans"][0]["tasks"].append({"label": "Tâche 4b", "events": [{"date": "x"}]})
+    assert [i["title"] for i in build(data)] == ["1a · Tâche 1", "1a · Tâche 2"]
+
+
 def test_report_summary_is_masked_in_issue():
     data = journal()
     data["plans"][0]["tasks"][0]["events"][0]["summary"] = "Fixed problem for user@private.invalid"
