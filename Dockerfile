@@ -11,10 +11,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
 WORKDIR /app
 
 # Correctifs de sécurité Debian appliqués sans attendre la reconstruction de l'image
-# officielle (OpenSSL CVE-2026-75804 et CVE-2026-84782, corrigées en 3.5.7-1~deb13u3).
+# officielle : toutes les mises à jour disponibles (le scan trivy bloque sur les CVE
+# HIGH/CRITICAL corrigées). La base reste épinglée par digest ; voir #137.
 RUN apt-get update \
+ && apt-get upgrade -y --no-install-recommends \
  && apt-get install -y --no-install-recommends locales \
- && apt-get install -y --no-install-recommends --only-upgrade openssl libssl3t64 openssl-provider-legacy \
  && sed -i 's/^# *en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen \
  && locale-gen \
  && rm -rf /var/lib/apt/lists/*
