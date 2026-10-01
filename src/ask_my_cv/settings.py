@@ -57,6 +57,9 @@ class Settings(BaseModel):
     # jeton des évaluations automatiques (en-tête X-Eval-Token) : jamais dans un repr ni un log
     eval_token: str | None = Field(default=None, repr=False)
     eval_limit_per_window: int = Field(default=300, ge=1)
+    # jeton du trafic interne (en-tête X-Internal-Token : tests de fumée, propriétaire) : il ne
+    # change que le classement analytique (`xops.traffic`), jamais le quota ni le plafond
+    internal_token: str | None = Field(default=None, repr=False)
     stage_timeout_s: float = Field(default=20.0, gt=0.0)
     first_token_timeout_s: float = Field(default=8.0, gt=0.0)
     llm_deadline_s: float = Field(default=30.0, gt=0.0)
@@ -142,6 +145,13 @@ class Settings(BaseModel):
             not self.eval_token or (self.environment == "prod" and len(self.eval_token) < 32)
         ):
             raise ValueError("EVAL_TOKEN doit être non vide (au moins 32 caractères en production)")
+        if self.internal_token is not None and (
+            not self.internal_token
+            or (self.environment == "prod" and len(self.internal_token) < 32)
+        ):
+            raise ValueError(
+                "INTERNAL_TOKEN doit être non vide (au moins 32 caractères en production)"
+            )
         return self
 
     @model_validator(mode="after")
@@ -185,6 +195,7 @@ _ENV_OVERRIDES = {
     "VISITOR_SALT": "visitor_salt",
     "ASK_ENVIRONMENT": "environment",
     "EVAL_TOKEN": "eval_token",
+    "INTERNAL_TOKEN": "internal_token",
     # sorties Terraform guardrail_annonces_id / _version (infra/prod/lambda.tf)
     "ASK_GUARDRAIL_ID": "guardrail_id",
     "ASK_GUARDRAIL_VERSION": "guardrail_version",

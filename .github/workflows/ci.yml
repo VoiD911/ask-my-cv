@@ -528,6 +528,8 @@ jobs:
         id: smoke
         env:
           SITE_URL: ${{ vars.SITE_URL }}
+          # #143 : requêtes classées internes (exclues du tableau de bord) ; secret facultatif
+          INTERNAL_TOKEN: ${{ secrets.INTERNAL_TOKEN }}
         run: python3 infra/scripts/smoke_prod.py "$SITE_URL"
       - name: Publication du site ignorée (SITE_BUCKET non défini)
         if: env.SITE_BUCKET == ''

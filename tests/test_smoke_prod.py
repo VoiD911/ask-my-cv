@@ -37,3 +37,10 @@ def test_rate_limited_message_matches_the_api() -> None:
     from ask_my_cv.pipeline import BLOCK_MESSAGES
 
     assert smoke.RATE_LIMITED == BLOCK_MESSAGES["rate_limited"]
+
+
+def test_internal_token_header_only_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("INTERNAL_TOKEN", raising=False)
+    assert smoke.internal_headers() == {}
+    monkeypatch.setenv("INTERNAL_TOKEN", "jeton")
+    assert smoke.internal_headers() == {"X-Internal-Token": "jeton"}

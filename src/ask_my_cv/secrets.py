@@ -8,7 +8,7 @@ from ask_my_cv.settings import ConfigError
 
 SECRET_NAMES = ("VISITOR_SALT", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY")
 # chargés s'ils existent sous le préfixe, sans erreur s'ils sont absents
-OPTIONAL_SECRET_NAMES = ("EVAL_TOKEN",)
+OPTIONAL_SECRET_NAMES = ("EVAL_TOKEN", "INTERNAL_TOKEN")
 
 
 def load_ssm_secrets(prefix: str, client: Any) -> dict[str, str]:

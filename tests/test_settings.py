@@ -392,3 +392,26 @@ def test_empty_guardrail_variable_is_unset_and_logged(
         settings = load_settings(path)
     assert settings.guardrail_id is None and settings.guardrail_version is None
     assert "ASK_GUARDRAIL_ID vide" in caplog.text
+
+
+def test_internal_token_is_secret_and_must_not_be_empty() -> None:
+    settings = Settings.model_validate(minimal(internal_token="JETON-INTERNE-" + "i" * 32))
+    assert "JETON-INTERNE" not in repr(settings)
+    with pytest.raises(ValidationError):
+        Settings.model_validate(minimal(internal_token=""))
+
+
+def test_production_refuses_a_short_internal_token(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ask_my_cv.settings import ConfigError
+
+    path = tmp_path / "settings.yaml"
+    path.write_text(YAML, encoding="utf-8")
+    monkeypatch.setenv("ASK_ENVIRONMENT", "prod")
+    monkeypatch.setenv("VISITOR_SALT", "s" * 32)
+    monkeypatch.delenv("EVAL_TOKEN", raising=False)
+    monkeypatch.setenv("INTERNAL_TOKEN", "JETON-COURT")
+    with pytest.raises(ConfigError) as info:
+        load_settings(path)
+    assert "JETON-COURT" not in str(info.value)

@@ -118,6 +118,7 @@ export const jobText: Record<string, string> = {
   report: "Ouvre une issue si la nuit échoue",
   train: "Données, entraînement, porte, signature, release",
   "lambda-adapter": "Copie à l'identique du Lambda Web Adapter vers GHCR",
+  summary: "Résumé d'usage du lundi, envoyé par courriel (SNS)",
 };
 
 export const triggerText: Record<string, string> = {
@@ -133,7 +134,7 @@ export const delivery = {
   paragraphs: [
     "En [[CI/CD]], chaque pull request passe par cinq jobs en parallèle : scanners de sécurité, tests Python et image Docker, évaluations du LLM et parcours navigateur, site web (tests, CSP, Lighthouse) et Terraform. Le déploiement n'attend rien d'autre que leur succès à tous.",
     "Sur main, l'image est reconstruite, signée avec Sigstore ([[cosign]], sans clé), accompagnée d'une provenance [[SLSA]] et d'un [[SBOM]], puis vérifiée avant d'être déployée par son digest : signature, SBOM et provenance visent ce digest exact.",
-    "Un test de fumée interroge ensuite la production ; s'il échoue, la version précédente est restaurée automatiquement. D'autres workflows tournent à côté : la red team de nuit, l'entraînement du modèle et un miroir d'image.",
+    "Un test de fumée interroge ensuite la production ; s'il échoue, la version précédente est restaurée automatiquement. D'autres workflows tournent à côté : la red team de nuit, l'entraînement du modèle, un miroir d'image et le résumé d'usage du lundi.",
   ],
   stepsLabel: (id: string) => `Étapes du job ${id}`,
   layerLabel: (n: number) => (n === 0 ? "En parallèle" : `Puis (après ${n} niveau${n > 1 ? "x" : ""})`),
@@ -144,6 +145,7 @@ export const delivery = {
     { label: "nightly.yml", path: ".github/workflows/nightly.yml" },
     { label: "train.yml", path: ".github/workflows/train.yml" },
     { label: "mirror.yml", path: ".github/workflows/mirror.yml" },
+    { label: "weekly.yml", path: ".github/workflows/weekly.yml" },
     { label: "smoke_prod.py", path: "infra/scripts/smoke_prod.py" },
   ] satisfies SourceLink[],
 };

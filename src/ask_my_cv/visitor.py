@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import ipaddress
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Literal
 
 TrustedProxy = Literal["none", "cloudfront"]
@@ -39,3 +40,15 @@ def client_ip(headers: Mapping[str, str], peer: str | None, trusted_proxy: Trust
 def visitor_id(ip: str, secret: str) -> str:
     """Pseudonyme stable du visiteur : HMAC-SHA256, jamais l'IP elle-même."""
     return hmac.new(secret.encode("utf-8"), ip.encode("utf-8"), hashlib.sha256).hexdigest()[:16]
+
+
+def weekly_pseudonym(visitor: str, now: float) -> str:
+    """Pseudonyme analytique du visiteur, renouvelé chaque semaine ISO (UTC).
+
+    Dérivé du pseudonyme de quota (déjà un HMAC salé de l'IP), jamais égal à lui : il permet de
+    compter les visiteurs distincts d'un jour ou d'une semaine (`xops.visitor`, Logs Insights),
+    mais pas de suivre un visiteur d'une semaine à l'autre ni de retrouver son quota.
+    """
+    year, week, _ = datetime.fromtimestamp(now, UTC).isocalendar()
+    digest = hashlib.sha256(f"analytics:{year}-W{week:02d}:{visitor}".encode())
+    return digest.hexdigest()[:12]

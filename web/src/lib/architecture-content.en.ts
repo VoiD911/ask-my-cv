@@ -110,6 +110,7 @@ export const en: ArchitectureContent = {
     report: "Opens an issue if the nightly run fails",
     train: "Data, training, gate, signing, release",
     "lambda-adapter": "Verbatim copy of the Lambda Web Adapter to GHCR",
+    summary: "Monday usage summary, sent by email (SNS)",
   },
   triggerText: {
     push: "push to main",
@@ -123,7 +124,7 @@ export const en: ArchitectureContent = {
     paragraphs: [
       "In [[CI/CD]], every pull request runs five jobs in parallel: security scanners, Python tests and the Docker image, LLM evaluations and browser tests, the website (tests, CSP, Lighthouse) and Terraform. Deployment waits only for all of them to succeed.",
       "On main, the image is rebuilt, signed with Sigstore ([[cosign]], keyless), shipped with [[SLSA]] provenance and an [[SBOM]], then verified before being deployed by its digest: signature, SBOM and provenance all target that exact digest.",
-      "A smoke test then queries production; if it fails, the previous version is restored automatically. Other workflows run alongside: the nightly red team, model training and an image mirror.",
+      "A smoke test then queries production; if it fails, the previous version is restored automatically. Other workflows run alongside: the nightly red team, model training, an image mirror and the Monday usage summary.",
     ],
     stepsLabel: (id) => `Steps of the ${id} job`,
     layerLabel: (n) => (n === 0 ? "In parallel" : `Then (after ${n} level${n > 1 ? "s" : ""})`),

@@ -25,12 +25,13 @@ from ask_my_cv.guardrail import (
 from ask_my_cv.input_guard import InjectionDetector, check_input
 from ask_my_cv.language import detect_language
 from ask_my_cv.llm import LLMError, LLMProvider, TokenUsage, estimate_tokens
-from ask_my_cv.output_guard import check_output, normalize_refusal
+from ask_my_cv.output_guard import check_output, is_refusal, normalize_refusal
 from ask_my_cv.prompting import PromptTemplate
 from ask_my_cv.settings import Settings
 from ask_my_cv.stages import Emit, StageBlocked, StageRecorder, stage, tracer
 from ask_my_cv.text import fold_format
 from ask_my_cv.vectorstore import VectorStore
+from ask_my_cv.visitor import weekly_pseudonym
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ BLOCK_MESSAGES = {
     "ungrounded": "Réponse retirée : elle ne s'appuyait pas sur le CV.",
 }
 ERROR_MESSAGE = "Une erreur est survenue. La trace a été enregistrée."
+
+# Issues comptées comme réponses retirées par le garde de sortie (tableau de bord, résumé).
+WITHDRAWN_REASONS = frozenset({"prompt_leak", "pii", "ungrounded", "blocked"})
 
 # attente des écritures du registre à la fin de la requête : reste courte pour garder
 # la latence totale sous le timeout Lambda de 60 s, même en cas de registre lent.
@@ -221,10 +225,17 @@ async def run_pipeline(
     emit: Emit,
     now: Callable[[], float] = time.time,
     evaluation: bool = False,
+    internal: bool = False,
 ) -> None:
     """`evaluation` : requête authentifiée par le jeton d'évaluation (compartiment de quota
     séparé, spans `quota` et `injection` marqués `xops.eval`) ; le plafond de dépense
-    s'applique toujours."""
+    s'applique toujours.
+
+    `internal` : trafic interne authentifié (tests de fumée, propriétaire). Le span racine
+    `ask` porte un résumé analytique (#143) : `xops.traffic` (`public` ou `internal`, une
+    évaluation est toujours interne), `xops.visitor` (pseudonyme hebdomadaire, trafic public
+    seulement), `xops.result`, `xops.kind` (question ou annonce), `xops.language`, coût et
+    latence. Jamais le texte soumis ni la réponse."""
     settings = deps.settings
     started = time.perf_counter()
     usage = Usage()
@@ -249,6 +260,11 @@ async def run_pipeline(
             "langfuse.observation.input",
             json.dumps({"question_chars": len(question)}, ensure_ascii=False),
         )
+        traffic = "internal" if evaluation or internal else "public"
+        root.set_attribute("xops.traffic", traffic)
+        if traffic == "public":
+            root.set_attribute("xops.visitor", weekly_pseudonym(visitor, now()))
+        root.set_attribute("xops.chars", len(question))
         outcome = "answered"
         try:
             async with stage("reception", emit) as st:
@@ -258,9 +274,15 @@ async def run_pipeline(
                 screened = fold_format(question)
                 if not question or max(len(question), len(screened)) > MAX_QUESTION_CHARS:
                     raise StageBlocked("invalid_question", length=len(question))
+                # annonce collée : même critère que le garde-fou (`guardrail_min_chars`)
+                root.set_attribute(
+                    "xops.kind",
+                    "ad" if is_ad_like(screened, settings.guardrail_min_chars) else "question",
+                )
                 if model_id not in settings.public_model_ids():
                     raise StageBlocked("unknown_model", model_len=len(model_id))
                 st.set(model=model_id)
+                root.set_attribute("xops.model", model_id)
 
             async with stage("quota", emit) as st:
                 if evaluation:
@@ -288,6 +310,7 @@ async def run_pipeline(
                 # même texte replié (NFKC, sans Cf) pour la longueur et les deux détecteurs
                 verdict = check_input(deps.detector, screened, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
+                root.set_attribute("xops.model_version", verdict.model_version)
                 if verdict.blocked:
                     # le classifieur suffit : pas d'appel payant au garde-fou
                     st.set(guardrail="skipped")
@@ -316,6 +339,8 @@ async def run_pipeline(
                 system, user = deps.template.render(question, hits, canary, language=language)
                 # langue détectée seulement (jamais le texte soumis)
                 st.set(template=f"{deps.template.name}@{deps.template.version}", language=language)
+                root.set_attribute("xops.language", language)
+                root.set_attribute("xops.template", f"{deps.template.name}@{deps.template.version}")
 
             async with stage("llm", emit) as st:
 
@@ -365,6 +390,12 @@ async def run_pipeline(
             outcome = "error"
             override = ERROR_MESSAGE
         finally:
+            root.set_attribute("xops.result", outcome)
+            # 0/1 numériques : sommés tels quels par Logs Insights (tableau de bord, résumé)
+            root.set_attribute("xops.refusal", int(outcome == "answered" and is_refusal(answer)))
+            root.set_attribute("xops.withdrawn", int(outcome in WITHDRAWN_REASONS))
+            root.set_attribute("xops.cost_usd", round(usage.cost_usd, 6))
+            root.set_attribute("xops.latency_ms", round((time.perf_counter() - started) * 1000, 1))
             root.set_attribute(
                 "langfuse.observation.output",
                 json.dumps(

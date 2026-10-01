@@ -20,6 +20,7 @@ const WORKFLOWS = [
   ".github/workflows/nightly.yml",
   ".github/workflows/train.yml",
   ".github/workflows/mirror.yml",
+  ".github/workflows/weekly.yml",
 ];
 
 /** Rôle de chaque ressource, du plus spécifique au plus général. */

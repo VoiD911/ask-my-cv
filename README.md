@@ -394,6 +394,51 @@ du bandeau de circuit sous 12px) et Performance à 0,95 (LCP ≈ 2,97 s). Budgé
 (0,95 / 0,94) plutôt que « corrigés » : hors périmètre de cette tâche (CI Lighthouse), à traiter
 séparément si le confort de lecture mobile ou le LCP doivent être améliorés.
 
+### Usage réel : tableau de bord et résumé hebdomadaire
+
+Chaque requête laisse sur son span racine `ask` (aws/spans) un résumé sans aucun texte soumis :
+`xops.traffic` (`public` ou `internal`), `xops.visitor` (pseudonyme analytique renouvelé chaque
+semaine ISO, dérivé du pseudonyme de quota sans lui être égal ; trafic public seulement),
+`xops.result`, `xops.kind` (`question`, ou `ad` à partir de `guardrail_min_chars` caractères),
+`xops.chars`, `xops.language`, `xops.refusal`, `xops.withdrawn`, `xops.cost_usd`,
+`xops.model`, `xops.template`, `xops.model_version`.
+
+Trafic interne, exclu des chiffres : évaluations et enregistrements de rediffusion (en-tête
+`X-Eval-Token`), test de fumée du déploiement et propriétaire (en-tête `X-Internal-Token`,
+secret facultatif `INTERNAL_TOKEN` dans SSM et dans l'environnement GitHub `production`). Les
+deux jetons sont comparés en temps constant ; `X-Internal-Token` ne change que le classement
+analytique, jamais le quota ni le plafond. Pour exclure ses propres essais, le propriétaire
+renseigne une fois, dans la console de son navigateur sur le site :
+`localStorage.setItem("ask-my-cv:internal-token", "<INTERNAL_TOKEN>")`.
+
+Risques assumés :
+
+- **Jeton dans le navigateur** : `localStorage` est lisible par tout script de la page (une
+  faille XSS, une extension). Le jeton n'est envoyé qu'à la même origine (`/api`) et ne donne
+  aucun passe-droit (ni quota, ni plafond) ; fuité, il permettrait seulement de masquer du
+  trafic dans les statistiques. Le résumé du lundi signale donc « À VÉRIFIER » un trafic
+  interne anormal (plus de requêtes internes que publiques au-delà de 50, ou coût interne plus
+  du double du public). En cas de doute : changer `INTERNAL_TOKEN` (SSM et GitHub), puis
+  redéployer.
+- **Pseudonymes** : `xops.visitor` dérive du HMAC de l'IP par `VISITOR_SALT`. Qui détient ce
+  sel et une liste d'IP candidates peut recalculer les pseudonymes et relier ces IP aux
+  requêtes de la même semaine ; le sel reste donc un secret (SSM), jamais journalisé.
+
+- **Tableau de bord** `ask-my-cv-usage` (`infra/prod/dashboard.tf`), privé : console
+  CloudWatch, `https://ca-central-1.console.aws.amazon.com/cloudwatch/home?region=ca-central-1#dashboards/dashboard/ask-my-cv-usage`
+  (connecté au compte). Requêtes et visiteurs distincts par jour, questions et annonces,
+  attaques bloquées, refus, réponses retirées, coût par jour et cumulé, facture du mois contre
+  le budget (métrique `AWS/Billing`, à condition d'avoir activé les alertes de facturation),
+  latence p50/p95, langue, modèle et versions servis.
+- **Résumé hebdomadaire** : `.github/workflows/weekly.yml`, chaque lundi à 12 h UTC, publie sur
+  le sujet SNS des alertes un courriel en français (semaine ISO écoulée comparée à la
+  précédente). Lancement manuel en essai par défaut ; localement :
+  `uv run python infra/scripts/weekly_summary.py --dry-run`.
+- **Coût** : tableau de bord gratuit dans la limite de 3 par compte (sinon 3 $/mois) ; Logs
+  Insights facture environ 0,005 $/Go analysé et aws/spans pèse quelques Mo (rétention 14 jours), soit
+  moins d'un cent par mois même avec des rafraîchissements fréquents. Courriel SNS et
+  GitHub Actions (dépôt public) : gratuits à ce volume.
+
 ### Coût
 
 ≈ 1 $/mois hors Bedrock (Lambda, CloudFront, DynamoDB, ECR, CloudWatch, S3, SSM). Une question ≈ 0,0009 $ (Bedrock).
@@ -420,7 +465,7 @@ Puis, sur `infra/bootstrap` : retirer `prevent_destroy` sur le bucket d'état et
 ## Gouvernance
 
 - **PR obligatoires sur `main`**, avec vérifications requises avant fusion : `security`, `test`, `evals`, `web`, `terraform` (jobs de `.github/workflows/ci.yml`). Ensemble de règles « main protégée » actif : ni push direct, ni push forcé, ni suppression ; contournement réservé à l’administrateur et uniquement par PR.
-- **Environnements protégés** `production` (job `deploy`, `.github/workflows/ci.yml`) et `nightly` (jobs `redteam` et `drift`, `.github/workflows/nightly.yml`), tous deux limités à la branche `main` (politique de déploiement personnalisée côté GitHub).
+- **Environnements protégés** `production` (job `deploy`, `.github/workflows/ci.yml`) et `nightly` (jobs `redteam` et `drift`, `.github/workflows/nightly.yml` ; job `summary`, `.github/workflows/weekly.yml`), tous deux limités à la branche `main` (politique de déploiement personnalisée côté GitHub).
 - **Sujets OIDC par environnement** : le rôle de déploiement n'accepte que le sujet immuable `repo:VoiD911@15268916/ask-my-cv@1389934708:environment:production`, le rôle de nuit que `…:environment:nightly` (`infra/bootstrap`). Un job de `main` sans environnement, une autre branche, un fork ou une PR ne peuvent prendre aucun des deux rôles.
-- **`EVAL_TOKEN`** est uniquement un secret de l'environnement `nightly`, lu par le job `redteam` (aucune copie au niveau du dépôt).
+- **`EVAL_TOKEN`** est uniquement un secret de l'environnement `nightly`, lu par le job `redteam` (aucune copie au niveau du dépôt). **`INTERNAL_TOKEN`** (facultatif) est un secret de l'environnement `production`, lu par la seule étape du test de fumée.
 - **Revues** : postées en commentaire de la PR par un agent de revue, jamais en tant qu'« approval » GitHub ; la fusion reste décidée par le contrôleur humain.

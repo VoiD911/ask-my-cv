@@ -229,7 +229,7 @@ resource "aws_iam_role_policy" "deploy" {
   policy = data.aws_iam_policy_document.deploy.json
 }
 
-# --- Nuit (red team + dérive) depuis GitHub Actions : CloudWatch Logs Insights (lecture), juge Bedrock ---
+# --- Nuit (red team + dérive) et résumé hebdomadaire depuis GitHub Actions : CloudWatch Logs Insights (lecture), juge Bedrock, publication SNS ---
 # Confiance distincte : environnement `nightly` (le rôle de déploiement n'accepte que `production`).
 resource "aws_iam_role" "nightly" {
   name                 = "ask-my-cv-nightly"
@@ -250,6 +250,31 @@ data "aws_iam_policy_document" "nightly" {
     sid       = "LogsInsightsResults"
     actions   = ["logs:GetQueryResults", "logs:StopQuery"]
     resources = ["*"]
+  }
+  # #143 : résumé hebdomadaire (.github/workflows/weekly.yml) publié sur le sujet des alertes
+  # (infra/prod/observability.tf), et sur lui seul.
+  statement {
+    sid       = "WeeklySummaryPublish"
+    actions   = ["sns:Publish"]
+    resources = ["arn:aws:sns:${var.region}:${local.account}:ask-my-cv-alerts"]
+  }
+  # Le sujet est chiffré par une clé gérée par le client (alias/ask-my-cv-alerts) : la clé
+  # n'est utilisable que par SNS (kms:ViaService) et seulement si elle porte cet alias. La
+  # politique de la clé délègue à IAM (racine du compte), aucune modification côté prod.
+  statement {
+    sid       = "WeeklySummaryTopicKey"
+    actions   = ["kms:GenerateDataKey*", "kms:Decrypt"]
+    resources = ["arn:aws:kms:${var.region}:${local.account}:key/*"]
+    condition {
+      test     = "StringEquals"
+      variable = "kms:ViaService"
+      values   = ["sns.${var.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "ForAnyValue:StringEquals"
+      variable = "kms:ResourceAliases"
+      values   = ["alias/ask-my-cv-alerts"]
+    }
   }
   # #122 : juge LLM de la suite de nuit (evals/judge.js), InvokeModel sans flux. Un profil
   # d'inférence inter-régions exige l'autorisation sur le profil ET sur le modèle de fondation

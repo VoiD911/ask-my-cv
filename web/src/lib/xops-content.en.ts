@@ -112,8 +112,8 @@ export const disciplinesEn: Record<string, DisciplineText> = {
       observabilite: {
         title: "Observability",
         claim: (x) =>
-          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email.`,
-        proofs: ["telemetry.py", "observability.tf · alarm"],
+          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email. A private dashboard of real usage (internal traffic excluded, no question text) and a weekly email summary.`,
+        proofs: ["telemetry.py", "observability.tf · alarm", "dashboard.tf · dashboard", "weekly.yml · summary"],
       },
       journal: {
         title: "Public development journal",
@@ -268,8 +268,8 @@ export const disciplinesEn: Record<string, DisciplineText> = {
       "aws-budgets": {
         title: "AWS budget and alerts",
         claim: (x) =>
-          `Safety net: a monthly AWS Budget (US$${x.budget.monthlyUsdDefault} by default), with email alerts at 50% actual and 100% forecast.`,
-        proofs: ["observability.tf · budget", "variables.tf"],
+          `Safety net: a monthly AWS Budget (US$${x.budget.monthlyUsdDefault} by default), with email alerts at 50% actual and 100% forecast. Measured daily cost and the month's bill against the budget on the dashboard, the week's cost in the Monday summary.`,
+        proofs: ["observability.tf · budget", "variables.tf", "weekly_summary.py"],
       },
       "paiement-usage": {
         title: "Pay per use",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import sys
 import time
 import urllib.request
@@ -43,12 +44,22 @@ def parse_sse(raw: str) -> list[tuple[str, dict]]:
     return events
 
 
+def internal_headers() -> dict[str, str]:
+    """Jeton de trafic interne (#143, variable INTERNAL_TOKEN) : exclut ces requêtes du tableau
+    de bord. Il ne change ni le quota ni le plafond : le test du quota reste valable."""
+    token = os.environ.get("INTERNAL_TOKEN")
+    return {"X-Internal-Token": token} if token else {}
+
+
 def ask(base: str, question: str, headers: dict[str, str] | None = None) -> list[tuple[str, dict]]:
     body, signed = signed_body({"question": question})
     # URL construite à partir de l'argument fourni par l'opérateur sur la ligne de commande,
     # jamais depuis une entrée réseau non fiable.
     request = urllib.request.Request(  # noqa: S310
-        f"{base}/api/ask", data=body, method="POST", headers={**signed, **(headers or {})}
+        f"{base}/api/ask",
+        data=body,
+        method="POST",
+        headers={**signed, **internal_headers(), **(headers or {})},
     )
     with urllib.request.urlopen(request, timeout=90) as response:  # noqa: S310
         return parse_sse(response.read().decode("utf-8"))
@@ -56,6 +67,8 @@ def ask(base: str, question: str, headers: dict[str, str] | None = None) -> list
 
 def main(base: str) -> int:
     base = base.rstrip("/")
+    if not internal_headers():
+        print("INTERNAL_TOKEN absent : ces requêtes compteront comme trafic public.")
     # URL construite à partir de l'argument fourni par l'opérateur sur la ligne de commande.
     with urllib.request.urlopen(f"{base}/api/healthz", timeout=30) as response:  # noqa: S310
         health = json.load(response)

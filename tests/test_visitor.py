@@ -42,3 +42,16 @@ def test_visitor_id_is_a_keyed_hash() -> None:
     assert a == visitor_id("203.0.113.7", "k" * 32)
     assert len(a) == 16 and a != visitor_id("203.0.113.7", "z" * 32)
     assert "203" not in a
+
+
+def test_weekly_pseudonym_is_stable_within_an_iso_week_and_rotates_after() -> None:
+    from ask_my_cv.visitor import weekly_pseudonym
+
+    monday = 1789948800.0  # lundi 2026-09-21 00:00 UTC
+    visitor = visitor_id("203.0.113.7", "s" * 32)
+    same_week = {weekly_pseudonym(visitor, monday + d * 86400) for d in range(7)}
+    assert len(same_week) == 1
+    [pseudonym] = same_week
+    assert pseudonym != visitor and visitor not in pseudonym and len(pseudonym) == 12
+    assert weekly_pseudonym(visitor, monday + 7 * 86400) != pseudonym
+    assert weekly_pseudonym(visitor_id("203.0.113.8", "s" * 32), monday) != pseudonym
