@@ -1357,13 +1357,25 @@ def test_session_id_config_must_be_uuid(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 @pytest.mark.parametrize(
-    "text", ["prompts/answer@v2.md", "`answer@v7.md`", "foo@bar.yaml", "cfg@prod.json", "x@y.py"]
+    "text", ["prompts/answer@v2.md", "`answer@v7.md`", "prompts/answer@v10.md", "a@v1.2.yaml"]
 )
 def test_redact_keeps_file_names_with_at_sign(text: str) -> None:
     assert redact(text, CONFIGURED) == text
 
 
-@pytest.mark.parametrize("text", ["alice@private.org", "a.b@mail.co.uk", "dev@corp.io."])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "alice@private.org",
+        "a.b@mail.co.uk",
+        "dev@corp.io.",
+        "me@perso.md",
+        "me@perso.py",
+        "me@perso.sh",
+        "me@x.ts",
+        "a@b.json",
+    ],
+)
 def test_redact_still_masks_real_emails(text: str) -> None:
     assert "<adresse>" in redact(text, CONFIGURED)
 
@@ -1377,3 +1389,14 @@ def test_redact_collapses_repeated_identical_masks() -> None:
 def test_redact_keeps_distinct_masks_apart() -> None:
     out = redact("bob et bob", CONFIGURED)
     assert out == "<utilisateur> et <utilisateur>"
+
+
+def test_redact_masks_whole_claude_temp_structure() -> None:
+    text = (
+        r"C:\Users\bob\AppData\Local\Temp\claude\X--PROJ-demo"
+        rf"\{FAKE_SESSION}\scratchpad\out\a.py"
+    )
+    out = redact(text, CONFIGURED)
+    assert "AppData" not in out
+    assert "scratchpad" not in out
+    assert out.endswith(r"\out\a.py")

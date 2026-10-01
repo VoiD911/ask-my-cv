@@ -2115,7 +2115,7 @@
               "agent_type": "ecc:mle-reviewer",
               "model": "claude-sonnet-5-5",
               "description": "Review PR #115 classifier v1.4 candidate",
-              "summary": "J'ai posté la revue du 3e passage sur la PR #115 (delta 8c9384d..27f8aba) avec le verdict « Approuvé ». Rien n'a été poussé, fusionné ni déclenché. URL : https://github.com/VoiD911/ask-my-cv/pull/115#issuecomment-5900798090 Le corps du commentaire est dans `~\\AppData\\Local\\Temp\\<session-claude>\\scratchpad\\rev115_3.md`. **Vérification.** 118 tests passent (`tests/training`, `test_text.py`, `test_onnx_detector.py`). **Point demandé au 2e passage : résolu** - **Porte de catastrophe bloquante :** les deux contrôles sont `job_ad_fpr_catastrophe` (FPR ≤ 0,30) et `job_ad_recall_catastrophe` (rappel ≥",
+              "summary": "J'ai posté la revue du 3e passage sur la PR #115 (delta 8c9384d..27f8aba) avec le verdict « Approuvé ». Rien n'a été poussé, fusionné ni déclenché. URL : https://github.com/VoiD911/ask-my-cv/pull/115#issuecomment-5900798090 Le corps du commentaire est dans `~\\<session-claude>\\rev115_3.md`. **Vérification.** 118 tests passent (`tests/training`, `test_text.py`, `test_onnx_detector.py`). **Point demandé au 2e passage : résolu** - **Porte de catastrophe bloquante :** les deux contrôles sont `job_ad_fpr_catastrophe` (FPR ≤ 0,30) et `job_ad_recall_catastrophe` (rappel ≥ 0,40). Le candidat est à 0,10",
               "verdict": "approuvé",
               "commits": [],
               "links": [
@@ -2298,7 +2298,7 @@
               "agent_type": "ecc:security-reviewer",
               "model": "claude-sonnet-5-5",
               "description": "Review PR #123 LLM judge",
-              "summary": "J'ai posté le 3e passage sur la PR #123 : https://github.com/VoiD911/ask-my-cv/pull/123#issuecomment-5903184388 Il est en français, sans attribution, et se termine par « Verdict : Approuvé ». Le texte complet est dans `~\\AppData\\Local\\Temp\\<session-claude>\\scratchpad\\rev123d.md`. Je n'ai fait aucun appel AWS et je n'ai pas relancé la calibration contre Bedrock. J'ai seulement relu le delta et rejoué les tests unitaires de `judge.test.js` (13/13). **Ce que j'ai retenu** - **Lockfile.** Je reconnais mon erreur : l'échec venait de mon npm 11.6.2 local. Le diff du lockfile se limite maintenant au ",
+              "summary": "J'ai posté le 3e passage sur la PR #123 : https://github.com/VoiD911/ask-my-cv/pull/123#issuecomment-5903184388 Il est en français, sans attribution, et se termine par « Verdict : Approuvé ». Le texte complet est dans `~\\<session-claude>\\rev123d.md`. Je n'ai fait aucun appel AWS et je n'ai pas relancé la calibration contre Bedrock. J'ai seulement relu le delta et rejoué les tests unitaires de `judge.test.js` (13/13). **Ce que j'ai retenu** - **Lockfile.** Je reconnais mon erreur : l'échec venait de mon npm 11.6.2 local. Le diff du lockfile se limite maintenant au champ `engines` (`npm >=11.19.",
               "verdict": "approuvé",
               "commits": [],
               "links": [
@@ -2551,7 +2551,7 @@
               "agent_type": "general-purpose",
               "model": "claude-opus-5-5",
               "description": "Implement 1e-3a CV page (#139)",
-              "summary": "I've implemented issue #139 and opened PR https://github.com/VoiD911/ask-my-cv/pull/140 (not merged), on branch `t/page-cv`, commit `59f2920`, worktree `<poste>\\worktrees\\ask-my-cv-cv`. Every gate passed locally; I haven't watched the PR's CI run. **PDFs for the user:** - `~\\AppData\\Local\\Temp\\<session-claude>\\scratchpad\\Steve-Lang-CV-fr.pdf` (about 105 KB) - `~\\AppData\\Local\\Temp\\<session-claude>\\scratchpad\\Steve-Lang-CV-en.pdf` (about 100 KB) The originals are in the worktree under `web/out/cv/` and `web/out/en/cv/`. Each is 2 pages of A4 with selectable text, black on white, and carries a t",
+              "summary": "I've implemented issue #139 and opened PR https://github.com/VoiD911/ask-my-cv/pull/140 (not merged), on branch `t/page-cv`, commit `59f2920`, worktree `<poste>\\worktrees\\ask-my-cv-cv`. Every gate passed locally; I haven't watched the PR's CI run. **PDFs for the user:** - `~\\<session-claude>\\Steve-Lang-CV-fr.pdf` (about 105 KB) - `~\\<session-claude>\\Steve-Lang-CV-en.pdf` (about 100 KB) The originals are in the worktree under `web/out/cv/` and `web/out/en/cv/`. Each is 2 pages of A4 with selectable text, black on white, and carries a title and author \"Steve Lang\" in its metadata. I read the Fre",
               "verdict": null,
               "commits": [
                 "59f292050b1a83d2b11465167074d16f4cadb54e"

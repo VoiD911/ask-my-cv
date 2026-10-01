@@ -457,26 +457,10 @@ def _user_home_body(config: RedactConfig) -> str:
     return prefix + tail
 
 
-# Extensions de fichier courantes : `prompts/answer@v2.md`, `cfg@prod.yaml` sont
-# des noms de fichier, pas des adresses (TLD exclus du masquage).
-_FILE_EXTENSION_TLDS = frozenset(
-    {
-        "md",
-        "yaml",
-        "yml",
-        "json",
-        "py",
-        "ts",
-        "tsx",
-        "js",
-        "mjs",
-        "txt",
-        "toml",
-        "csv",
-        "html",
-        "sh",
-    }
-)
+# Fichier de prompt versionné (`answer@v2.md`, `prompts/answer@v10.md`) : seul
+# nom avec `@` exempté du masquage des adresses. Règle étroite : `.md`, `.py`,
+# `.sh` sont aussi de vrais TLD (`me@perso.md` reste masquée).
+_VERSIONED_FILE_RE = re.compile(r"^[\w.-]+@v\d+(?:\.\d+)*\.(?:md|yaml|yml|json|txt)$")
 # Masques identiques répétés dans une énumération (`<x>`, `<x>`) : un seul suffit.
 _REPEATED_MASK_RE = re.compile(
     r"(`?)(<(?:compte-aws|adresse|poste|utilisateur|session-claude)>)\1(?:,[ \t]*\1\2\1)+"
@@ -553,10 +537,15 @@ def _root_pattern_body(root: str) -> str:
 # est le chemin de travail aplati (`D--DEV-ecc`), sous `.claude/projects/` ou
 # dans le dossier temporaire (`AppData/Local/Temp/claude/…/scratchpad`). Le
 # nom du projet révèle le poste et l'identifiant relie les publications à une
-# session locale : les deux sont masqués ensemble. Répétitions bornées : linéaire.
+# session locale : les deux sont masqués ensemble. Depuis le dossier temporaire,
+# toute la structure `AppData/Local/Temp/claude/…/scratchpad` est masquée.
+# Répétitions bornées : linéaire.
 _CLAUDE_PROJECT = r"[A-Za-z]--[A-Za-z0-9._-]{1,100}"
 _UUID = r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
 _CLAUDE_SESSION_BODY = (
+    rf"(?<![A-Za-z0-9])AppData{_PATH_SEP}Local{_PATH_SEP}Temp{_PATH_SEP}claude{_PATH_SEP}"
+    rf"{_CLAUDE_PROJECT}(?:{_PATH_SEP}{_UUID})?(?:{_PATH_SEP}scratchpad(?![A-Za-z0-9._-]))?"
+    r"(?![A-Za-z0-9._-])|"
     rf"(?<![A-Za-z0-9])(?:projects|claude){_PATH_SEP}{_CLAUDE_PROJECT}"
     rf"(?:{_PATH_SEP}{_UUID})?(?![A-Za-z0-9._-])"
     rf"|(?<![A-Za-z0-9]){_CLAUDE_PROJECT}{_PATH_SEP}{_UUID}(?![0-9A-Za-z])"
@@ -647,7 +636,7 @@ def _dispatch(match: re.Match[str], config: RedactConfig) -> str:
     if kind.startswith("root_"):
         return _PATH_MASK
     if kind == "email":
-        if text.rsplit(".", 1)[-1].lower() in _FILE_EXTENSION_TLDS:
+        if _VERSIONED_FILE_RE.match(text):
             return text
         return text if _is_allowed_email(text, config) else _EMAIL_MASK
     if kind == "user_cfg":
