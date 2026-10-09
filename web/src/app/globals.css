@@ -1221,7 +1221,7 @@ body {
   font-size: 11px;
   font-stretch: 85%;
   font-variant-numeric: tabular-nums;
-  color: var(--color-silk-faint);
+  color: var(--color-silk-dim);
 }
 
 .composer__count[data-full] {
