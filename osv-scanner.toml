@@ -7,3 +7,18 @@ ignoreUntil = 2026-11-27
 id = "GHSA-jmr9-qjv8-65gv"
 reason = "extract-zip (même chaîne de dépendance que GHSA-7pqw-9j4j-h8q3 ci-dessus) : traversée de chemin par lien symbolique non validé lors de l'extraction d'une archive zip. Même justification : chemin de code jamais exécuté (aucun téléchargement/extraction de navigateur dans notre usage de lhci), et même garde-fou en CI (job web) interdisant tout téléchargement de navigateur et faisant échouer le job si aucun Chrome n'est déjà présent. Dépendance de dev non publiée. Aucun correctif publié en amont."
 ignoreUntil = 2026-11-27
+
+[[IgnoredVulns]]
+id = "GHSA-86w9-cpqp-85rv"
+reason = "node-forge 1.4.0 (evals/package-lock.json : promptfoo -> jks-js -> node-forge, dépendance optionnelle de promptfoo) : la vérification de signature RSA PKCS#1 v1.5 accepte des éléments DigestAlgorithm imbriqués superflus. Code jamais atteint dans notre usage : promptfoo n'importe jks-js (import() paresseux) que pour le fournisseur HTTP intégré configuré avec un keystore JKS (signatureAuth type jks ou tls.jks) ; nos suites (evals/pr.yaml, evals/nightly.yaml) n'utilisent que le fournisseur file://provider.js, sans JKS. Et jks-js ne se sert de node-forge que pour décoder un keystore (asn1, pkcs12, pki → PEM), jamais pour vérifier une signature RSA. Dépendance de dev, outil d'évaluation jamais livré en production. Aucun correctif publié en amont (dernière version : 1.4.0)."
+ignoreUntil = 2026-12-09
+
+[[IgnoredVulns]]
+id = "GHSA-vfj7-8cjw-p6xm"
+reason = "braces 3.0.3 (web/package-lock.json : @next/eslint-plugin-next -> fast-glob -> micromatch -> braces, dépendance de dev) : déni de service par épuisement de pile sur des motifs d'accolades profondément imbriqués. Chemin inexploitable dans notre usage : braces n'est appelé que par le lint (eslint-config-next) sur des motifs glob écrits dans notre propre configuration, jamais sur une entrée externe ; au pire un motif malveillant ferait planter un lint local ou en CI. Rien de cela n'est livré : le site est un export statique. Aucun correctif publié en amont (dernière version : 3.0.3)."
+ignoreUntil = 2026-12-09
+
+[[IgnoredVulns]]
+id = "GHSA-hp3w-g68c-fv3c"
+reason = "sprintf-js 1.0.3 (web/package-lock.json : @lhci/cli -> @lhci/utils -> js-yaml 3 -> argparse 1 -> sprintf-js, dépendance de dev) : déni de service par spécificateur de précision non borné dans une chaîne de format. Chemin inexploitable : argparse n'est utilisé que par l'exécutable en ligne de commande de js-yaml, que lhci n'appelle pas (il utilise js-yaml comme bibliothèque) ; et argparse n'emploie de toute façon que ses propres chaînes de format statiques, jamais une chaîne contrôlée par un attaquant. Dépendance de dev (Lighthouse CI), jamais livrée en production. Aucun correctif sur la branche 1.0.x ni en 1.1.3 (dernière version)."
+ignoreUntil = 2026-12-09
