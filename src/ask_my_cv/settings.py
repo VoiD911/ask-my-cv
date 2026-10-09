@@ -75,6 +75,8 @@ class Settings(BaseModel):
     chunks_table: str = "ask-my-cv-chunks"
     ledger: Literal["memory", "dynamodb"] = "memory"
     ledger_table: str = "ask-my-cv-ledger"
+    # journal des échanges publics (#150) : désactivé sans table (local, CI)
+    exchange_log_table: str | None = None
     tracing: list[Literal["console", "cloudwatch", "langfuse"]] = []
     langfuse_endpoint: str = "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
     # Garde-fou Bedrock « annonces » (#118) : second avis sur les annonces collées. Désactivé

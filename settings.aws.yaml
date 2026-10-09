@@ -14,6 +14,7 @@ vector_store: dynamodb
 chunks_table: ask-my-cv-chunks
 ledger: dynamodb
 ledger_table: ask-my-cv-ledger
+exchange_log_table: ask-my-cv-exchanges   # #150 : questions et réponses publiques masquées, 30 jours
 tracing: [cloudwatch, langfuse]
 default_model: bedrock:haiku-4.5
 fallback_chain: [bedrock:haiku-4.5]

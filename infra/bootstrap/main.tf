@@ -258,6 +258,12 @@ data "aws_iam_policy_document" "nightly" {
     actions   = ["sns:Publish"]
     resources = ["arn:aws:sns:${var.region}:${local.account}:ask-my-cv-alerts"]
   }
+  # #150 : section « Derniers échanges » du résumé (lecture seule de la table du journal).
+  statement {
+    sid       = "WeeklySummaryExchanges"
+    actions   = ["dynamodb:Query"]
+    resources = ["arn:aws:dynamodb:${var.region}:${local.account}:table/ask-my-cv-exchanges"]
+  }
   # Le sujet est chiffré par une clé gérée par le client (alias/ask-my-cv-alerts) : la clé
   # n'est utilisable que par SNS (kms:ViaService) et seulement si elle porte cet alias. La
   # politique de la clé délègue à IAM (racine du compte), aucune modification côté prod.

@@ -112,7 +112,7 @@ export const disciplinesEn: Record<string, DisciplineText> = {
       observabilite: {
         title: "Observability",
         claim: (x) =>
-          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email. A private dashboard of real usage (internal traffic excluded, no question text) and a weekly email summary.`,
+          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email. A private dashboard of real usage (internal traffic excluded, no text in traces), a 30-day log of masked public exchanges and a weekly email summary.`,
         proofs: ["telemetry.py", "observability.tf · alarm", "dashboard.tf · dashboard", "weekly.yml · summary"],
       },
       journal: {

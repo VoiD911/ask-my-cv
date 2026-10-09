@@ -156,7 +156,7 @@ export const disciplines: Discipline[] = [
         id: "observabilite",
         title: "Observabilité",
         claim: (x) =>
-          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte de question) et résumé hebdomadaire par courriel.`,
+          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte dans les traces), journal des échanges publics masqués conservé 30 jours et résumé hebdomadaire par courriel.`,
         status: "couvert",
         proofs: [
           { label: "telemetry.py", path: "src/ask_my_cv/telemetry.py" },

@@ -22,7 +22,7 @@
     "sourceValue": "Public CV, written in French: answers are drawn from it",
     "modelTerm": "model",
     "contactTerm": "contact",
-    "privacy": "Questions are processed in the United States by Amazon Bedrock. Traces keep neither the text of your question nor your IP address; the per-visitor quota relies on a salted pseudonym.",
+    "privacy": "Questions are processed in the United States by Amazon Bedrock. Your IP address is never stored; the per-visitor quota relies on a salted pseudonym. Questions and answers are kept for 30 days, masked (emails, phone numbers, links), to improve the assistant; traces do not contain their text.",
     "linkedinTerm": "linkedin"
   },
   "chat": {
@@ -57,6 +57,7 @@
     "inputLabel": "Your question or job posting",
     "placeholder": "Ask your question or paste your job posting…",
     "hint": "You can also paste a job posting to see how Steve's background matches the profile you are looking for.",
+    "retention": "Questions and answers are kept for 30 days, without IP addresses, to improve the assistant.",
     "charsSuffix": " characters",
     "stop": "Stop",
     "send": "Send",

@@ -27,6 +27,6 @@ describe("page d'accueil", () => {
   it("précise où les questions sont traitées et ce que les traces ne gardent pas", () => {
     render(<Home />);
     expect(screen.getByText(/traitées aux États-Unis par Amazon Bedrock/)).toBeInTheDocument();
-    expect(screen.getByText(/ni le texte de ta question ni ton adresse IP/)).toBeInTheDocument();
+    expect(screen.getByText(/Ton adresse IP n'est jamais conservée/)).toBeInTheDocument();
   });
 });

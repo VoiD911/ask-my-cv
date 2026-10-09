@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
 from ask_my_cv.events import Answer, Done, LLMProgress
+from ask_my_cv.exchanges import Exchange, ExchangeLog
 from ask_my_cv.guardrail import (
     GUARDRAIL_PROVIDER_ID,
     USD_PER_UNIT,
@@ -20,6 +21,7 @@ from ask_my_cv.guardrail import (
     GuardrailStatus,
     is_ad_like,
     log_metric,
+    metrics_logger,
     text_units,
 )
 from ask_my_cv.input_guard import InjectionDetector, check_input
@@ -61,6 +63,8 @@ WITHDRAWN_REASONS = frozenset({"prompt_leak", "pii", "ungrounded", "blocked"})
 # attente des écritures du registre à la fin de la requête : reste courte pour garder
 # la latence totale sous le timeout Lambda de 60 s, même en cas de registre lent.
 LEDGER_WAIT_S = 3.0
+# attente de l'écriture du journal des échanges (#150), après Done : courte, au mieux
+EXCHANGE_WAIT_S = 2.0
 
 
 @dataclass
@@ -76,6 +80,8 @@ class Deps:
     guardrail: GuardrailChecker | None = None
     # disjoncteur du garde-fou, un par processus (container.build_deps)
     breaker: GuardrailBreaker = field(default_factory=GuardrailBreaker)
+    # journal des échanges publics (#150) ; None : désactivé (local, CI, non configuré)
+    exchange_log: ExchangeLog | None = None
 
 
 def _provider_chain(model_id: str, deps: Deps) -> list[LLMProvider]:
@@ -104,6 +110,25 @@ def _log_record_failure(future: asyncio.Future[None]) -> None:
 def _cancelling() -> bool:
     task = asyncio.current_task()
     return task is not None and task.cancelling() > 0
+
+
+def _exchange_result(outcome: str, answer: str) -> str:
+    if outcome == "answered":
+        return "refused" if is_refusal(answer) else "answered"
+    if outcome in WITHDRAWN_REASONS:
+        return "withdrawn"
+    if outcome in ("rate_limited", "budget_exceeded", "error", "cancelled"):
+        return outcome
+    return "blocked"
+
+
+def _write_exchange(log: ExchangeLog, exchange: Exchange) -> None:
+    try:
+        log.write(exchange)
+    except Exception as exc:
+        # jamais le texte : seulement le type d'erreur
+        logger.warning("journal des échanges indisponible : %s", type(exc).__name__)
+        metrics_logger.info("exchange_log_metrics error")
 
 
 async def _stream_llm(
@@ -235,13 +260,15 @@ async def run_pipeline(
     `ask` porte un résumé analytique (#143) : `xops.traffic` (`public` ou `internal`, une
     évaluation est toujours interne), `xops.visitor` (pseudonyme hebdomadaire, trafic public
     seulement), `xops.result`, `xops.kind` (question ou annonce), `xops.language`, coût et
-    latence. Jamais le texte soumis ni la réponse."""
+    latence. Jamais le texte soumis ni la réponse dans les traces : seul le journal des
+    échanges (#150, trafic public, `Deps.exchange_log`) les conserve, masqués, 30 jours."""
     settings = deps.settings
     started = time.perf_counter()
     usage = Usage()
     sources: list[str] = []
     override: str | None = None
     answer = ""
+    language = kind = template_ref = detector_ref = ""
     # écritures du registre en cours dans l'executor : référence forte jusqu'à leur fin
     pending: set[asyncio.Future[None]] = set()
 
@@ -275,10 +302,8 @@ async def run_pipeline(
                 if not question or max(len(question), len(screened)) > MAX_QUESTION_CHARS:
                     raise StageBlocked("invalid_question", length=len(question))
                 # annonce collée : même critère que le garde-fou (`guardrail_min_chars`)
-                root.set_attribute(
-                    "xops.kind",
-                    "ad" if is_ad_like(screened, settings.guardrail_min_chars) else "question",
-                )
+                kind = "ad" if is_ad_like(screened, settings.guardrail_min_chars) else "question"
+                root.set_attribute("xops.kind", kind)
                 if model_id not in settings.public_model_ids():
                     raise StageBlocked("unknown_model", model_len=len(model_id))
                 st.set(model=model_id)
@@ -311,6 +336,7 @@ async def run_pipeline(
                 verdict = check_input(deps.detector, screened, settings.injection_threshold)
                 st.set(model_version=verdict.model_version, score=round(verdict.score, 3))
                 root.set_attribute("xops.model_version", verdict.model_version)
+                detector_ref = verdict.model_version
                 if verdict.blocked:
                     # le classifieur suffit : pas d'appel payant au garde-fou
                     st.set(guardrail="skipped")
@@ -340,7 +366,8 @@ async def run_pipeline(
                 # langue détectée seulement (jamais le texte soumis)
                 st.set(template=f"{deps.template.name}@{deps.template.version}", language=language)
                 root.set_attribute("xops.language", language)
-                root.set_attribute("xops.template", f"{deps.template.name}@{deps.template.version}")
+                template_ref = f"{deps.template.name}@{deps.template.version}"
+                root.set_attribute("xops.template", template_ref)
 
             async with stage("llm", emit) as st:
 
@@ -422,16 +449,45 @@ async def run_pipeline(
                         )
                 except asyncio.CancelledError:
                     interrupted = True
+            latency_ms = round((time.perf_counter() - started) * 1000, 2)
+            trace_id = format(root.get_span_context().trace_id, "032x")
             emit(
                 Done(
                     tokens_in=usage.tokens_in,
                     tokens_out=usage.tokens_out,
                     cost_usd=round(usage.cost_usd, 6),
-                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                    latency_ms=latency_ms,
                     sources=sources,
                     answer_override=override,
-                    trace_id=format(root.get_span_context().trace_id, "032x"),
+                    trace_id=trace_id,
                 )
             )
+            if deps.exchange_log is not None and traffic == "public":
+                # après Done (réponse complète), hors de la boucle ; jamais d'effet sur le visiteur
+                exchange = Exchange(
+                    trace_id=trace_id,
+                    timestamp=now(),
+                    question=question,
+                    answer=override or (answer if outcome == "answered" else ""),
+                    result=_exchange_result(outcome, answer),
+                    language=language,
+                    kind=kind,
+                    block_reason="" if outcome == "answered" else outcome,
+                    sources=sources,
+                    model=model_id if model_id in settings.public_model_ids() else "",
+                    prompt=template_ref,
+                    detector=detector_ref,
+                    visitor=weekly_pseudonym(visitor, now()),
+                    cost_usd=round(usage.cost_usd, 6),
+                    latency_ms=latency_ms,
+                )
+                written = asyncio.get_running_loop().run_in_executor(
+                    None, _write_exchange, deps.exchange_log, exchange
+                )
+                if not interrupted and not _cancelling():
+                    try:
+                        await asyncio.wait({written}, timeout=EXCHANGE_WAIT_S)
+                    except asyncio.CancelledError:
+                        interrupted = True
             if interrupted:
                 raise asyncio.CancelledError

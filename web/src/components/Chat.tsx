@@ -385,6 +385,7 @@ export function Chat({ exchanges, busy, onAsk, onStop, onInteract, models, model
           onFocus={onInteract}
         />
         <p className="composer__hint">{t("hint")}</p>
+        <p className="composer__hint">{t("retention")}</p>
         <div className="composer__row">
           <span id={`${ids}-count`} className="composer__count" data-full={draft.length >= MAX_QUESTION || undefined}>
             {draft.length}/{MAX_QUESTION}

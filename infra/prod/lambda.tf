@@ -60,6 +60,11 @@ data "aws_iam_policy_document" "api" {
     resources = [aws_dynamodb_table.ledger.arn]
   }
   statement {
+    sid       = "ExchangeLog" # #150 : écriture seule, jamais de lecture depuis le Lambda
+    actions   = ["dynamodb:PutItem"]
+    resources = [aws_dynamodb_table.exchanges.arn]
+  }
+  statement {
     sid       = "Traces"
     actions   = ["xray:PutSpans", "xray:PutSpansForIndexing", "xray:PutTraceSegments"] # OTLP : PutTraceSegments exigé (403 sans, vérifié en production)
     resources = ["*"]

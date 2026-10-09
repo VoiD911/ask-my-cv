@@ -176,6 +176,7 @@ La configuration de production est `settings.aws.yaml` (`ASK_SETTINGS=settings.a
 - **Recherche** : recherche vectorielle native DynamoDB (`SearchVectors`, index `embedding-index`, 1024 dimensions, `DOT_PRODUCT`).
 - **Quotas et budget** : table DynamoDB `ledger`, compteurs atomiques, TTL `expires_at`.
 - **Traces** : OpenTelemetry vers CloudWatch (OTLP signé SigV4) et Langfuse ; ni IP ni question dans les traces.
+- **Journal des échanges** (#150) : questions et réponses du trafic public, masquées (courriels, téléphones, URL, secrets ; `job@stevelang.net` reste lisible), conservées 30 jours (TTL) dans la table DynamoDB `ask-my-cv-exchanges`, sans IP (pseudonyme hebdomadaire seulement). Le masquage est **au mieux** : repli Unicode et formes obfusquées courantes (« [at] », « hxxp »…) sont traités, mais du texte libre (nom, domaine nu, adresse postale, formulation inventive) peut rester lisible ; le risque est borné par la rétention de 30 jours et l'accès réservé au propriétaire (lecture IAM du compte, courriel du lundi). Écriture au mieux après la réponse ; lecture par le propriétaire : `uv run python infra/scripts/exchanges.py --days 7` (ou `--date AAAA-MM-JJ`, `--visitor <pseudonyme>`, `--json`).
 
 Secrets, uniquement par variables d'environnement (chargées depuis SSM en production) : `VISITOR_SALT` (au moins 32 caractères), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`.
 

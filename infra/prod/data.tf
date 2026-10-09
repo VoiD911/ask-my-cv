@@ -42,3 +42,33 @@ resource "aws_dynamodb_table" "ledger" {
     enabled        = true
   }
 }
+
+# #150 : journal des échanges publics (question et réponse masquées, sans IP), 30 jours (TTL).
+# pk = jour UTC (AAAA-MM-JJ), sk = horodatage ISO#trace. Écrit par le Lambda (PutItem seul),
+# lu par le propriétaire (infra/scripts/exchanges.py) et le résumé du lundi (Query seul).
+resource "aws_dynamodb_table" "exchanges" {
+  name         = "ask-my-cv-exchanges"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "pk"
+  range_key    = "sk"
+
+  attribute {
+    name = "pk"
+    type = "S"
+  }
+
+  attribute {
+    name = "sk"
+    type = "S"
+  }
+
+  # clé KMS gérée par AWS (aws/dynamodb) : aucune politique de clé à maintenir
+  server_side_encryption {
+    enabled = true
+  }
+
+  ttl {
+    attribute_name = "expires_at"
+    enabled        = true
+  }
+}
