@@ -85,6 +85,21 @@ resource "aws_cloudwatch_log_metric_filter" "guardrail_errors" {
   }
 }
 
+# #150 : écriture du journal des échanges échouée (au mieux, sans effet sur le visiteur) :
+# lignes `exchange_log_metrics error` de src/ask_my_cv/pipeline.py.
+resource "aws_cloudwatch_log_metric_filter" "exchange_log_errors" {
+  name           = "ask-my-cv-exchange-log-errors"
+  log_group_name = aws_cloudwatch_log_group.api.name
+  pattern        = "[marker = \"exchange_log_metrics\", status = \"error\"]"
+
+  metric_transformation {
+    name          = "ExchangeLogErrors"
+    namespace     = "AskMyCv"
+    value         = "1"
+    default_value = "0"
+  }
+}
+
 # Annonces refusées par le disjoncteur ouvert (service dégradé pour les annonces).
 resource "aws_cloudwatch_log_metric_filter" "guardrail_unavailable" {
   name           = "ask-my-cv-guardrail-unavailable"

@@ -5,6 +5,7 @@ from typing import Any
 
 from ask_my_cv.budget import BudgetLedger, InMemoryLedger
 from ask_my_cv.embeddings import EmbeddingProvider, HashEmbedder
+from ask_my_cv.exchanges import ExchangeLog
 from ask_my_cv.guardrail import GuardrailBreaker, GuardrailChecker
 from ask_my_cv.input_guard import HeuristicDetector, InjectionDetector
 from ask_my_cv.llm import FakeLLM, LLMProvider, ModelPricing, OllamaLLM
@@ -101,6 +102,19 @@ def build_ledger(settings: Settings) -> BudgetLedger:
     )
 
 
+def build_exchange_log(settings: Settings) -> ExchangeLog | None:
+    if not settings.exchange_log_table:
+        return None
+    from ask_my_cv.exchanges import DynamoExchangeLog
+
+    return DynamoExchangeLog(
+        settings.exchange_log_table,
+        # au mieux : deux essais au plus, l'attente du pipeline est de toute façon bornée
+        aws_client("dynamodb", settings, retries={"mode": "standard", "total_max_attempts": 2}),
+        allowed=settings.allowed_contacts,
+    )
+
+
 def build_detector(settings: Settings) -> InjectionDetector:
     if settings.detector == "heuristic":
         return HeuristicDetector()
@@ -141,6 +155,7 @@ def build_deps(settings: Settings) -> Deps:
         providers={m.id: build_provider(m, settings) for m in settings.models},
         settings=settings,
         guardrail=build_guardrail(settings),
+        exchange_log=build_exchange_log(settings),
         breaker=GuardrailBreaker(
             max_failures=settings.guardrail_breaker_failures,
             max_visitor_failures=settings.guardrail_breaker_visitor_failures,

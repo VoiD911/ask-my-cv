@@ -163,6 +163,11 @@
           "type": "aws_dynamodb_table",
           "name": "ledger",
           "file": "infra/prod/data.tf"
+        },
+        {
+          "type": "aws_dynamodb_table",
+          "name": "exchanges",
+          "file": "infra/prod/data.tf"
         }
       ]
     },
@@ -252,6 +257,11 @@
         {
           "type": "aws_cloudwatch_log_metric_filter",
           "name": "guardrail_errors",
+          "file": "infra/prod/observability.tf"
+        },
+        {
+          "type": "aws_cloudwatch_log_metric_filter",
+          "name": "exchange_log_errors",
           "file": "infra/prod/observability.tf"
         },
         {

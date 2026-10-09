@@ -6,12 +6,14 @@ python infra/scripts/weekly_summary.py [--dry-run] [--region ca-central-1]
 Lit les spans racine `ask` du trafic public (`xops.traffic = public`, #143) dans CloudWatch
 Logs Insights, pour la dernière semaine ISO complète (lundi 00:00 UTC au lundi suivant) et la
 précédente, puis publie un court courriel en français : visiteurs, requêtes, questions et
-annonces, attaques bloquées, refus, réponses retirées, coût, langue principale. Jamais le
-texte d'une question : les spans n'en contiennent pas.
+annonces, attaques bloquées, refus, réponses retirées, coût, langue principale. Les spans ne
+contiennent jamais de texte ; la section « Derniers échanges » (#150) lit les 10 échanges
+publics les plus récents dans la table du journal (texte masqué à l'écriture, tronqué ici).
 
-`--dry-run` affiche le message au lieu de le publier (aucun appel SNS). Lancé chaque lundi par
-.github/workflows/weekly.yml avec le rôle OIDC de nuit (Logs Insights en lecture, sns:Publish
-sur ce seul sujet).
+`--dry-run` affiche le message au lieu de le publier (aucun appel SNS) ; le texte des échanges
+n'y figure pas (journaux publics de GitHub Actions), seulement leur nombre. Lancé chaque lundi
+par .github/workflows/weekly.yml avec le rôle OIDC de nuit (Logs Insights en lecture,
+dynamodb:Query sur la table du journal, sns:Publish sur ce seul sujet).
 """
 
 from __future__ import annotations
@@ -59,6 +61,11 @@ INTERNAL_MIN_REQUESTS = 50
 INTERNAL_COST_RATIO = 2.0
 
 LANGUAGES = {"fr": "français", "en": "anglais"}
+
+EXCHANGES_TABLE = "ask-my-cv-exchanges"
+RECENT_EXCHANGES = 10
+QUESTION_PREVIEW = 200
+ANSWER_PREVIEW = 300
 
 
 class SummaryError(RuntimeError):
@@ -199,6 +206,49 @@ def fetch_stats(client: Any, log_group: str, week: Week, **kwargs: Any) -> Stats
     )
 
 
+def fetch_recent_exchanges(
+    client: Any, table: str, now: float, limit: int = RECENT_EXCHANGES, days: int = 7
+) -> list[dict[str, str]]:
+    """Échanges publics les plus récents (une requête `Query` par jour, du plus récent)."""
+    today = datetime.fromtimestamp(now, UTC).date()
+    rows: list[dict[str, str]] = []
+    for offset in range(days):
+        day = (today - timedelta(days=offset)).isoformat()
+        page = client.query(
+            TableName=table,
+            KeyConditionExpression="pk = :d",
+            ExpressionAttributeValues={":d": {"S": day}},
+            ScanIndexForward=False,
+            Limit=limit - len(rows),
+        )
+        for item in page.get("Items", []):
+            rows.append({k: v.get("S", v.get("N", "")) for k, v in item.items() if "L" not in v})
+        if len(rows) >= limit:
+            break
+    return rows[:limit]
+
+
+def format_exchanges(rows: Sequence[Mapping[str, str]]) -> list[str]:
+    """Section « Derniers échanges » : texte masqué de nouveau (défense en profondeur), tronqué."""
+    from ask_my_cv.masking import mask, truncate
+
+    if not rows:
+        return ["Derniers échanges : aucun sur les 7 derniers jours."]
+    lines = [f"Derniers échanges ({len(rows)}, du plus récent, heures UTC) :"]
+    for row in rows:
+        stamp = row.get("sk", "").partition("#")[0].replace("T", " ")[:16]
+        question = truncate(mask(" ".join(row.get("question", "").split())), QUESTION_PREVIEW)
+        answer = truncate(mask(" ".join(row.get("answer", "").split())), ANSWER_PREVIEW)
+        lines += [
+            "",
+            f"[{stamp}] {row.get('result', '?')}, {row.get('language') or '?'}, "
+            f"visiteur {row.get('visitor') or '?'}",
+            f"  Q : {question}",
+            f"  R : {answer or '(vide)'}",
+        ]
+    return lines
+
+
 def _trend(current: float, previous: float) -> str:
     if previous == 0:
         return "nouveau" if current else "stable"
@@ -218,11 +268,17 @@ def _usd(value: float) -> str:
     return f"{value:.2f} USD".replace(".", ",")
 
 
-def format_summary(week: Week, current: Stats, previous: Stats | None) -> tuple[str, str]:
+def format_summary(
+    week: Week,
+    current: Stats,
+    previous: Stats | None,
+    exchanges: list[str] | None = None,
+) -> tuple[str, str]:
     """Objet (ASCII, exigé par SNS) et corps du courriel, en français.
 
     `previous` vaut None si la semaine précédente n'est pas lisible (avant la création du
-    groupe de journaux ou hors rétention) : pas de comparaison."""
+    groupe de journaux ou hors rétention) : pas de comparaison. `exchanges` : lignes de la
+    section « Derniers échanges » (`format_exchanges`), ajoutées en fin de message."""
 
     def before(field: str) -> float | None:
         return None if previous is None else getattr(previous, field)
@@ -255,9 +311,12 @@ def format_summary(week: Week, current: Stats, previous: Stats | None) -> tuple[
         f"- Trafic interne : {current.internal_requests} requêtes, "
         f"{_usd(current.internal_cost_usd)}",
         "",
-        "Aucun texte de question n'est conservé : ces chiffres viennent des attributs xops.*",
-        "des spans (aws/spans). Détail : tableau de bord CloudWatch « ask-my-cv-usage ».",
+        "Ces chiffres viennent des attributs xops.* des spans (aws/spans), sans texte.",
+        "Détail : tableau de bord CloudWatch « ask-my-cv-usage ». Échanges complets (30 jours) :",
+        "uv run python infra/scripts/exchanges.py --days 7",
     ]
+    if exchanges:
+        lines += ["", *exchanges]
     if current.requests == 0:
         lines.insert(3, "Aucune requête publique cette semaine.\n")
     if anomaly := current.internal_anomaly():
@@ -275,12 +334,19 @@ def _clients(region: str) -> tuple[Any, Any, Any]:
     )
 
 
+def _dynamodb(region: str) -> Any:
+    import boto3
+
+    return boto3.client("dynamodb", region_name=region)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
     clients: Callable[[str], tuple[Any, Any, Any]] = _clients,
     fetch: Callable[..., Stats] = fetch_stats,
     out: Callable[[str], None] = print,
+    dynamodb: Callable[[str], Any] = _dynamodb,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="affiche sans publier")
@@ -290,6 +356,7 @@ def main(
     parser.add_argument(
         "--retention-days", type=int, default=14, help="rétention de aws/spans (jours)"
     )
+    parser.add_argument("--exchanges-table", default=EXCHANGES_TABLE)
     parser.add_argument("--now", type=float, default=None, help="horodatage UNIX (tests)")
     args = parser.parse_args(argv)
 
@@ -304,7 +371,17 @@ def main(
     except Exception as exc:  # groupe créé après cette semaine, ou plage refusée
         out(f"semaine précédente illisible ({type(exc).__name__}) : pas de comparaison")
         previous = None
-    subject, message = format_summary(week, current, previous)
+    try:
+        recent = fetch_recent_exchanges(dynamodb(args.region), args.exchanges_table, now)
+        if args.dry_run:
+            # journaux publics (GitHub Actions) : jamais le texte, seulement le nombre
+            exchanges = [f"Derniers échanges : {len(recent)} (texte omis en essai)."]
+        else:
+            exchanges = format_exchanges(recent)
+    except Exception as exc:  # table absente (avant terraform apply) ou accès refusé
+        out(f"journal des échanges illisible ({type(exc).__name__})")
+        exchanges = [f"Derniers échanges : indisponibles ({type(exc).__name__})."]
+    subject, message = format_summary(week, current, previous, exchanges)
 
     if args.dry_run:
         out(f"[essai] objet : {subject}\n\n{message}")

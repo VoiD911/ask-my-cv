@@ -143,6 +143,43 @@ class FakeSns:
         self.published.append(kwargs)
 
 
+class FakeDynamo:
+    def __init__(self, by_day: dict[str, list[dict[str, Any]]], fail: bool = False) -> None:
+        self.by_day = by_day
+        self.fail = fail
+        self.calls: list[dict[str, Any]] = []
+
+    def query(self, **kwargs: Any) -> dict[str, Any]:
+        if self.fail:
+            raise RuntimeError("ResourceNotFoundException")
+        self.calls.append(kwargs)
+        items = self.by_day.get(kwargs["ExpressionAttributeValues"][":d"]["S"], [])
+        return {"Items": items[: kwargs["Limit"]]}
+
+
+def exchange_item(day: str, hour: int, question: str, answer: str) -> dict[str, Any]:
+    return {
+        "pk": {"S": day},
+        "sk": {"S": f"{day}T{hour:02d}:00:00.000Z#t{hour}"},
+        "question": {"S": question},
+        "answer": {"S": answer},
+        "result": {"S": "answered"},
+        "language": {"S": "fr"},
+        "visitor": {"S": "abc"},
+        "sources": {"L": [{"S": "[1] X"}]},
+    }
+
+
+# plus récent d'abord (ScanIndexForward=False) ; NOW = mercredi 2026-09-30
+EXCHANGES = {
+    "2026-09-30": [exchange_item("2026-09-30", h, f"Question {h}", "Réponse") for h in (14, 9)],
+    "2026-09-28": [
+        exchange_item("2026-09-28", h, "Q " + "x" * 500, "R " + "y" * 500)
+        for h in range(20, 10, -1)
+    ],
+}
+
+
 class FakeSts:
     def get_caller_identity(self) -> dict[str, str]:
         return {"Account": "000000000000"}
@@ -160,6 +197,7 @@ def run_main(argv: list[str]) -> tuple[FakeSns, list[str], list[Any]]:
         clients=lambda _region: (object(), sns, FakeSts()),
         fetch=fetch,
         out=printed.append,
+        dynamodb=lambda _r: FakeDynamo(EXCHANGES),
     )
     assert code == 0
     return sns, printed, fetched
@@ -205,6 +243,7 @@ def test_main_survives_an_unreadable_previous_week() -> None:
         clients=lambda _r: (object(), FakeSns(), FakeSts()),
         fetch=fetch,
         out=printed.append,
+        dynamodb=lambda _r: FakeDynamo({}),
     )
     assert code == 0
     assert calls[0] == int(NOW) - 14 * 86400 + 3600
@@ -247,3 +286,57 @@ def test_abnormal_internal_traffic_is_flagged(internal: dict, flagged: bool) -> 
     _, message = weekly.format_summary(week, stats, stats)
     assert ("À VÉRIFIER : trafic interne anormal" in message) is flagged
     assert f"- Trafic interne : {internal['requests']} requêtes" in message
+
+
+def test_recent_exchanges_newest_first_capped_at_ten() -> None:
+    fake = FakeDynamo(EXCHANGES)
+    rows = weekly.fetch_recent_exchanges(fake, "t", NOW)
+    assert len(rows) == 10
+    assert rows[0]["question"] == "Question 14"
+    assert all(c["ScanIndexForward"] is False for c in fake.calls)
+    assert [c["Limit"] for c in fake.calls] == [10, 8, 8]  # 30, 29 (vide), 28
+
+
+def test_exchanges_section_is_masked_and_truncated() -> None:
+    rows = [
+        {
+            "sk": "2026-09-30T14:00:00.000Z#t",
+            "question": "Écris à a.b@acme.fr " + "x" * 500,
+            "answer": "Appelle le 06 12 34 56 78 " + "y" * 500,
+            "result": "answered",
+            "language": "fr",
+            "visitor": "abc",
+        }
+    ]
+    lines = weekly.format_exchanges(rows)
+    text = "\n".join(lines)
+    assert "[2026-09-30 14:00] answered, fr, visiteur abc" in text
+    assert "a.b@acme.fr" not in text and "[e-mail]" in text
+    assert "06 12 34 56 78" not in text
+    question = next(line for line in lines if line.startswith("  Q : "))
+    answer = next(line for line in lines if line.startswith("  R : "))
+    assert len(question) == len("  Q : ") + weekly.QUESTION_PREVIEW
+    assert len(answer) == len("  R : ") + weekly.ANSWER_PREVIEW
+
+
+def test_real_run_includes_the_exchanges_but_dry_run_only_counts_them() -> None:
+    sns, _, _ = run_main([])
+    message = sns.published[0]["Message"]
+    assert "Derniers échanges (10, du plus récent, heures UTC) :" in message
+    assert "Question 14" in message
+    _, printed, _ = run_main(["--dry-run"])
+    assert "Derniers échanges : 10 (texte omis en essai)." in printed[-1]
+    assert "Question 14" not in printed[-1]
+
+
+def test_unreadable_exchange_table_does_not_block_the_summary() -> None:
+    sns, printed = FakeSns(), []
+    code = weekly.main(
+        ["--now", str(NOW)],
+        clients=lambda _r: (object(), sns, FakeSts()),
+        fetch=lambda *_a, **_k: weekly.to_stats(fake_results()),
+        out=printed.append,
+        dynamodb=lambda _r: FakeDynamo({}, fail=True),
+    )
+    assert code == 0
+    assert "Derniers échanges : indisponibles (RuntimeError)." in sns.published[0]["Message"]
