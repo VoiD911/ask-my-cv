@@ -4,12 +4,19 @@ Motifs génériques, en une seule passe (une expression alternée) pour qu'un ma
 corrompe pas un autre : secrets à haute confiance (adaptés de tools/devlog/redact.py, sans
 l'importer), URL, adresses e-mail, numéros de téléphone (FR, CA, international). Les contacts
 autorisés (ex. job@stevelang.net) restent lisibles. Motifs sans quantificateur imbriqué.
+
+Avant les motifs : repli NFKC sans caractères de format (`text.fold_format` : largeur nulle,
+arobase pleine chasse…) puis désobfuscation courante (« [at] », « (dot) », « x at y dot com »,
+« hxxp », « [.] »). Masquage au mieux : du texte libre (nom, domaine nu, adresse postale) peut
+rester lisible.
 """
 
 from __future__ import annotations
 
 import re
 from collections.abc import Iterable
+
+from ask_my_cv.text import fold_format
 
 _PATTERNS: tuple[tuple[str, str], ...] = (
     ("secret", r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)"),
@@ -21,7 +28,7 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
     ("secret", r"(?<![A-Za-z0-9_-])xox[abprs]-[0-9A-Za-z-]{10,}"),
     ("secret", r"(?<![A-Za-z0-9_-])AIza[A-Za-z0-9_-]{35}"),
     ("secret", r"(?<![A-Za-z0-9_-])eyJ[\w-]+\.eyJ[\w-]+\.[\w-]+"),
-    ("url", r"(?i:\b(?:https?://|www\.)[^\s<>\"'«»]+)"),
+    ("url", r"(?i:\b(?:h(?:tt|xx)ps?://|www\.)[^\s<>\"'«»]+)"),
     ("email", r"(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+"),
     # +33 6 12 34 56 78, 06.12.34.56.78, (514) 555-1234, +1 514 555 1234, +44 20 7946 0958
     # candidat retenu s'il compte au moins 9 chiffres (comme le garde de sortie)
@@ -30,6 +37,16 @@ _PATTERNS: tuple[tuple[str, str], ...] = (
 _COMBINED = re.compile("|".join(f"(?P<{kind}{i}>{p})" for i, (kind, p) in enumerate(_PATTERNS)))
 _MIN_PHONE_DIGITS = 9
 _LABELS = {"secret": "[secret]", "url": "[url]", "email": "[e-mail]", "phone": "[téléphone]"}
+
+_AT = re.compile(r"(?i) ?[\[(] ?(?:at|arobase) ?[\])] ?")
+_DOT = re.compile(r"(?i) ?[\[(] ?(?:dot|point|\.) ?[\])] ?")
+# « prenom at acme dot com » / « prenom at acme.com » : seulement suivi d'un domaine pointé
+_SPELLED = re.compile(r"(?i)(?<![\w.+-])([\w.+-]+) at ([\w-]+(?:(?: dot |\.)[\w-]+)+)(?![\w-])")
+
+
+def _deobfuscate(text: str) -> str:
+    text = _DOT.sub(".", _AT.sub("@", text))
+    return _SPELLED.sub(lambda m: f"{m[1]}@{m[2].replace(' dot ', '.')}", text)
 
 
 def mask(text: str, allowed: Iterable[str] = ()) -> str:
@@ -45,7 +62,7 @@ def mask(text: str, allowed: Iterable[str] = ()) -> str:
             return value
         return _LABELS.get(kind, "[masqué]")
 
-    return _COMBINED.sub(replace, text)
+    return _COMBINED.sub(replace, _deobfuscate(fold_format(text)))
 
 
 def truncate(text: str, limit: int) -> str:

@@ -6,7 +6,9 @@ python infra/scripts/exchanges.py [--days 7 | --date AAAA-MM-JJ] [--visitor HASH
 Utilise la session AWS du propriétaire (profil ou variables d'environnement) : une requête
 `Query` par jour sur la table, rien d'autre. Affiche une transcription en français groupée par
 visiteur (pseudonyme hebdomadaire `xops.visitor`) puis par heure : question, réponse affichée,
-issue, langue. Le texte est déjà masqué à l'écriture (courriels, téléphones, URL, secrets).
+issue, langue. Le texte est déjà masqué à l'écriture (courriels, téléphones, URL, secrets),
+au mieux seulement : ne jamais lancer ce script dans un journal public (CI GitHub Actions
+d'un dépôt public), la transcription y deviendrait visible de tous.
 """
 
 from __future__ import annotations

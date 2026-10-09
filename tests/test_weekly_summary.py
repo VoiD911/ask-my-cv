@@ -340,3 +340,21 @@ def test_unreadable_exchange_table_does_not_block_the_summary() -> None:
     )
     assert code == 0
     assert "Derniers échanges : indisponibles (RuntimeError)." in sns.published[0]["Message"]
+
+
+def test_exchanges_section_keeps_the_public_contact() -> None:
+    row = {
+        "sk": "2026-09-30T14:00:00.000Z#t",
+        "question": "Contact ?",
+        "answer": "Écris à job@stevelang.net [1]",
+        "result": "answered",
+    }
+    assert "job@stevelang.net" in "\n".join(weekly.format_exchanges([row]))
+
+
+def test_allowed_contacts_match_production_settings() -> None:
+    import yaml
+
+    path = _SCRIPT_PATH.parents[2] / "settings.aws.yaml"
+    settings = yaml.safe_load(path.read_text("utf-8"))
+    assert tuple(settings["allowed_contacts"]) == weekly.ALLOWED_CONTACTS

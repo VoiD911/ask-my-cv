@@ -1,7 +1,8 @@
 # Tableau de bord privé de l'usage réel (#143) : requêtes Logs Insights sur les spans racine
 # `ask` (aws/spans, Transaction Search), trafic public seulement (`xops.traffic`, posé par
 # src/ask_my_cv/pipeline.py ; évaluations, tests de fumée et propriétaire sont `internal`).
-# Aucun texte soumis : uniquement des attributs xops.* (longueur, langue, issue, coût).
+# Aucun texte soumis dans les spans : uniquement des attributs xops.* (longueur, langue,
+# issue, coût). Le texte masqué des échanges publics est dans ask-my-cv-exchanges (#150).
 # Coût : tableau de bord gratuit (3 premiers du compte, sinon 3 USD/mois) ; chaque
 # rafraîchissement analyse aws/spans (quelques Mo, rétention 14 jours) à environ 0,005 USD/Go.
 locals {
@@ -104,7 +105,7 @@ resource "aws_cloudwatch_dashboard" "usage" {
         width  = 24
         height = 2
         properties = {
-          markdown = "## Usage réel de ${var.site_domain}\nTrafic public seulement (évaluations, tests de fumée et propriétaire exclus, voir `xops.traffic`). Aucun texte de question n'est conservé. Budget mensuel : ${var.monthly_budget_usd} USD ; résumé chaque lundi par courriel (.github/workflows/weekly.yml)."
+          markdown = "## Usage réel de ${var.site_domain}\nTrafic public seulement (évaluations, tests de fumée et propriétaire exclus, voir `xops.traffic`). Les spans ne contiennent aucun texte ; les échanges publics masqués sont conservés 30 jours (table ask-my-cv-exchanges, infra/scripts/exchanges.py). Budget mensuel : ${var.monthly_budget_usd} USD ; résumé chaque lundi par courriel (.github/workflows/weekly.yml)."
         }
       }],
       [for i, w in local.dashboard_log_widgets : {

@@ -64,6 +64,8 @@ LANGUAGES = {"fr": "français", "en": "anglais"}
 
 EXCHANGES_TABLE = "ask-my-cv-exchanges"
 RECENT_EXCHANGES = 10
+# contacts publics laissés lisibles : `allowed_contacts` de settings.aws.yaml (test de parité)
+ALLOWED_CONTACTS = ("job@stevelang.net",)
 QUESTION_PREVIEW = 200
 ANSWER_PREVIEW = 300
 
@@ -228,7 +230,9 @@ def fetch_recent_exchanges(
     return rows[:limit]
 
 
-def format_exchanges(rows: Sequence[Mapping[str, str]]) -> list[str]:
+def format_exchanges(
+    rows: Sequence[Mapping[str, str]], allowed: Sequence[str] = ALLOWED_CONTACTS
+) -> list[str]:
     """Section « Derniers échanges » : texte masqué de nouveau (défense en profondeur), tronqué."""
     from ask_my_cv.masking import mask, truncate
 
@@ -237,8 +241,10 @@ def format_exchanges(rows: Sequence[Mapping[str, str]]) -> list[str]:
     lines = [f"Derniers échanges ({len(rows)}, du plus récent, heures UTC) :"]
     for row in rows:
         stamp = row.get("sk", "").partition("#")[0].replace("T", " ")[:16]
-        question = truncate(mask(" ".join(row.get("question", "").split())), QUESTION_PREVIEW)
-        answer = truncate(mask(" ".join(row.get("answer", "").split())), ANSWER_PREVIEW)
+        question = truncate(
+            mask(" ".join(row.get("question", "").split()), allowed), QUESTION_PREVIEW
+        )
+        answer = truncate(mask(" ".join(row.get("answer", "").split()), allowed), ANSWER_PREVIEW)
         lines += [
             "",
             f"[{stamp}] {row.get('result', '?')}, {row.get('language') or '?'}, "

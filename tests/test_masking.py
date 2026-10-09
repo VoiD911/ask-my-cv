@@ -59,3 +59,37 @@ def test_masking_is_fast_on_pathological_input() -> None:
 def test_truncate() -> None:
     assert truncate("abc", 3) == "abc"
     assert truncate("abcdef", 4) == "abc…"
+
+
+ZW = "\u200b"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f"jean{ZW}.dupont@acme.fr",
+        f"jean.dupont@ac{ZW}me.fr",
+        "jean.dupont\uff20acme.fr",  # arobase pleine chasse
+        "jean.dupont [at] acme [dot] fr",
+        "jean.dupont(at)acme(dot)fr",
+        "jean.dupont at acme dot fr",
+        "jean.dupont at acme.fr",
+    ],
+)
+def test_obfuscated_emails_are_masked(text: str) -> None:
+    assert mask(text, ALLOWED) == "[e-mail]"
+
+
+def test_obfuscated_phone_and_urls_are_masked() -> None:
+    assert mask(f"06{ZW} 12 34 56{ZW}78", ALLOWED) == "[téléphone]"
+    assert mask("hxxps://evil.example/x", ALLOWED) == "[url]"
+    assert mask("hxxp://evil[.]example/x", ALLOWED) == "[url]"
+
+
+def test_allowed_contact_survives_obfuscation_handling() -> None:
+    assert mask("job [at] stevelang [dot] net", ALLOWED) == "job@stevelang.net"
+
+
+def test_plain_at_in_prose_is_kept() -> None:
+    text = "Il a travaillé at NeoBotiQc en 2020"
+    assert mask(text, ALLOWED) == text
