@@ -111,7 +111,6 @@ def build_exchange_log(settings: Settings) -> ExchangeLog | None:
         settings.exchange_log_table,
         # au mieux : deux essais au plus, l'attente du pipeline est de toute façon bornée
         aws_client("dynamodb", settings, retries={"mode": "standard", "total_max_attempts": 2}),
-        allowed=settings.allowed_contacts,
     )
 
 

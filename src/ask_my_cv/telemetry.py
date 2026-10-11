@@ -2,19 +2,41 @@ from __future__ import annotations
 
 import base64
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, ConsoleSpanExporter, SpanExporter
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace.export import (
+    BatchSpanProcessor,
+    ConsoleSpanExporter,
+    SpanExporter,
+    SpanExportResult,
+)
 
 from ask_my_cv.settings import ConfigError, Settings
 
 # délai par envoi : 10 s par défaut, et force_flush ignore son propre délai (SDK 1.45)
 EXPORT_TIMEOUT_S = 2.0
+
+# Attributs porteurs de texte (question et réponse masquées, #154) : réservés à Langfuse.
+# Tout autre exportateur (CloudWatch/X-Ray, console) les reçoit retirés (`TextFreeExporter`).
+TEXT_ATTRIBUTES = frozenset(
+    {
+        "langfuse.observation.input",
+        "langfuse.observation.output",
+        "langfuse.trace.input",
+        "langfuse.trace.output",
+        "input.value",
+        "output.value",
+        "gen_ai.prompt",
+        "gen_ai.completion",
+    }
+)
+# seul exportateur autorisé à recevoir le texte masqué
+TEXT_EXPORTERS = frozenset({"langfuse"})
 
 
 @dataclass(frozen=True)
@@ -57,7 +79,49 @@ def exporter_config(name: str, settings: Settings) -> ExporterConfig:
     raise ConfigError(f"exportateur de traces inconnu : {name}")
 
 
+def _without_text(span: ReadableSpan) -> ReadableSpan:
+    attributes = span.attributes or {}
+    if not TEXT_ATTRIBUTES.intersection(attributes):
+        return span
+    return ReadableSpan(
+        name=span.name,
+        context=span.context,
+        parent=span.parent,
+        resource=span.resource,
+        attributes={k: v for k, v in attributes.items() if k not in TEXT_ATTRIBUTES},
+        events=span.events,
+        links=span.links,
+        kind=span.kind,
+        status=span.status,
+        start_time=span.start_time,
+        end_time=span.end_time,
+        instrumentation_scope=span.instrumentation_scope,
+    )
+
+
+class TextFreeExporter(SpanExporter):
+    """Enveloppe qui retire les attributs `TEXT_ATTRIBUTES` avant d'exporter (#154)."""
+
+    def __init__(self, inner: SpanExporter) -> None:
+        self.inner = inner
+
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+        return self.inner.export([_without_text(span) for span in spans])
+
+    def shutdown(self) -> None:
+        self.inner.shutdown()
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return self.inner.force_flush(timeout_millis)
+
+
 def exporter_for(name: str, settings: Settings) -> SpanExporter:
+    """Exportateur nommé ; hors Langfuse, toujours enveloppé sans texte (#154)."""
+    exporter = _raw_exporter(name, settings)
+    return exporter if name in TEXT_EXPORTERS else TextFreeExporter(exporter)
+
+
+def _raw_exporter(name: str, settings: Settings) -> SpanExporter:
     if name == "console":
         return ConsoleSpanExporter()
     config = exporter_config(name, settings)

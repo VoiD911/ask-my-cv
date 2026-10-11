@@ -8,7 +8,14 @@ from requests.adapters import BaseAdapter
 
 from ask_my_cv.aws.sigv4 import SigV4Session
 from ask_my_cv.settings import ConfigError, ModelConfig, Settings
-from ask_my_cv.telemetry import ExporterConfig, build_tracer_provider, exporter_config, exporter_for
+from ask_my_cv.telemetry import (
+    TEXT_ATTRIBUTES,
+    ExporterConfig,
+    TextFreeExporter,
+    build_tracer_provider,
+    exporter_config,
+    exporter_for,
+)
 
 
 class Capture(BaseAdapter):
@@ -108,4 +115,37 @@ def test_exporter_for_langfuse_builds_a_real_otlp_exporter(monkeypatch: pytest.M
 
 def test_exporter_for_cloudwatch_builds_a_real_otlp_exporter() -> None:
     exporter = exporter_for("cloudwatch", settings(tracing=["cloudwatch"]))
-    assert isinstance(exporter, OTLPSpanExporter)
+    assert isinstance(exporter, TextFreeExporter)
+    assert isinstance(exporter.inner, OTLPSpanExporter)
+
+
+def test_only_langfuse_receives_text_attributes(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+
+    import ask_my_cv.telemetry as telemetry
+
+    exporters = {"cloudwatch": InMemorySpanExporter(), "langfuse": InMemorySpanExporter()}
+    monkeypatch.setattr(telemetry, "_raw_exporter", lambda name, _settings: exporters[name])
+    provider = build_tracer_provider(settings(tracing=["cloudwatch", "langfuse"]))
+    assert provider is not None
+    with provider.get_tracer("test").start_as_current_span("ask") as root:
+        root.set_attribute("xops.result", "answered")
+        for key in TEXT_ATTRIBUTES:
+            root.set_attribute(key, "question masquée [e-mail]")
+    assert provider.force_flush(timeout_millis=2000)
+    [cloudwatch] = exporters["cloudwatch"].get_finished_spans()
+    [langfuse] = exporters["langfuse"].get_finished_spans()
+    assert dict(cloudwatch.attributes or {}) == {"xops.result": "answered"}
+    assert cloudwatch.context == langfuse.context
+    assert cloudwatch.name == "ask"
+    assert (langfuse.attributes or {})["langfuse.observation.input"] == "question masquée [e-mail]"
+    assert TEXT_ATTRIBUTES <= set(langfuse.attributes or {})
+    provider.shutdown()
+
+
+def test_every_exporter_but_langfuse_is_text_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    for name in ("cloudwatch", "console"):
+        assert isinstance(exporter_for(name, settings(tracing=[name])), TextFreeExporter)
+    assert not isinstance(exporter_for("langfuse", settings()), TextFreeExporter)

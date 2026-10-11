@@ -10,6 +10,7 @@ from ask_my_cv.events import Answer, Done, Event, LLMProgress, StageEnd
 from ask_my_cv.llm import FakeLLM, LLMError, ModelPricing, TokenUsage
 from ask_my_cv.output_guard import REFUSAL
 from ask_my_cv.pipeline import BLOCK_MESSAGES, ERROR_MESSAGE, LEDGER_WAIT_S, Deps, run_pipeline
+from ask_my_cv.telemetry import TEXT_ATTRIBUTES
 
 STAGES = [
     "reception",
@@ -582,6 +583,7 @@ EVAL_TOKEN = "jeton-evaluation-" + "z" * 32
 async def test_spans_never_carry_the_question_or_the_visitor(
     make_deps, spans, question, model, evaluation
 ) -> None:
+    """Hors `TEXT_ATTRIBUTES` (Langfuse seulement, #154), aucun texte dans les spans."""
     visitor = "visiteur-3f2a"
     deps = make_deps(eval_token=EVAL_TOKEN)
     secrets = [question, visitor, "modele-du-visiteur-xyz", EVAL_TOKEN]
@@ -599,7 +601,9 @@ async def test_spans_never_carry_the_question_or_the_visitor(
     assert finished
     for span in finished:
         assert not any(secret in span.name for secret in secrets)
-        for value in (span.attributes or {}).values():
+        for key, value in (span.attributes or {}).items():
+            if key in TEXT_ATTRIBUTES:
+                continue
             text = str(value)
             assert not any(secret in text for secret in secrets)
         description = span.status.description

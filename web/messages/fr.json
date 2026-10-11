@@ -22,7 +22,7 @@
     "sourceValue": "CV public, en français",
     "modelTerm": "modèle",
     "contactTerm": "contact",
-    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock. Ton adresse IP n'est jamais conservée ; le quota par visiteur repose sur un pseudonyme salé. Les questions et réponses sont conservées 30 jours, masquées (courriels, téléphones, liens), pour améliorer l'assistant ; les traces n'en contiennent pas le texte.",
+    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock, dont le modèle génère les réponses. Ton adresse IP n'est jamais conservée ; le quota par visiteur repose sur un pseudonyme salé. Les questions et réponses sont conservées 30 jours, masquées (courriels, téléphones, liens), dans DynamoDB (Canada) et Langfuse (observabilité, États-Unis), pour améliorer l'assistant.",
     "linkedinTerm": "linkedin"
   },
   "chat": {
@@ -57,7 +57,7 @@
     "inputLabel": "Votre question ou annonce",
     "placeholder": "Posez votre question ou collez votre annonce…",
     "hint": "Vous pouvez aussi copier-coller votre annonce d'emploi pour voir comment le parcours de Steve répond au profil recherché.",
-    "retention": "Les questions et réponses sont conservées 30 jours, sans adresse IP, pour améliorer l'assistant.",
+    "retention": "Échanges conservés 30 jours, masqués, sans IP : DynamoDB (Canada) et Langfuse (États-Unis). Réponses générées aux États-Unis.",
     "charsSuffix": " caractères",
     "stop": "Arrêter",
     "send": "Envoyer",
