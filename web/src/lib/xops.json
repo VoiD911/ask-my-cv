@@ -114,7 +114,7 @@
     },
     "job:purge.yml:langfuse": {
       "path": ".github/workflows/purge.yml",
-      "line": 26
+      "line": 32
     },
     "job:weekly.yml:summary": {
       "path": ".github/workflows/weekly.yml",

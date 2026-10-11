@@ -48,9 +48,20 @@ class FakeSession:
         return item
 
 
-def page(trace_ids: list[str], cursor: str | None = None) -> FakeResponse:
+OLD = "2026-09-01T08:00:00.123Z"
+
+
+def page(
+    trace_ids: list[str], cursor: str | None = None, started: str | None = OLD
+) -> FakeResponse:
     data = [
-        {"id": f"o-{t}", "traceId": t, "input": SECRET_TEXT, "output": SECRET_TEXT}
+        {
+            "id": f"o-{t}",
+            "traceId": t,
+            "startTime": started,
+            "input": SECRET_TEXT,
+            "output": SECRET_TEXT,
+        }
         for t in trace_ids
     ]
     return FakeResponse(200, {"data": data, "meta": {"cursor": cursor} if cursor else {}})
@@ -110,7 +121,7 @@ def test_daily_delete_cap_leaves_a_remainder_and_fails(monkeypatch: pytest.Monke
 def test_429_waits_retry_after_then_succeeds() -> None:
     sleeps: list[float] = []
     session = FakeSession([FakeResponse(429, headers={"Retry-After": "7"}), page(["t1"])])
-    assert purge_mod.old_trace_ids(client(session, sleeps), NOW, NOW) == ["t1"]
+    assert purge_mod.old_trace_ids(client(session, sleeps), NOW, NOW) == (["t1"], 0)
     assert sleeps == [7.0]
 
 
@@ -154,3 +165,62 @@ def test_main_dry_run_by_default_and_failure_exit_code(monkeypatch: pytest.Monke
     assert purge_mod.main([], session=session) == 0
     assert [c["method"] for c in session.calls] == ["GET"]
     assert purge_mod.main(["--apply"], session=FakeSession([FakeResponse(403)])) == 1
+
+
+@pytest.mark.parametrize("started", ["2026-10-01T00:00:00Z", None, "pas une date"])
+def test_newer_or_undated_traces_are_never_deleted_and_fail(started: str | None) -> None:
+    ok = FakeResponse(200, {"message": "ok"})
+    session = FakeSession([page(["old1"], cursor="c"), page(["new1"], started=started), ok])
+    out = io.StringIO()
+    assert purge_mod.purge(client(session), 28, apply=True, now=NOW, out=out) == 3
+    deletes = [c["json"] for c in session.calls if c["method"] == "DELETE"]
+    assert deletes == [{"traceIds": ["old1"]}]
+    assert "1 traces récentes ou sans date" in out.getvalue()
+
+
+def test_a_trace_with_any_newer_root_observation_is_skipped() -> None:
+    session = FakeSession(
+        [page(["t1"], cursor="c"), page(["t1"], started="2026-10-10T00:00:00+00:00")]
+    )
+    ids, skipped = purge_mod.old_trace_ids(
+        client(session), datetime(2026, 9, 13, 12, tzinfo=UTC), NOW
+    )
+    assert (ids, skipped) == ([], 1)
+
+
+def test_dry_run_with_newer_traces_fails() -> None:
+    session = FakeSession([page(["new1"], started="2026-10-10T00:00:00Z")])
+    assert purge_mod.purge(client(session), 28, apply=False, now=NOW, out=io.StringIO()) == 3
+
+
+class NotJson(FakeResponse):
+    def json(self) -> Any:
+        raise ValueError("pas du JSON")
+
+
+def test_2xx_non_json_is_a_clean_failure(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-lf-x")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-lf-y")
+    monkeypatch.delenv("LANGFUSE_BASE_URL", raising=False)
+    assert purge_mod.main([], session=FakeSession([NotJson(200, {})])) == 1
+    assert "ÉCHEC" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example.com",
+        "https://langfuse.com.evil.example",
+        "https://evillangfuse.com",
+        "http://us.cloud.langfuse.com",
+    ],
+)
+def test_base_url_host_must_be_langfuse(url: str) -> None:
+    with pytest.raises(purge_mod.PurgeError):
+        purge_mod.LangfuseClient(url, "pk", "sk", FakeSession([]))
+
+
+def test_langfuse_hosts_are_accepted() -> None:
+    for url in ("https://us.cloud.langfuse.com", "https://cloud.langfuse.com/"):
+        base = purge_mod.LangfuseClient(url, "pk", "sk", FakeSession([])).base_url
+        assert base.startswith("https://") and not base.endswith("/")

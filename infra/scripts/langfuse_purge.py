@@ -13,7 +13,9 @@ Essai par défaut : affiche seulement des nombres, jamais d'identifiant ni de co
 asynchrone côté Langfuse (environ 15 minutes). Limites Hobby : 30 requêtes/min en lecture,
 50 requêtes de suppression par jour et par organisation, d'où le plafond de lots par passage.
 429 : attente selon `Retry-After` ; 5xx et erreurs réseau : nouvel essai avec attente
-croissante. Tout échec, ou un reliquat non supprimé, sort en code non nul (alerte du job).
+croissante. Garde côté client : une trace dont la date manque ou dépasse le seuil n'est jamais
+supprimée. Tout échec, un reliquat non supprimé ou une trace récente renvoyée par l'API sort en
+code non nul (alerte du job).
 
 Clés du projet : LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY ; hôte : LANGFUSE_BASE_URL
 (défaut https://us.cloud.langfuse.com).
@@ -60,8 +62,12 @@ class LangfuseClient:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         parsed = urlparse(base_url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise PurgeError("LANGFUSE_BASE_URL doit être une URL https")
+        host = (parsed.hostname or "").lower()
+        # les clés Basic ne partent que vers Langfuse
+        if parsed.scheme != "https" or not (
+            host == "langfuse.com" or host.endswith(".langfuse.com")
+        ):
+            raise PurgeError("LANGFUSE_BASE_URL doit être une URL https d'un hôte *.langfuse.com")
         self.base_url = base_url.rstrip("/")
         self._auth = (public_key, secret_key)
         self._session = session if session is not None else requests.Session()
@@ -88,7 +94,7 @@ class LangfuseClient:
                 status, wait = type(exc).__name__, float(2**attempt)
             else:
                 if 200 <= response.status_code < 300:
-                    return response.json() if response.content else {}
+                    return _json(response, method, path)
                 status = f"HTTP {response.status_code}"
                 if response.status_code == 429:
                     wait = _retry_after(response.headers.get("Retry-After"), attempt)
@@ -103,6 +109,32 @@ class LangfuseClient:
         raise AssertionError("inatteignable")
 
 
+def _json(response: Any, method: str, path: str) -> dict[str, Any]:
+    if not response.content:
+        return {}
+    try:
+        payload = response.json()
+    except ValueError:
+        raise PurgeError(f"{method} {path} : réponse 2xx non JSON") from None
+    if not isinstance(payload, dict):
+        raise PurgeError(f"{method} {path} : réponse 2xx inattendue")
+    return payload
+
+
+def _started_before(observation: dict[str, Any], cutoff: datetime) -> bool:
+    """Garde côté client : vrai seulement si `startTime` est lisible et antérieur au seuil."""
+    value = observation.get("startTime")
+    if not isinstance(value, str):
+        return False
+    try:
+        started = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    return started < cutoff
+
+
 def _retry_after(value: str | None, attempt: int) -> float:
     try:
         return max(0.0, float(value)) if value is not None else float(2**attempt)
@@ -114,12 +146,14 @@ def _iso(moment: datetime) -> str:
     return moment.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.000Z")
 
 
-def old_trace_ids(client: LangfuseClient, cutoff: datetime, now: datetime) -> list[str]:
-    """Identifiants des traces dont l'observation racine a commencé avant `cutoff`.
+def old_trace_ids(client: LangfuseClient, cutoff: datetime, now: datetime) -> tuple[list[str], int]:
+    """Traces dont l'observation racine a commencé avant `cutoff`, et nombre de traces écartées.
 
     Début de la fenêtre explicite, une heure en deçà de la fenêtre de lecture Hobby, pour ne
-    jamais demander une période que l'offre refuserait."""
+    jamais demander une période que l'offre refuserait. Garde côté client : une observation
+    sans date lisible ou postérieure au seuil (filtre ignoré par l'API) écarte sa trace."""
     ids: dict[str, None] = {}
+    skipped: set[str] = set()
     params = {
         "fields": "core",
         "isRootObservation": "true",
@@ -131,11 +165,15 @@ def old_trace_ids(client: LangfuseClient, cutoff: datetime, now: datetime) -> li
         page = client.request("GET", "/api/public/v2/observations", params=params)
         for observation in page.get("data") or []:
             trace_id = observation.get("traceId")
-            if isinstance(trace_id, str) and trace_id:
+            if not isinstance(trace_id, str) or not trace_id:
+                continue
+            if _started_before(observation, cutoff):
                 ids[trace_id] = None
+            else:
+                skipped.add(trace_id)
         cursor = (page.get("meta") or {}).get("cursor")
         if not cursor:
-            return list(ids)
+            return [t for t in ids if t not in skipped], len(skipped)
         params = {**params, "cursor": cursor}
     raise PurgeError(f"pagination interrompue après {MAX_PAGES} pages")
 
@@ -144,11 +182,16 @@ def purge(
     client: LangfuseClient, days: int, apply: bool, now: datetime, out: TextIO = sys.stdout
 ) -> int:
     cutoff = now - timedelta(days=days)
-    ids = old_trace_ids(client, cutoff, now)
+    ids, skipped = old_trace_ids(client, cutoff, now)
     print(f"seuil : {_iso(cutoff)} ({days} jours) ; traces à supprimer : {len(ids)}", file=out)
+    status = 0
+    if skipped:
+        # l'API a renvoyé des traces récentes : elles ne sont jamais supprimées, et le job échoue
+        print(f"ÉCHEC : {skipped} traces récentes ou sans date renvoyées, écartées", file=out)
+        status = 3
     if not apply:
         print("essai : rien n'est supprimé (--apply pour supprimer)", file=out)
-        return 0
+        return status
     batches = [ids[i : i + DELETE_BATCH] for i in range(0, len(ids), DELETE_BATCH)]
     for batch in batches[:MAX_DELETE_REQUESTS]:
         client.request("DELETE", "/api/public/traces", body={"traceIds": batch})
@@ -157,8 +200,8 @@ def purge(
     remaining = len(ids) - deleted
     if remaining:
         print(f"reliquat : {remaining} traces, au-delà de la limite quotidienne", file=out)
-        return 2
-    return 0
+        return status or 2
+    return status
 
 
 def main(argv: list[str] | None = None, session: Any = None) -> int:

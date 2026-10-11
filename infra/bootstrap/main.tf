@@ -264,6 +264,13 @@ data "aws_iam_policy_document" "nightly" {
     actions   = ["dynamodb:Query"]
     resources = ["arn:aws:dynamodb:${var.region}:${local.account}:table/ask-my-cv-exchanges"]
   }
+  # #154 : horodatage de la dernière purge Langfuse réussie (paramètre String, sans KMS),
+  # écrit par .github/workflows/purge.yml et lu par le résumé hebdomadaire ; ce seul paramètre.
+  statement {
+    sid       = "LangfuseLastPurge"
+    actions   = ["ssm:PutParameter", "ssm:GetParameter"]
+    resources = ["arn:aws:ssm:${var.region}:${local.account}:parameter/ask-my-cv/langfuse-last-purge"]
+  }
   # Le sujet est chiffré par une clé gérée par le client (alias/ask-my-cv-alerts) : la clé
   # n'est utilisable que par SNS (kms:ViaService) et seulement si elle porte cet alias. La
   # politique de la clé délègue à IAM (racine du compte), aucune modification côté prod.

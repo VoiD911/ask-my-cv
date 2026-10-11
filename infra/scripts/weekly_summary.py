@@ -13,7 +13,13 @@ publics les plus récents dans la table du journal (texte masqué à l'écriture
 `--dry-run` affiche le message au lieu de le publier (aucun appel SNS) ; le texte des échanges
 n'y figure pas (journaux publics de GitHub Actions), seulement leur nombre. Lancé chaque lundi
 par .github/workflows/weekly.yml avec le rôle OIDC de nuit (Logs Insights en lecture,
-dynamodb:Query sur la table du journal, sns:Publish sur ce seul sujet).
+dynamodb:Query sur la table du journal, sns:Publish sur ce seul sujet, ssm:GetParameter sur
+le seul paramètre de la dernière purge Langfuse).
+
+Purge Langfuse (#154) : le message indique la dernière purge réussie, horodatage écrit par
+.github/workflows/purge.yml dans le paramètre SSM `/ask-my-cv/langfuse-last-purge`, et passe
+en « À VÉRIFIER » si elle date de plus de 2 jours ou est illisible (workflow planifié
+désactivé, clés absentes, purge pas encore activée).
 """
 
 from __future__ import annotations
@@ -27,6 +33,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 POLL_INTERVAL_S = 2.0
+LAST_PURGE_PARAMETER = "/ask-my-cv/langfuse-last-purge"
+PURGE_MAX_AGE = timedelta(days=2)
 MAX_POLLS = 60
 WEEK_S = 7 * 86400
 
@@ -255,6 +263,19 @@ def format_exchanges(
     return lines
 
 
+def purge_status(client: Any, now: float) -> tuple[str, bool]:
+    """Ligne « dernière purge Langfuse » et vrai si elle est à vérifier (absente ou ancienne)."""
+    try:
+        value = client.get_parameter(Name=LAST_PURGE_PARAMETER)["Parameter"]["Value"]
+        last = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if last.tzinfo is None:
+            last = last.replace(tzinfo=UTC)
+    except Exception as exc:  # paramètre absent (purge jamais appliquée), accès refusé, format
+        return f"dernière purge Langfuse réussie : inconnue ({type(exc).__name__})", True
+    shown = f"dernière purge Langfuse réussie : {last:%Y-%m-%d %H:%M} UTC"
+    return shown, datetime.fromtimestamp(now, UTC) - last > PURGE_MAX_AGE
+
+
 def _trend(current: float, previous: float) -> str:
     if previous == 0:
         return "nouveau" if current else "stable"
@@ -279,12 +300,14 @@ def format_summary(
     current: Stats,
     previous: Stats | None,
     exchanges: list[str] | None = None,
+    purge: tuple[str, bool] | None = None,
 ) -> tuple[str, str]:
     """Objet (ASCII, exigé par SNS) et corps du courriel, en français.
 
     `previous` vaut None si la semaine précédente n'est pas lisible (avant la création du
     groupe de journaux ou hors rétention) : pas de comparaison. `exchanges` : lignes de la
-    section « Derniers échanges » (`format_exchanges`), ajoutées en fin de message."""
+    section « Derniers échanges » (`format_exchanges`), ajoutées en fin de message. `purge` :
+    ligne et alerte de `purge_status` ; une alerte remonte en tête du message."""
 
     def before(field: str) -> float | None:
         return None if previous is None else getattr(previous, field)
@@ -321,10 +344,14 @@ def format_summary(
         "Détail : tableau de bord CloudWatch « ask-my-cv-usage ». Échanges complets (30 jours) :",
         "uv run python infra/scripts/exchanges.py --days 7",
     ]
+    if purge is not None and not purge[1]:
+        lines += ["", f"- {purge[0][0].upper()}{purge[0][1:]}"]
     if exchanges:
         lines += ["", *exchanges]
     if current.requests == 0:
         lines.insert(3, "Aucune requête publique cette semaine.\n")
+    if purge is not None and purge[1]:
+        lines.insert(3, f"À VÉRIFIER : {purge[0]} (seuil : 2 jours).\n")
     if anomaly := current.internal_anomaly():
         lines.insert(3, f"À VÉRIFIER : trafic interne anormal ({anomaly}).\n")
     return subject, "\n".join(lines) + "\n"
@@ -346,6 +373,12 @@ def _dynamodb(region: str) -> Any:
     return boto3.client("dynamodb", region_name=region)
 
 
+def _ssm(region: str) -> Any:
+    import boto3
+
+    return boto3.client("ssm", region_name=region)
+
+
 def main(
     argv: Sequence[str] | None = None,
     *,
@@ -353,6 +386,7 @@ def main(
     fetch: Callable[..., Stats] = fetch_stats,
     out: Callable[[str], None] = print,
     dynamodb: Callable[[str], Any] = _dynamodb,
+    ssm: Callable[[str], Any] = _ssm,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dry-run", action="store_true", help="affiche sans publier")
@@ -387,7 +421,11 @@ def main(
     except Exception as exc:  # table absente (avant terraform apply) ou accès refusé
         out(f"journal des échanges illisible ({type(exc).__name__})")
         exchanges = [f"Derniers échanges : indisponibles ({type(exc).__name__})."]
-    subject, message = format_summary(week, current, previous, exchanges)
+    try:
+        purge = purge_status(ssm(args.region), now)
+    except Exception as exc:  # client SSM indisponible
+        purge = (f"dernière purge Langfuse réussie : inconnue ({type(exc).__name__})", True)
+    subject, message = format_summary(week, current, previous, exchanges, purge)
 
     if args.dry_run:
         out(f"[essai] objet : {subject}\n\n{message}")
