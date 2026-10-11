@@ -22,7 +22,7 @@
     "sourceValue": "Public CV, written in French: answers are drawn from it",
     "modelTerm": "model",
     "contactTerm": "contact",
-    "privacy": "Questions are processed in the United States by Amazon Bedrock, whose model generates the answers. Your IP address is never stored; the per-visitor quota relies on a salted pseudonym. Questions and answers, automatically masked on a best-effort basis (emails, phone numbers, links), are kept for 30 days at AWS (Canada) and viewable in our Langfuse observability tool (United States), to improve the assistant.",
+    "privacy": "Questions are processed in the United States by Amazon Bedrock, whose model generates the answers. Your IP address is never stored; the per-visitor quota relies on a salted pseudonym. Questions and answers, automatically masked on a best-effort basis (emails, phone numbers, links), are kept for 30 days at AWS (Canada) and in our Langfuse observability tool (United States), to improve the assistant.",
     "linkedinTerm": "linkedin"
   },
   "chat": {
@@ -57,7 +57,7 @@
     "inputLabel": "Your question or job posting",
     "placeholder": "Ask your question or paste your job posting…",
     "hint": "You can also paste a job posting to see how Steve's background matches the profile you are looking for.",
-    "retention": "Masked questions and answers, no IP address: kept 30 days at AWS (Canada), viewable in our Langfuse observability tool (US).",
+    "retention": "Masked questions and answers, without IP addresses, kept for 30 days (AWS Canada and Langfuse observability tool, United States).",
     "charsSuffix": " characters",
     "stop": "Stop",
     "send": "Send",

@@ -1,0 +1,61 @@
+name: purge
+
+# Purge quotidienne des traces Langfuse (#154) : les échanges publics sont annoncés conservés
+# 30 jours, et l'offre Hobby ne permet pas de régler la rétention. Le script supprime chaque
+# trace de plus de 28 jours (fenêtre de lecture Hobby : 30 jours, voir le script). Planifié :
+# suppression réelle ; manuel : essai par défaut (des nombres seulement). Un échec ou un
+# reliquat fait échouer le job, ce qui déclenche la notification d'échec de GitHub.
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Supprimer (sinon essai : nombres seulement)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: langfuse-purge
+  cancel-in-progress: false
+
+jobs:
+  langfuse:
+    runs-on: ubuntu-latest
+    environment: nightly
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      # secrets et variable de l'environnement `nightly`
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+      LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+      # planifié : suppression ; manuel : essai sauf décision contraire
+      APPLY: ${{ github.event_name == 'schedule' || inputs.apply }}
+    steps:
+      - name: Vérifier la configuration
+        run: |
+          if ! test -n "$LANGFUSE_PUBLIC_KEY" || ! test -n "$LANGFUSE_SECRET_KEY"; then
+            echo "::error::secrets LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY absents de l'environnement nightly"
+            exit 1
+          fi
+          if ! test -n "$LANGFUSE_BASE_URL"; then
+            echo "::error::variable LANGFUSE_BASE_URL absente de l'environnement nightly"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen --python 3.12
+      - name: Purge des traces Langfuse
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            uv run python infra/scripts/langfuse_purge.py --apply
+          else
+            uv run python infra/scripts/langfuse_purge.py
+          fi

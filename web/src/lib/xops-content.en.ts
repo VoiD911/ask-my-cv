@@ -112,8 +112,8 @@ export const disciplinesEn: Record<string, DisciplineText> = {
       observabilite: {
         title: "Observability",
         claim: (x) =>
-          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email. A private dashboard of real usage (internal traffic excluded, no text in CloudWatch traces), masked public exchanges deleted after 30 days in DynamoDB (Canada, TTL) and viewable in Langfuse (United States, access limited to 30 days by the free plan), and a weekly email summary.`,
-        proofs: ["telemetry.py", "observability.tf · alarm", "dashboard.tf · dashboard", "weekly.yml · summary"],
+          `OpenTelemetry traces for every stage (${tracing(x).join(", ")}), guardrail metrics and a CloudWatch alarm sent by email. A private dashboard of real usage (internal traffic excluded, no text in CloudWatch traces), masked public exchanges (best-effort masking) kept for 30 days, erased by TTL in DynamoDB (Canada) and by a daily purge in Langfuse (United States), and a weekly email summary.`,
+        proofs: ["telemetry.py", "observability.tf · alarm", "dashboard.tf · dashboard", "weekly.yml · summary", "purge.yml · Langfuse purge"],
       },
       journal: {
         title: "Public development journal",
