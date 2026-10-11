@@ -170,15 +170,15 @@
     },
     "text:settings.aws.yaml#daily_cap_usd:": {
       "path": "settings.aws.yaml",
-      "line": 30
+      "line": 31
     },
     "text:settings.aws.yaml#fallback_chain:": {
       "path": "settings.aws.yaml",
-      "line": 20
+      "line": 21
     },
     "text:settings.aws.yaml#input_per_mtok:": {
       "path": "settings.aws.yaml",
-      "line": 26
+      "line": 27
     },
     "text:settings.aws.yaml#prompt_path:": {
       "path": "settings.aws.yaml",
@@ -202,7 +202,7 @@
     },
     "text:src/ask_my_cv/pipeline.py#tous les fournisseurs ont échoué": {
       "path": "src/ask_my_cv/pipeline.py",
-      "line": 187
+      "line": 189
     },
     "tf:aws_budgets_budget.monthly": {
       "path": "infra/prod/observability.tf",

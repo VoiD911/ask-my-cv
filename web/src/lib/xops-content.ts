@@ -156,7 +156,7 @@ export const disciplines: Discipline[] = [
         id: "observabilite",
         title: "Observabilité",
         claim: (x) =>
-          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte dans les traces CloudWatch), échanges publics masqués conservés 30 jours dans DynamoDB (Canada) et Langfuse (États-Unis), et résumé hebdomadaire par courriel.`,
+          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte dans les traces CloudWatch), échanges publics masqués supprimés après 30 jours dans DynamoDB (Canada, TTL) et consultables dans Langfuse (États-Unis, accès limité à 30 jours par l'offre gratuite), et résumé hebdomadaire par courriel.`,
         status: "couvert",
         proofs: [
           { label: "telemetry.py", path: "src/ask_my_cv/telemetry.py" },

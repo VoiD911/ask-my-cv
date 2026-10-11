@@ -9,7 +9,6 @@ from requests.adapters import BaseAdapter
 from ask_my_cv.aws.sigv4 import SigV4Session
 from ask_my_cv.settings import ConfigError, ModelConfig, Settings
 from ask_my_cv.telemetry import (
-    TEXT_ATTRIBUTES,
     ExporterConfig,
     TextFreeExporter,
     build_tracer_provider,
@@ -119,9 +118,21 @@ def test_exporter_for_cloudwatch_builds_a_real_otlp_exporter() -> None:
     assert isinstance(exporter.inner, OTLPSpanExporter)
 
 
-def test_only_langfuse_receives_text_attributes(monkeypatch: pytest.MonkeyPatch) -> None:
+SENTINEL = "SENTINELLE-question-a.b@acme.fr"
+TEXT_KEYS = (
+    "langfuse.observation.input",
+    "langfuse.observation.output",
+    "langfuse.trace.metadata.note",
+    "gen_ai.prompt.0.content",
+    "gen_ai.input.messages",
+    "input.value",
+    "output.value",
+)
+
+
+def test_only_langfuse_receives_text(monkeypatch: pytest.MonkeyPatch) -> None:
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
-    from opentelemetry.trace import Status, StatusCode
+    from opentelemetry.trace import Link, StatusCode
 
     import ask_my_cv.telemetry as telemetry
 
@@ -129,33 +140,45 @@ def test_only_langfuse_receives_text_attributes(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(telemetry, "_raw_exporter", lambda name, _settings: exporters[name])
     provider = build_tracer_provider(settings(tracing=["cloudwatch", "langfuse"]))
     assert provider is not None
-    text_keys = {*TEXT_ATTRIBUTES, "langfuse.trace.metadata.note"}
     tracer = provider.get_tracer("test")
-    with tracer.start_as_current_span("ask") as root:
-        root.set_attribute("xops.result", "answered")
-        for key in text_keys:
-            root.set_attribute(key, "question masquée [e-mail]")
-        root.add_event("fin", {"n": 1})
-        root.set_status(Status(StatusCode.ERROR))
-        with tracer.start_as_current_span("llm") as child:
-            child.set_attribute("tokens_in", 12)
+    with tracer.start_as_current_span("other") as other:
+        pass
+    link = Link(other.get_span_context(), {"input.value": SENTINEL, "kind": "suite"})
+    # span par défaut (record_exception, set_status_on_exception) : le pire cas
+    with pytest.raises(RuntimeError):
+        with tracer.start_as_current_span("ask", links=[link]) as root:
+            root.set_attribute("xops.result", "answered")
+            for key in TEXT_KEYS:
+                root.set_attribute(key, SENTINEL)
+            root.add_event("fin", {"n": 1, "gen_ai.completion": SENTINEL})
+            with tracer.start_as_current_span("llm") as child:
+                child.set_attribute("tokens_in", 12)
+            raise RuntimeError(SENTINEL)
     assert provider.force_flush(timeout_millis=2000)
     by_name = {
         name: {s.name: s for s in exporter.get_finished_spans()}
         for name, exporter in exporters.items()
     }
     cloudwatch, langfuse = by_name["cloudwatch"]["ask"], by_name["langfuse"]["ask"]
+    # aucun champ exporté vers CloudWatch ne contient la sentinelle
+    for span in by_name["cloudwatch"].values():
+        assert SENTINEL not in span.to_json(), span.name
+    assert SENTINEL in langfuse.to_json()
     assert dict(cloudwatch.attributes or {}) == {"xops.result": "answered"}
     for field in ("context", "parent", "resource", "kind", "start_time", "end_time"):
         assert getattr(cloudwatch, field) == getattr(langfuse, field), field
     assert cloudwatch.status.status_code is StatusCode.ERROR
-    assert [e.name for e in cloudwatch.events] == ["fin"]
+    assert cloudwatch.status.description is None
+    assert [e.name for e in cloudwatch.events] == ["fin", "exception"]
+    assert dict(cloudwatch.events[0].attributes or {}) == {"n": 1}
+    assert (cloudwatch.events[1].attributes or {})["exception.type"] == "RuntimeError"
+    assert [dict(lk.attributes or {}) for lk in cloudwatch.links] == [{"kind": "suite"}]
+    assert cloudwatch.links[0].context == other.get_span_context()
     assert cloudwatch.instrumentation_scope == langfuse.instrumentation_scope
-    # span sans texte : transmis tel quel
-    assert by_name["cloudwatch"]["llm"] is by_name["langfuse"]["llm"]
     assert by_name["cloudwatch"]["llm"].parent == cloudwatch.context
-    assert (langfuse.attributes or {})["langfuse.observation.input"] == "question masquée [e-mail]"
-    assert text_keys <= set(langfuse.attributes or {})
+    assert dict(by_name["cloudwatch"]["llm"].attributes or {}) == {"tokens_in": 12}
+    assert set(TEXT_KEYS) <= set(langfuse.attributes or {})
+    assert SENTINEL in (langfuse.status.description or "")
     provider.shutdown()
 
 

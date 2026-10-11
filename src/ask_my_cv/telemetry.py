@@ -4,17 +4,20 @@ import base64
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
+from opentelemetry.sdk.trace import Event, ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
     ConsoleSpanExporter,
     SpanExporter,
     SpanExportResult,
 )
+from opentelemetry.trace import Link, Status
+from opentelemetry.util.types import Attributes
 
 from ask_my_cv.settings import ConfigError, Settings
 
@@ -22,19 +25,11 @@ from ask_my_cv.settings import ConfigError, Settings
 EXPORT_TIMEOUT_S = 2.0
 
 # Attributs porteurs de texte (question et réponse masquées, #154) : réservés à Langfuse.
-# Tout autre exportateur (CloudWatch/X-Ray, console) les reçoit retirés (`TextFreeExporter`) :
-# tout attribut `langfuse.*` (préfixe) et les conventions génériques d'entrée et de sortie.
-TEXT_PREFIX = "langfuse."
-TEXT_ATTRIBUTES = frozenset(
-    {
-        "langfuse.observation.input",
-        "langfuse.observation.output",
-        "input.value",
-        "output.value",
-        "gen_ai.prompt",
-        "gen_ai.completion",
-    }
-)
+# Tout autre exportateur (CloudWatch/X-Ray, console) les reçoit retirés (`TextFreeExporter`),
+# par préfixe : conventions Langfuse, GenAI et OpenInference, présentes ou futures.
+TEXT_PREFIXES = ("langfuse.", "gen_ai.", "input.", "output.")
+# texte libre des exceptions (message, pile) : retiré des événements hors Langfuse
+EXCEPTION_TEXT = frozenset({"exception.message", "exception.stacktrace"})
 # seul exportateur autorisé à recevoir le texte masqué
 TEXT_EXPORTERS = frozenset({"langfuse"})
 
@@ -80,23 +75,30 @@ def exporter_config(name: str, settings: Settings) -> ExporterConfig:
 
 
 def is_text_attribute(key: str) -> bool:
-    return key.startswith(TEXT_PREFIX) or key in TEXT_ATTRIBUTES
+    return key.startswith(TEXT_PREFIXES)
+
+
+def _clean(attributes: Attributes, extra: frozenset[str] = frozenset()) -> dict[str, Any]:
+    return {
+        k: v for k, v in (attributes or {}).items() if not is_text_attribute(k) and k not in extra
+    }
 
 
 def _without_text(span: ReadableSpan) -> ReadableSpan:
-    attributes = span.attributes or {}
-    if not any(is_text_attribute(key) for key in attributes):
-        return span
+    """Copie sans texte : attributs du span, des événements et des liens filtrés, messages
+    et piles d'exception retirés, description du statut vidée (code conservé)."""
     return ReadableSpan(
         name=span.name,
         context=span.context,
         parent=span.parent,
         resource=span.resource,
-        attributes={k: v for k, v in attributes.items() if not is_text_attribute(k)},
-        events=span.events,
-        links=span.links,
+        attributes=_clean(span.attributes),
+        events=[
+            Event(e.name, _clean(e.attributes, EXCEPTION_TEXT), e.timestamp) for e in span.events
+        ],
+        links=[Link(link.context, _clean(link.attributes)) for link in span.links],
         kind=span.kind,
-        status=span.status,
+        status=Status(span.status.status_code),
         start_time=span.start_time,
         end_time=span.end_time,
         instrumentation_scope=span.instrumentation_scope,
@@ -104,7 +106,7 @@ def _without_text(span: ReadableSpan) -> ReadableSpan:
 
 
 class TextFreeExporter(SpanExporter):
-    """Enveloppe qui retire les attributs de texte (`is_text_attribute`) avant d'exporter (#154).
+    """Enveloppe qui exporte chaque span sans texte (`_without_text`, #154).
 
     Les compteurs d'éléments abandonnés (limites du SDK) repartent de zéro sur la copie."""
 
