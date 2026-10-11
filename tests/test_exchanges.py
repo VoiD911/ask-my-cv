@@ -238,3 +238,27 @@ async def test_internal_and_eval_root_span_has_no_text(make_deps, spans, flag: s
     for span in spans.get_finished_spans():
         values = [str(v) for v in (span.attributes or {}).values()]
         assert not any(question in v or "D'après le CV" in v for v in values), span.name
+
+
+async def test_masking_failure_never_affects_the_visitor_nor_leaks_text(
+    make_deps, spans, caplog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import ask_my_cv.pipeline as pipeline
+
+    def broken(question: str, answer: str, allowed: Any = ()) -> tuple[str, str]:
+        raise RuntimeError(question)
+
+    monkeypatch.setattr(pipeline, "masked_texts", broken)
+    log = FakeLog()
+    deps = make_deps()
+    deps.exchange_log = log
+    question = "Quelle expérience en MLOps ?"
+    events = await ask(deps, question=question)
+    done = events[-1]
+    assert isinstance(done, Done)
+    assert done.answer_override is None
+    assert log.items == []
+    values = [str(v) for v in (root_span(spans).attributes or {}).values()]
+    assert not any(question in v or "D'après le CV" in v for v in values)
+    assert "masquage indisponible : RuntimeError" in caplog.text
+    assert question not in caplog.text

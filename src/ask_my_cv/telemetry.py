@@ -22,13 +22,13 @@ from ask_my_cv.settings import ConfigError, Settings
 EXPORT_TIMEOUT_S = 2.0
 
 # Attributs porteurs de texte (question et réponse masquées, #154) : réservés à Langfuse.
-# Tout autre exportateur (CloudWatch/X-Ray, console) les reçoit retirés (`TextFreeExporter`).
+# Tout autre exportateur (CloudWatch/X-Ray, console) les reçoit retirés (`TextFreeExporter`) :
+# tout attribut `langfuse.*` (préfixe) et les conventions génériques d'entrée et de sortie.
+TEXT_PREFIX = "langfuse."
 TEXT_ATTRIBUTES = frozenset(
     {
         "langfuse.observation.input",
         "langfuse.observation.output",
-        "langfuse.trace.input",
-        "langfuse.trace.output",
         "input.value",
         "output.value",
         "gen_ai.prompt",
@@ -79,16 +79,20 @@ def exporter_config(name: str, settings: Settings) -> ExporterConfig:
     raise ConfigError(f"exportateur de traces inconnu : {name}")
 
 
+def is_text_attribute(key: str) -> bool:
+    return key.startswith(TEXT_PREFIX) or key in TEXT_ATTRIBUTES
+
+
 def _without_text(span: ReadableSpan) -> ReadableSpan:
     attributes = span.attributes or {}
-    if not TEXT_ATTRIBUTES.intersection(attributes):
+    if not any(is_text_attribute(key) for key in attributes):
         return span
     return ReadableSpan(
         name=span.name,
         context=span.context,
         parent=span.parent,
         resource=span.resource,
-        attributes={k: v for k, v in attributes.items() if k not in TEXT_ATTRIBUTES},
+        attributes={k: v for k, v in attributes.items() if not is_text_attribute(k)},
         events=span.events,
         links=span.links,
         kind=span.kind,
@@ -100,7 +104,9 @@ def _without_text(span: ReadableSpan) -> ReadableSpan:
 
 
 class TextFreeExporter(SpanExporter):
-    """Enveloppe qui retire les attributs `TEXT_ATTRIBUTES` avant d'exporter (#154)."""
+    """Enveloppe qui retire les attributs de texte (`is_text_attribute`) avant d'exporter (#154).
+
+    Les compteurs d'éléments abandonnés (limites du SDK) repartent de zéro sur la copie."""
 
     def __init__(self, inner: SpanExporter) -> None:
         self.inner = inner

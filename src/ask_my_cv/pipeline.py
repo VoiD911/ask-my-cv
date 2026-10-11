@@ -427,12 +427,17 @@ async def run_pipeline(
             root.set_attribute("xops.cost_usd", round(usage.cost_usd, 6))
             root.set_attribute("xops.latency_ms", round((time.perf_counter() - started) * 1000, 1))
             shown = override or (answer if outcome == "answered" else "")
-            masked_question = masked_answer = ""
+            masked: tuple[str, str] | None = None
             if traffic == "public":
-                # un seul masquage, partagé par Langfuse et le journal DynamoDB (#154)
-                masked_question, masked_answer = masked_texts(
-                    question, shown, settings.allowed_contacts
-                )
+                # un seul masquage, partagé par Langfuse et le journal DynamoDB (#154) ; un
+                # échec ne touche jamais le visiteur et ne laisse passer aucun texte
+                try:
+                    masked = masked_texts(question, shown, settings.allowed_contacts)
+                except Exception as exc:
+                    logger.warning("masquage indisponible : %s", type(exc).__name__)
+                    metrics_logger.info("exchange_log_metrics mask_error")
+            if masked is not None:
+                masked_question, masked_answer = masked
                 root.set_attribute("langfuse.observation.input", masked_question)
                 root.set_attribute("langfuse.observation.output", masked_answer)
             else:
@@ -475,13 +480,13 @@ async def run_pipeline(
                     trace_id=trace_id,
                 )
             )
-            if deps.exchange_log is not None and traffic == "public":
+            if deps.exchange_log is not None and masked is not None:
                 # après Done (réponse complète), hors de la boucle ; jamais d'effet sur le visiteur
                 exchange = Exchange(
                     trace_id=trace_id,
                     timestamp=now(),
-                    question=masked_question,
-                    answer=masked_answer,
+                    question=masked[0],
+                    answer=masked[1],
                     result=_exchange_result(outcome, answer),
                     language=language,
                     kind=kind,

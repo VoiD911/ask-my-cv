@@ -121,6 +121,7 @@ def test_exporter_for_cloudwatch_builds_a_real_otlp_exporter() -> None:
 
 def test_only_langfuse_receives_text_attributes(monkeypatch: pytest.MonkeyPatch) -> None:
     from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
+    from opentelemetry.trace import Status, StatusCode
 
     import ask_my_cv.telemetry as telemetry
 
@@ -128,18 +129,33 @@ def test_only_langfuse_receives_text_attributes(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.setattr(telemetry, "_raw_exporter", lambda name, _settings: exporters[name])
     provider = build_tracer_provider(settings(tracing=["cloudwatch", "langfuse"]))
     assert provider is not None
-    with provider.get_tracer("test").start_as_current_span("ask") as root:
+    text_keys = {*TEXT_ATTRIBUTES, "langfuse.trace.metadata.note"}
+    tracer = provider.get_tracer("test")
+    with tracer.start_as_current_span("ask") as root:
         root.set_attribute("xops.result", "answered")
-        for key in TEXT_ATTRIBUTES:
+        for key in text_keys:
             root.set_attribute(key, "question masquée [e-mail]")
+        root.add_event("fin", {"n": 1})
+        root.set_status(Status(StatusCode.ERROR))
+        with tracer.start_as_current_span("llm") as child:
+            child.set_attribute("tokens_in", 12)
     assert provider.force_flush(timeout_millis=2000)
-    [cloudwatch] = exporters["cloudwatch"].get_finished_spans()
-    [langfuse] = exporters["langfuse"].get_finished_spans()
+    by_name = {
+        name: {s.name: s for s in exporter.get_finished_spans()}
+        for name, exporter in exporters.items()
+    }
+    cloudwatch, langfuse = by_name["cloudwatch"]["ask"], by_name["langfuse"]["ask"]
     assert dict(cloudwatch.attributes or {}) == {"xops.result": "answered"}
-    assert cloudwatch.context == langfuse.context
-    assert cloudwatch.name == "ask"
+    for field in ("context", "parent", "resource", "kind", "start_time", "end_time"):
+        assert getattr(cloudwatch, field) == getattr(langfuse, field), field
+    assert cloudwatch.status.status_code is StatusCode.ERROR
+    assert [e.name for e in cloudwatch.events] == ["fin"]
+    assert cloudwatch.instrumentation_scope == langfuse.instrumentation_scope
+    # span sans texte : transmis tel quel
+    assert by_name["cloudwatch"]["llm"] is by_name["langfuse"]["llm"]
+    assert by_name["cloudwatch"]["llm"].parent == cloudwatch.context
     assert (langfuse.attributes or {})["langfuse.observation.input"] == "question masquée [e-mail]"
-    assert TEXT_ATTRIBUTES <= set(langfuse.attributes or {})
+    assert text_keys <= set(langfuse.attributes or {})
     provider.shutdown()
 
 
