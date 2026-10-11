@@ -435,7 +435,8 @@ async def run_pipeline(
                     masked = masked_texts(question, shown, settings.allowed_contacts)
                 except Exception as exc:
                     logger.warning("masquage indisponible : %s", type(exc).__name__)
-                    metrics_logger.info("exchange_log_metrics mask_error")
+                    # même ligne qu'un échec d'écriture : comptée par observability.tf
+                    metrics_logger.info("exchange_log_metrics error")
             if masked is not None:
                 masked_question, masked_answer = masked
                 root.set_attribute("langfuse.observation.input", masked_question)
