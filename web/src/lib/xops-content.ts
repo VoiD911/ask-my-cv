@@ -156,13 +156,14 @@ export const disciplines: Discipline[] = [
         id: "observabilite",
         title: "Observabilité",
         claim: (x) =>
-          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte dans les traces), journal des échanges publics masqués conservé 30 jours et résumé hebdomadaire par courriel.`,
+          `Traces OpenTelemetry de chaque étape (${tracing(x).join(", ")}), métriques du garde-fou et alarme CloudWatch envoyée par courriel. Tableau de bord privé de l'usage réel (trafic interne exclu, sans texte dans les traces CloudWatch), échanges publics masqués (au mieux) conservés 30 jours, effacés par TTL dans DynamoDB (Canada) et par une purge quotidienne dans Langfuse (États-Unis), et résumé hebdomadaire par courriel.`,
         status: "couvert",
         proofs: [
           { label: "telemetry.py", path: "src/ask_my_cv/telemetry.py" },
           { label: "observability.tf · alarme", anchor: "tf:aws_cloudwatch_metric_alarm.guardrail_errors" },
           { label: "dashboard.tf · tableau de bord", anchor: "tf:aws_cloudwatch_dashboard.usage" },
           { label: "weekly.yml · résumé", anchor: "job:weekly.yml:summary" },
+          { label: "purge.yml · purge Langfuse", anchor: "job:purge.yml:langfuse" },
         ],
       },
       {

@@ -185,6 +185,21 @@ class FakeSts:
         return {"Account": "000000000000"}
 
 
+RECENT_PURGE = "2026-09-30T07:31:02Z"  # NOW = 2026-09-30 15:00 UTC
+
+
+class FakeSsm:
+    def __init__(self, value: str | None) -> None:
+        self.value = value
+        self.names: list[str] = []
+
+    def get_parameter(self, Name: str) -> dict[str, Any]:  # noqa: N803
+        self.names.append(Name)
+        if self.value is None:
+            raise RuntimeError("ParameterNotFound")
+        return {"Parameter": {"Value": self.value}}
+
+
 def run_main(argv: list[str]) -> tuple[FakeSns, list[str], list[Any]]:
     sns, printed, fetched = FakeSns(), [], []
 
@@ -198,6 +213,7 @@ def run_main(argv: list[str]) -> tuple[FakeSns, list[str], list[Any]]:
         fetch=fetch,
         out=printed.append,
         dynamodb=lambda _r: FakeDynamo(EXCHANGES),
+        ssm=lambda _r: FakeSsm(RECENT_PURGE),
     )
     assert code == 0
     return sns, printed, fetched
@@ -244,6 +260,7 @@ def test_main_survives_an_unreadable_previous_week() -> None:
         fetch=fetch,
         out=printed.append,
         dynamodb=lambda _r: FakeDynamo({}),
+        ssm=lambda _r: FakeSsm(RECENT_PURGE),
     )
     assert code == 0
     assert calls[0] == int(NOW) - 14 * 86400 + 3600
@@ -337,6 +354,7 @@ def test_unreadable_exchange_table_does_not_block_the_summary() -> None:
         fetch=lambda *_a, **_k: weekly.to_stats(fake_results()),
         out=printed.append,
         dynamodb=lambda _r: FakeDynamo({}, fail=True),
+        ssm=lambda _r: FakeSsm(RECENT_PURGE),
     )
     assert code == 0
     assert "Derniers échanges : indisponibles (RuntimeError)." in sns.published[0]["Message"]
@@ -358,3 +376,26 @@ def test_allowed_contacts_match_production_settings() -> None:
     path = _SCRIPT_PATH.parents[2] / "settings.aws.yaml"
     settings = yaml.safe_load(path.read_text("utf-8"))
     assert tuple(settings["allowed_contacts"]) == weekly.ALLOWED_CONTACTS
+
+
+def test_recent_purge_is_reported_without_alert() -> None:
+    ssm = FakeSsm(RECENT_PURGE)
+    line, alert = weekly.purge_status(ssm, NOW)
+    assert ssm.names == ["/ask-my-cv/langfuse-last-purge"]
+    assert line == "dernière purge Langfuse réussie : 2026-09-30 07:31 UTC"
+    assert alert is False
+    sns, _, _ = run_main([])
+    message = sns.published[0]["Message"]
+    assert "- Dernière purge Langfuse réussie : 2026-09-30 07:31 UTC" in message
+    assert "À VÉRIFIER" not in message
+
+
+@pytest.mark.parametrize("value", ["2026-09-27T07:30:00Z", None, "pas une date"])
+def test_stale_or_missing_purge_is_flagged_first(value: str | None) -> None:
+    week, _ = weekly.last_full_weeks(NOW)
+    purge = weekly.purge_status(FakeSsm(value), NOW)
+    assert purge[1] is True
+    _, message = weekly.format_summary(week, weekly.to_stats(fake_results()), None, None, purge)
+    lines = message.splitlines()
+    assert lines[3].startswith("À VÉRIFIER : dernière purge Langfuse réussie : ")
+    assert lines[3].endswith("(seuil : 2 jours).")

@@ -1,0 +1,92 @@
+name: purge
+
+# Purge quotidienne des traces Langfuse (#154) : les échanges publics sont annoncés conservés
+# 30 jours, et l'offre Hobby ne permet pas de régler la rétention. Le script supprime chaque
+# trace de plus de 28 jours (fenêtre de lecture Hobby : 30 jours, voir le script).
+#
+# Mise en service en deux temps : tant que la variable `LANGFUSE_PURGE_APPLY` ne vaut pas
+# `true`, l'exécution planifiée reste un essai (des nombres seulement). Le contrôleur la pose
+# après un essai manuel réussi. Manuel : essai par défaut. Après une suppression réussie, le
+# job écrit l'horodatage dans le paramètre SSM `/ask-my-cv/langfuse-last-purge`, que le résumé
+# du lundi signale « À VÉRIFIER » s'il a plus de 2 jours (workflow planifié désactivé par
+# GitHub après 60 jours sans activité, clés absentes…). Un échec, un reliquat ou une trace
+# récente renvoyée par l'API fait échouer le job.
+on:
+  schedule:
+    - cron: "30 7 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Supprimer (sinon essai : nombres seulement)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: langfuse-purge
+  cancel-in-progress: false
+
+jobs:
+  langfuse:
+    runs-on: ubuntu-latest
+    environment: nightly
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      # Secret d'environnement `nightly` : masque le numéro de compte dans les journaux publics
+      # (ARN du rôle, erreurs AWS), comme les jobs de nightly.yml et weekly.yml.
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      # planifié : suppression seulement après activation ; manuel : essai sauf décision contraire
+      APPLY: ${{ (github.event_name == 'schedule' && vars.LANGFUSE_PURGE_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && inputs.apply) }}
+    steps:
+      - name: Vérifier la configuration
+        env:
+          HAS_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY != '' }}
+          HAS_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY != '' }}
+          LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+        run: |
+          if [ "$HAS_PUBLIC_KEY" != "true" ] || [ "$HAS_SECRET_KEY" != "true" ]; then
+            echo "::error::secrets LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY absents de l'environnement nightly"
+            exit 1
+          fi
+          if ! test -n "$LANGFUSE_BASE_URL"; then
+            echo "::error::variable LANGFUSE_BASE_URL absente de l'environnement nightly"
+            exit 1
+          fi
+          if [ "$APPLY" = "true" ] && ! test -n "$AWS_ACCOUNT_ID"; then
+            echo "::error::secret AWS_ACCOUNT_ID absent de l'environnement : le numéro de compte ne serait plus masqué dans les journaux publics"
+            exit 1
+          fi
+          echo "suppression : $APPLY"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - run: uv sync --frozen --python 3.12
+      # clés Langfuse limitées à cette étape (ni checkout, ni installation des dépendances)
+      - name: Purge des traces Langfuse
+        env:
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+          LANGFUSE_BASE_URL: ${{ vars.LANGFUSE_BASE_URL }}
+        run: |
+          if [ "$APPLY" = "true" ]; then
+            uv run python infra/scripts/langfuse_purge.py --apply
+          else
+            uv run python infra/scripts/langfuse_purge.py
+          fi
+      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        if: env.APPLY == 'true'
+        with:
+          role-to-assume: ${{ vars.AWS_NIGHTLY_ROLE_ARN }}
+          aws-region: ca-central-1
+      - name: Horodatage de la dernière purge réussie
+        if: env.APPLY == 'true'
+        run: |
+          aws ssm put-parameter --name /ask-my-cv/langfuse-last-purge --type String --overwrite \
+            --value "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /dev/null
+          echo "dernière purge enregistrée"

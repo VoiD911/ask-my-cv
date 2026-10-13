@@ -16,6 +16,7 @@ ledger: dynamodb
 ledger_table: ask-my-cv-ledger
 exchange_log_table: ask-my-cv-exchanges   # #150 : questions et réponses publiques masquées, 30 jours
 tracing: [cloudwatch, langfuse]
+langfuse_text: true   # #154 : texte masqué dans Langfuse (US) ; false le retire sans code
 default_model: bedrock:haiku-4.5
 fallback_chain: [bedrock:haiku-4.5]
 models:

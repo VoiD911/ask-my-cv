@@ -79,6 +79,9 @@ class Settings(BaseModel):
     exchange_log_table: str | None = None
     tracing: list[Literal["console", "cloudwatch", "langfuse"]] = []
     langfuse_endpoint: str = "https://us.cloud.langfuse.com/api/public/otel/v1/traces"
+    # #154 : question et réponse masquées (trafic public) sur le span racine, pour Langfuse
+    # seulement. Désactivé par défaut ; false suffit à retirer le texte de Langfuse.
+    langfuse_text: bool = False
     # Garde-fou Bedrock « annonces » (#118) : second avis sur les annonces collées. Désactivé
     # tant que l'identifiant et la version publiée ne sont pas fournis (local, CI, ou code
     # déployé avant `terraform apply`) : le classifieur décide alors seul.

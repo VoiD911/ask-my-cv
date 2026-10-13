@@ -146,6 +146,7 @@ def test_production_aws_settings_load(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert settings.trusted_proxy == "cloudfront" and settings.detector == "onnx"
     assert set(settings.tracing) == {"cloudwatch", "langfuse"}
+    assert settings.langfuse_text is True  # #154
     haiku = next(m for m in settings.models if m.provider == "bedrock")
     assert haiku.model.startswith("us.anthropic.claude-haiku-4-5")
 

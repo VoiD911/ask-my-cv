@@ -9,10 +9,12 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
+from opentelemetry.trace import Status, StatusCode
+
 from ask_my_cv.budget import BudgetExceeded, BudgetLedger, RateLimited
 from ask_my_cv.embeddings import EmbeddingProvider
 from ask_my_cv.events import Answer, Done, LLMProgress
-from ask_my_cv.exchanges import Exchange, ExchangeLog
+from ask_my_cv.exchanges import Exchange, ExchangeLog, masked_texts
 from ask_my_cv.guardrail import (
     GUARDRAIL_PROVIDER_ID,
     USD_PER_UNIT,
@@ -260,8 +262,11 @@ async def run_pipeline(
     `ask` porte un résumé analytique (#143) : `xops.traffic` (`public` ou `internal`, une
     évaluation est toujours interne), `xops.visitor` (pseudonyme hebdomadaire, trafic public
     seulement), `xops.result`, `xops.kind` (question ou annonce), `xops.language`, coût et
-    latence. Jamais le texte soumis ni la réponse dans les traces : seul le journal des
-    échanges (#150, trafic public, `Deps.exchange_log`) les conserve, masqués, 30 jours."""
+    latence. Trafic public seulement : question et réponse affichée, masquées une seule fois
+    (`masked_texts`), vont dans le journal des échanges (#150, `Deps.exchange_log`) et sur
+    `langfuse.observation.input`/`output` du span racine si `langfuse_text` (#154) ; retirés
+    de tout exportateur autre que Langfuse (`telemetry.TextFreeExporter`). Sinon, jamais de
+    texte dans les traces."""
     settings = deps.settings
     started = time.perf_counter()
     usage = Usage()
@@ -282,7 +287,11 @@ async def run_pipeline(
         future.add_done_callback(_log_record_failure)
         usage.cost_usd += cost
 
-    with tracer.start_as_current_span("ask") as root:
+    # comme `stage()` : jamais d'exception enregistrée (message, pile) ni de description de
+    # statut ; le statut d'erreur est posé à la main, sans texte (#154)
+    with tracer.start_as_current_span(
+        "ask", record_exception=False, set_status_on_exception=False
+    ) as root:
         root.set_attribute(
             "langfuse.observation.input",
             json.dumps({"question_chars": len(question)}, ensure_ascii=False),
@@ -418,24 +427,42 @@ async def run_pipeline(
             override = ERROR_MESSAGE
         finally:
             root.set_attribute("xops.result", outcome)
+            if outcome in ("error", "cancelled"):
+                root.set_status(Status(StatusCode.ERROR))
             # 0/1 numériques : sommés tels quels par Logs Insights (tableau de bord, résumé)
             root.set_attribute("xops.refusal", int(outcome == "answered" and is_refusal(answer)))
             root.set_attribute("xops.withdrawn", int(outcome in WITHDRAWN_REASONS))
             root.set_attribute("xops.cost_usd", round(usage.cost_usd, 6))
             root.set_attribute("xops.latency_ms", round((time.perf_counter() - started) * 1000, 1))
-            root.set_attribute(
-                "langfuse.observation.output",
-                json.dumps(
-                    {
-                        "result": outcome,
-                        "answer_chars": len(answer) if outcome == "answered" else 0,
-                        "source_count": len(sources),
-                        "tokens_in": usage.tokens_in,
-                        "tokens_out": usage.tokens_out,
-                    },
-                    ensure_ascii=False,
-                ),
-            )
+            shown = override or (answer if outcome == "answered" else "")
+            masked: tuple[str, str] | None = None
+            if traffic == "public":
+                # un seul masquage, partagé par Langfuse et le journal DynamoDB (#154) ; un
+                # échec ne touche jamais le visiteur et ne laisse passer aucun texte
+                try:
+                    masked = masked_texts(question, shown, settings.allowed_contacts)
+                except Exception as exc:
+                    logger.warning("masquage indisponible : %s", type(exc).__name__)
+                    # même ligne qu'un échec d'écriture : comptée par observability.tf
+                    metrics_logger.info("exchange_log_metrics error")
+            if masked is not None and settings.langfuse_text:
+                masked_question, masked_answer = masked
+                root.set_attribute("langfuse.observation.input", masked_question)
+                root.set_attribute("langfuse.observation.output", masked_answer)
+            else:
+                root.set_attribute(
+                    "langfuse.observation.output",
+                    json.dumps(
+                        {
+                            "result": outcome,
+                            "answer_chars": len(answer) if outcome == "answered" else 0,
+                            "source_count": len(sources),
+                            "tokens_in": usage.tokens_in,
+                            "tokens_out": usage.tokens_out,
+                        },
+                        ensure_ascii=False,
+                    ),
+                )
             interrupted = False
             if pending and not _cancelling():
                 # fin normale : les dépenses sont écrites avant Done, sans bloquer la boucle ;
@@ -462,13 +489,13 @@ async def run_pipeline(
                     trace_id=trace_id,
                 )
             )
-            if deps.exchange_log is not None and traffic == "public":
+            if deps.exchange_log is not None and masked is not None:
                 # après Done (réponse complète), hors de la boucle ; jamais d'effet sur le visiteur
                 exchange = Exchange(
                     trace_id=trace_id,
                     timestamp=now(),
-                    question=question,
-                    answer=override or (answer if outcome == "answered" else ""),
+                    question=masked[0],
+                    answer=masked[1],
                     result=_exchange_result(outcome, answer),
                     language=language,
                     kind=kind,
