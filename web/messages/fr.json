@@ -22,7 +22,7 @@
     "sourceValue": "CV public, en français",
     "modelTerm": "modèle",
     "contactTerm": "contact",
-    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock, dont le modèle génère les réponses. Ton adresse IP n'est jamais conservée ; le quota par visiteur repose sur un pseudonyme salé. Les questions et réponses, masquées automatiquement, au mieux (courriels, téléphones, liens), sont conservées 30 jours chez AWS (Canada) et dans notre outil d'observabilité Langfuse (États-Unis), pour améliorer l'assistant.",
+    "privacy": "Les questions sont traitées aux États-Unis par Amazon Bedrock, dont le modèle génère les réponses. Ton adresse IP n'est jamais conservée ; le quota par visiteur repose sur un pseudonyme salé.",
     "linkedinTerm": "linkedin"
   },
   "chat": {
